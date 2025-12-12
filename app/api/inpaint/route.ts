@@ -23,15 +23,54 @@ interface InpaintResponse {
   }
 }
 
-// Helper function to convert base64 to buffer
-function base64ToBuffer(base64: string): Buffer {
-  const base64Data = base64.replace(/^data:image\/\w+;base64,/, "")
-  return Buffer.from(base64Data, "base64")
-}
-
 // Helper function to validate image format
 function isValidImage(base64: string): boolean {
   return base64.startsWith("data:image/")
+}
+
+// Build the inpainting prompt for Gemini
+function buildInpaintPrompt(userPrompt: string, hasReference: boolean): string {
+  const baseInstruction = `You are a world-class digital artist and expert image editor. Your specialty is creating seamless, professional-quality image edits that are indistinguishable from original artwork.
+
+## Task Overview
+I'm providing you with images for a precise inpainting operation:
+1. **Base Image**: The original image requiring editing
+2. **Mask Image**: WHITE areas = regions to modify; BLACK areas = preserve exactly as-is
+
+## Your Mission
+${userPrompt}
+
+## Pre-Edit Analysis (Perform Silently)
+Before editing, analyze the base image to identify:
+- Art style (realistic, cartoon, anime, 3D render, illustration, photographic, etc.)
+- Cultural/thematic context (mythology, modern, fantasy, historical, regional aesthetics, etc.)
+- Color palette, lighting setup, and rendering technique
+- Level of detail and texture quality
+
+## Quality Requirements (CRITICAL)
+1. **Style Fidelity**: Replicate the EXACT artistic style of the base image - same rendering technique, line quality, shading method, and detail level
+2. **Seamless Integration**: Zero visible seams, artifacts, or inconsistencies at mask boundaries
+3. **Lighting Coherence**: Match light direction, shadow softness, highlights, reflections, and ambient occlusion precisely
+4. **Physical Accuracy**: Ensure proper anatomy, perspective, proportions, and physics
+5. **Cultural/Thematic Authenticity**: Preserve the authentic characteristics of any cultural, mythological, or thematic elements - respect their symbolic meanings and traditional representations
+6. **Color Harmony**: Use colors that naturally belong to the existing palette
+7. **Texture Consistency**: Match surface textures, material properties, and fine details
+
+## Output Specification
+Generate a complete, high-quality edited image where the inpainted region appears as an original part of the artwork. The edit should be professional-grade and imperceptible.`
+
+  if (hasReference) {
+    return `${baseInstruction}
+
+## Reference Image Guidance
+A reference image is provided. Use it as follows:
+- Study its key visual characteristics, proportions, colors, and distinctive features
+- **ADAPT** (not copy) these elements to match the base image's unique style and aesthetic
+- Transform the reference content to feel native to the base image's world
+- Preserve the essence while ensuring perfect stylistic harmony with the base image`
+  }
+
+  return baseInstruction
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse<InpaintResponse | { error: string }>> {
@@ -50,84 +89,111 @@ export async function POST(request: NextRequest): Promise<NextResponse<InpaintRe
       return NextResponse.json({ error: "Invalid image format. Must be base64 encoded image." }, { status: 400 })
     }
 
-    const replicateApiKey = process.env.REPLICATE_API_KEY
-    if (!replicateApiKey || replicateApiKey === "your_replicate_api_key_here") {
-      console.warn("Replicate API key not configured. Returning mock result.")
+    const openrouterApiKey = process.env.OPENROUTER_API_KEY
+    if (!openrouterApiKey) {
+      console.warn("OpenRouter API key not configured. Returning mock result.")
       return mockInpaintResult(base_image, startTime)
     }
 
-    // Call Replicate SDXL Inpainting model
-    // Using stability-ai/sdxl as an example - you can switch to other inpainting models
-    const replicateResponse = await fetch("https://api.replicate.com/v1/predictions", {
+    // Build content array with images
+    const contentArray: Array<{ type: string; text?: string; image_url?: { url: string } }> = [
+      {
+        type: "text",
+        text: buildInpaintPrompt(prompt, !!reference_image),
+      },
+      {
+        type: "text",
+        text: "Base image to edit:",
+      },
+      {
+        type: "image_url",
+        image_url: { url: base_image },
+      },
+      {
+        type: "text",
+        text: "Mask image (edit WHITE areas only):",
+      },
+      {
+        type: "image_url",
+        image_url: { url: mask_image },
+      },
+    ]
+
+    // Add reference image if provided
+    if (reference_image && isValidImage(reference_image)) {
+      contentArray.push(
+        {
+          type: "text",
+          text: "Reference image for style/content guidance:",
+        },
+        {
+          type: "image_url",
+          image_url: { url: reference_image },
+        }
+      )
+    }
+
+    // Call OpenRouter API with Gemini 2.5 Flash Image model
+    console.log("[Inpaint] Calling OpenRouter Gemini 2.5 Flash Image...")
+    
+    const openrouterResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Token ${replicateApiKey}`,
+        Authorization: `Bearer ${openrouterApiKey}`,
+        "HTTP-Referer": process.env.SITE_URL || "http://localhost:3000",
+        "X-Title": "AI Image Editor",
       },
       body: JSON.stringify({
-        version: "7762fd07cf82c948538e41f63f77d685e02b063e37e496e96eefd46c929f9bdc", // SDXL Inpainting
-        input: {
-          image: base_image,
-          mask: mask_image,
-          prompt: prompt,
-          num_inference_steps: options.steps || 30,
-          guidance_scale: options.guidance_scale || 7.5,
-          strength: options.strength || 0.9,
-        },
+        model: "google/gemini-2.5-flash-image", // Gemini 2.5 Flash Image (Nano Banana)
+        messages: [
+          {
+            role: "user",
+            content: contentArray,
+          },
+        ],
+        modalities: ["image", "text"], // Enable image output
+        // Optional: configure aspect ratio based on input image
+        // image_config: { aspect_ratio: "1:1" }
       }),
     })
 
-    if (!replicateResponse.ok) {
-      const errorText = await replicateResponse.text()
-      console.error("Replicate API error:", errorText)
-      return NextResponse.json({ error: `Replicate API error: ${errorText}` }, { status: replicateResponse.status })
+    if (!openrouterResponse.ok) {
+      const errorText = await openrouterResponse.text()
+      console.error("OpenRouter API error:", errorText)
+      return NextResponse.json(
+        { error: `OpenRouter API error: ${openrouterResponse.status} - ${errorText}` },
+        { status: openrouterResponse.status }
+      )
     }
 
-    const prediction = await replicateResponse.json()
+    const result = await openrouterResponse.json()
+    console.log("[Inpaint] OpenRouter response received")
 
-    // Poll for completion
-    let predictionResult = prediction
-    let attempts = 0
-    const maxAttempts = 60 // 5 minutes max
+    // Extract generated image from response
+    const message = result.choices?.[0]?.message
+    const generatedImages = message?.images
 
-    while (predictionResult.status !== "succeeded" && predictionResult.status !== "failed" && attempts < maxAttempts) {
-      await new Promise((resolve) => setTimeout(resolve, 5000)) // Wait 5 seconds
-
-      const pollResponse = await fetch(`https://api.replicate.com/v1/predictions/${predictionResult.id}`, {
-        headers: {
-          Authorization: `Token ${replicateApiKey}`,
-        },
-      })
-
-      predictionResult = await pollResponse.json()
-      attempts++
+    if (!generatedImages || generatedImages.length === 0) {
+      console.error("No images in response:", JSON.stringify(result, null, 2))
+      return NextResponse.json(
+        { error: "Model did not generate an image. The response may contain only text." },
+        { status: 500 }
+      )
     }
 
-    if (predictionResult.status === "failed") {
-      return NextResponse.json({ error: `Model processing failed: ${predictionResult.error}` }, { status: 500 })
+    // Get the first generated image (should be base64 data URL)
+    const imageUrl = generatedImages[0]?.image_url?.url
+    if (!imageUrl) {
+      return NextResponse.json({ error: "Invalid image format in response" }, { status: 500 })
     }
-
-    if (predictionResult.status !== "succeeded") {
-      return NextResponse.json({ error: "Model processing timeout" }, { status: 504 })
-    }
-
-    const resultImageUrl = predictionResult.output?.[0] || predictionResult.output
-
-    if (!resultImageUrl) {
-      return NextResponse.json({ error: "No output image from model" }, { status: 500 })
-    }
-
-    // Download result image and convert to base64
-    const imageResponse = await fetch(resultImageUrl)
-    const imageBuffer = await imageResponse.arrayBuffer()
-    const base64Result = `data:image/png;base64,${Buffer.from(imageBuffer).toString("base64")}`
 
     const duration = Date.now() - startTime
 
     return NextResponse.json({
-      result_image: base64Result,
+      result_image: imageUrl,
       meta: {
-        model: "sdxl-inpainting",
+        model: "gemini-2.5-flash-image",
         duration_ms: duration,
       },
     })
@@ -135,7 +201,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<InpaintRe
     console.error("Error in inpainting:", error)
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Failed to process inpainting request" },
-      { status: 500 },
+      { status: 500 }
     )
   }
 }

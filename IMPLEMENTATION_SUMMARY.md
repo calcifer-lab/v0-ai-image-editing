@@ -23,16 +23,16 @@
 ```
 
 #### `/app/api/inpaint/route.ts`
-- ✅ 集成 Replicate SDXL Inpainting 模型
+- ✅ 集成 OpenRouter Gemini 2.5 Flash Image 模型
 - ✅ 接收基础图、蒙版图、参考图
 - ✅ 支持自定义提示词和参数
-- ✅ 轮询获取生成结果
+- ✅ 直接获取生成结果（无需轮询）
 - ✅ Mock 模式支持（无 API key 时）
 
 **技术实现**:
 ```typescript
-- Replicate API 集成
-- 模型: stability-ai/sdxl inpainting
+- OpenRouter API 集成
+- 模型: google/gemini-2.5-flash-preview-05-20
 - 参数: strength, steps, guidance_scale
 - 超时处理: 5分钟
 - 降级策略: Mock 模式返回原图
@@ -114,8 +114,7 @@
 
 #### 环境配置
 - ✅ `.env.local` 文件创建
-- ✅ OpenRouter API Key 配置
-- ✅ Replicate API Key 占位符
+- ✅ OpenRouter API Key 配置（用于图像分析 + AI Inpainting）
 - ✅ `.gitignore` 更新
 
 #### 依赖管理
@@ -158,8 +157,8 @@
    └─ 调整生成参数
 
 5. AI 生成 ⚡
-   ├─ 发送到 Replicate API
-   ├─ SDXL Inpainting 处理
+   ├─ 发送到 OpenRouter API
+   ├─ Gemini 2.5 Flash Image 处理
    └─ 实时状态更新
 
 6. 结果对比
@@ -180,14 +179,13 @@
 ### 后端技术栈
 - **API**: Next.js API Routes (Node.js runtime)
 - **AI服务**:
-  - OpenRouter (GPT-4o-mini vision)
-  - Replicate (SDXL Inpainting)
+  - OpenRouter (GPT-4o-mini vision + Gemini 2.5 Flash Image)
 - **图像处理**: Sharp (服务端)
 - **画布**: Canvas API (客户端)
 
 ### API 集成
 
-#### OpenRouter API
+#### OpenRouter API - 图像分析
 ```typescript
 模型: openai/gpt-4o-mini
 功能: 视觉分析
@@ -195,12 +193,12 @@
 端点: https://openrouter.ai/api/v1/chat/completions
 ```
 
-#### Replicate API
+#### OpenRouter API - AI Inpainting
 ```typescript
-模型: stability-ai/sdxl (Inpainting variant)
+模型: google/gemini-2.5-flash-preview-05-20
 功能: AI 修补替换
-成本: ~$0.01-0.05/生成
-端点: https://api.replicate.com/v1/predictions
+成本: ~$0.30/M input, $2.50/M output tokens
+端点: https://openrouter.ai/api/v1/chat/completions
 ```
 
 ## 📊 实现对比
@@ -213,7 +211,7 @@
 | 矩形/圆形选区 | ✓ | ⚠️ 预留 | 已预留接口，未启用 |
 | 提示词输入 | ✓ | ✅ 完成 | 可选，默认使用 AI 分析 |
 | 参数配置 | ✓ | ✅ 完成 | Strength, Guidance, Steps |
-| Inpainting API | ✓ | ✅ 完成 | Replicate SDXL |
+| Inpainting API | ✓ | ✅ 完成 | OpenRouter Gemini 2.5 Flash Image |
 | 结果后处理 | ✓ | ✅ 完成 | 边缘平滑 API |
 | 结果对比 | ✓ | ✅ 完成 | 并排 + 滑块视图 |
 | 下载功能 | ✓ | ✅ 完成 | PNG 格式下载 |
@@ -247,8 +245,9 @@ pnpm start
 - 无需手动编写提示词
 - 提取详细的视觉特征描述
 
-### 2. 双模式运行
-- **Mock 模式**: 无 Replicate Key 时用于测试
+### 2. 统一 API
+- **单一 Key**: 只需 OpenRouter API Key 即可使用全部功能
+- **Mock 模式**: 无 API Key 时用于测试
 - **Production 模式**: 真实 AI inpainting
 
 ### 3. 完善的用户体验
@@ -271,9 +270,9 @@ pnpm start
 - 真实 inpainting: 30-120秒
 
 ### 成本估算（使用真实 API）
-- AI 分析: $0.00015/次
-- Inpainting: $0.01-0.05/次
-- 典型使用: $0.02-0.10/完整流程
+- AI 分析: ~$0.00015/次 (GPT-4o-mini)
+- Inpainting: ~$0.01-0.03/次 (Gemini 2.5 Flash Image)
+- 典型使用: ~$0.02-0.05/完整流程
 
 ## 🔐 安全性
 
@@ -306,13 +305,13 @@ pnpm install
 pnpm dev
 ```
 
-### 2. 配置 Replicate (可选)
-如需真实 AI inpainting：
-1. 注册 https://replicate.com
-2. 获取 API Token
+### 2. 配置 OpenRouter
+如需真实 AI inpainting（已配置则跳过）：
+1. 注册 https://openrouter.ai
+2. 获取 API Key
 3. 更新 `.env.local`:
    ```
-   REPLICATE_API_KEY=r8_your_key_here
+   OPENROUTER_API_KEY=sk-or-v1-your_key_here
    ```
 4. 重启服务器
 
@@ -333,7 +332,7 @@ pnpm dev
 
 ✅ **后端**: 三个 API 端点（分析、inpainting、后处理）
 ✅ **前端**: 完整的上传、编辑、生成、对比流程
-✅ **AI 集成**: GPT-4o-mini 视觉分析 + SDXL Inpainting
+✅ **AI 集成**: GPT-4o-mini 视觉分析 + Gemini 2.5 Flash Image Inpainting
 ✅ **用户体验**: 实时反馈、错误处理、状态管理
 ✅ **文档**: 完善的设置、测试、使用指南
 ✅ **部署**: Vercel 就绪，环境配置完备

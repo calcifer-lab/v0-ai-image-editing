@@ -5,8 +5,7 @@ This guide will help you set up and run the AI Image Editing MVP.
 ## Prerequisites
 
 - Node.js 18+ and pnpm (or npm/yarn)
-- OpenRouter API Key (already configured)
-- Replicate API Key (optional, for production inpainting)
+- OpenRouter API Key (用于图像分析 + AI Inpainting)
 
 ## Installation
 
@@ -20,18 +19,18 @@ npm install
 
 2. **Configure Environment Variables**
 
-The `.env.local` file has been created with your OpenRouter API key. For production use, you'll need to add a Replicate API key:
+The `.env.local` file has been created with your OpenRouter API key:
 
 ```env
-# OpenRouter API Configuration (Already set)
-OPENROUTER_API_KEY=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
+# OpenRouter API Configuration
+# 用于 GPT-4o-mini 图像分析 + Gemini 2.5 Flash Image inpainting
+OPENROUTER_API_KEY=your_openrouter_api_key_here
 
-# Replicate API Configuration (For production inpainting)
-# Sign up at https://replicate.com and get your API token
-REPLICATE_API_KEY=your_replicate_api_key_here
+# Optional: Site URL for OpenRouter referrer
+SITE_URL=http://localhost:3000
 ```
 
-**Note**: Without a Replicate API key, the inpainting will use mock processing (returns the original image after 2 seconds).
+**Note**: 只需要一个 OpenRouter API Key 即可使用所有功能！
 
 ## Running the Application
 
@@ -73,7 +72,7 @@ pnpm start
    - Clear mask
    - Visual feedback with blue overlay on selected regions
 
-4. **AI Inpainting** (via Replicate API)
+4. **AI Inpainting** (via OpenRouter Gemini 2.5 Flash Image)
    - Replace selected regions with AI-generated content
    - Reference-based generation using element image
    - Configurable parameters:
@@ -108,7 +107,7 @@ pnpm start
 - Returns detailed description for inpainting prompt
 
 #### `/api/inpaint`
-- Integrates with Replicate SDXL Inpainting model
+- Integrates with OpenRouter Gemini 2.5 Flash Image model
 - Accepts: base image, mask, reference image, prompt, options
 - Returns: AI-generated result image
 - Falls back to mock mode without API key
@@ -119,8 +118,7 @@ pnpm start
 
 ### Key Libraries
 
-- **OpenRouter** - Vision AI for image analysis
-- **Replicate** - SDXL Inpainting model hosting
+- **OpenRouter** - Vision AI for image analysis + Gemini 2.5 Flash Image for inpainting
 - **sharp** - Server-side image processing
 - **Konva.js** (planned) - Advanced canvas manipulation
 
@@ -149,42 +147,45 @@ pnpm start
 
 ## API Keys Setup
 
-### OpenRouter (Already Configured)
+### OpenRouter (一个 Key 搞定全部！)
 
-Your OpenRouter API key is already set in `.env.local`. This provides:
-- GPT-4o-mini vision model access
-- Image analysis capabilities
+Your OpenRouter API key provides:
+
+**1. 图像分析 (GPT-4o-mini)**
+- Vision model for analyzing reference images
 - ~$0.00015 per image analysis
 
-### Replicate (For Production)
+**2. AI Inpainting (Gemini 2.5 Flash Image)**
+- State-of-the-art image generation model
+- Supports image editing and inpainting
+- ~$0.30/M input tokens, $2.50/M output tokens
 
-1. Sign up at [replicate.com](https://replicate.com)
-2. Go to Account → API Tokens
-3. Create a new token
+#### 获取 API Key
+
+1. Sign up at [openrouter.ai](https://openrouter.ai)
+2. Go to API Keys
+3. Create a new key
 4. Add to `.env.local`:
    ```
-   REPLICATE_API_KEY=r8_xxxxxxxxxxxxxxxxxxxxx
+   OPENROUTER_API_KEY=sk-or-v1-xxxxxxxxxxxxx
    ```
-
-Models used:
-- **SDXL Inpainting**: stability-ai/sdxl
-- Cost: ~$0.01-0.05 per generation (depending on steps/size)
 
 ## Troubleshooting
 
 ### Mock Mode Active
 
 If you see "mock-inpainting" in the result metadata, it means:
-- Replicate API key is not configured
+- OpenRouter API key is not configured
 - The app is returning the original image as a placeholder
-- Add your Replicate API key to enable real AI inpainting
+- Add your OpenRouter API key to enable real AI inpainting
 
-### Image Analysis Fails
+### Image Analysis or Inpainting Fails
 
 Check:
 - OpenRouter API key is correct in `.env.local`
 - API key has sufficient credits
 - Image is valid base64 format
+- Image size is not too large (keep under 10MB)
 
 ### Build Errors with Sharp
 
