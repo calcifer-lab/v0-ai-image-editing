@@ -5,7 +5,8 @@ import type React from "react"
 import { useState, useCallback } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Upload, CheckCircle2, X, RefreshCw } from "lucide-react"
+import { Upload, CheckCircle2, X, RefreshCw, Loader2 } from "lucide-react"
+import { removeWatermark } from "@/lib/image-utils"
 
 interface ImageUploadSectionProps {
   onImagesUploaded: (elementImage: string, baseImage: string) => void
@@ -14,18 +15,37 @@ interface ImageUploadSectionProps {
 export default function ImageUploadSection({ onImagesUploaded }: ImageUploadSectionProps) {
   const [elementImage, setElementImage] = useState<string | null>(null)
   const [baseImage, setBaseImage] = useState<string | null>(null)
+  const [isProcessing, setIsProcessing] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
 
   console.log("[v0] Upload section - Element image:", elementImage ? "loaded" : "null")
   console.log("[v0] Upload section - Base image:", baseImage ? "loaded" : "null")
 
-  const handleFileUpload = useCallback((file: File, type: "element" | "base") => {
+  const handleFileUpload = useCallback(async (file: File, type: "element" | "base") => {
     const reader = new FileReader()
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       const result = e.target?.result as string
-      if (type === "element") {
-        setElementImage(result)
-      } else {
-        setBaseImage(result)
+      
+      // Automatically remove AI watermark from the bottom of the image
+      setIsProcessing(true)
+      try {
+        const processedImage = await removeWatermark(result, 40)
+        if (type === "element") {
+          setElementImage(processedImage)
+        } else {
+          setBaseImage(processedImage)
+        }
+        console.log("[v0] Watermark removed from", type, "image")
+      } catch (err) {
+        console.error("Failed to process image:", err)
+        // Fallback to original image if processing fails
+        if (type === "element") {
+          setElementImage(result)
+        } else {
+          setBaseImage(result)
+        }
+      } finally {
+        setIsProcessing(false)
       }
     }
     reader.readAsDataURL(file)
@@ -69,8 +89,13 @@ export default function ImageUploadSection({ onImagesUploaded }: ImageUploadSect
     console.log("[v0] Element image:", elementImage ? "loaded" : "null")
     console.log("[v0] Base image:", baseImage ? "loaded" : "null")
     if (elementImage && baseImage) {
+      // Set loading state immediately for visual feedback
+      setIsLoading(true)
       console.log("[v0] Calling onImagesUploaded callback")
-      onImagesUploaded(elementImage, baseImage)
+      // Use setTimeout to ensure UI updates before heavy processing
+      setTimeout(() => {
+        onImagesUploaded(elementImage, baseImage)
+      }, 50)
     }
   }
 
@@ -109,8 +134,25 @@ export default function ImageUploadSection({ onImagesUploaded }: ImageUploadSect
         </div>
 
         <div className="mb-8 flex w-full justify-center">
-          <Button size="lg" disabled={!canContinue} onClick={handleContinue} className="px-12 py-6 text-lg">
-            Continue to Editor
+          <Button 
+            size="lg" 
+            disabled={!canContinue || isProcessing || isLoading} 
+            onClick={handleContinue} 
+            className="px-12 py-6 text-lg min-w-[240px]"
+          >
+            {isLoading ? (
+              <>
+                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                Loading Editor...
+              </>
+            ) : isProcessing ? (
+              <>
+                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                Processing...
+              </>
+            ) : (
+              "Continue to Editor"
+            )}
           </Button>
         </div>
       </div>

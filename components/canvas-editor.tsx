@@ -42,10 +42,17 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
     ctx.clearRect(0, 0, canvas.width, canvas.height)
     ctx.drawImage(baseImageRef.current, 0, 0, canvas.width, canvas.height)
 
-    // Draw mask overlay with blue tint
+    // Draw mask overlay with blue tint using a temporary canvas
+    // We use a temp canvas because putImageData replaces pixels instead of blending
+    const tempCanvas = document.createElement("canvas")
+    tempCanvas.width = maskCanvas.width
+    tempCanvas.height = maskCanvas.height
+    const tempCtx = tempCanvas.getContext("2d")
+    if (!tempCtx) return
+
     const maskImageData = maskCtx.getImageData(0, 0, maskCanvas.width, maskCanvas.height)
     const data = maskImageData.data
-    const overlayData = ctx.createImageData(maskCanvas.width, maskCanvas.height)
+    const overlayData = tempCtx.createImageData(maskCanvas.width, maskCanvas.height)
 
     for (let i = 0; i < data.length; i += 4) {
       if (data[i] === 255) {
@@ -59,7 +66,9 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
       }
     }
 
-    ctx.putImageData(overlayData, 0, 0)
+    // Put overlay data to temp canvas, then draw it on main canvas with blending
+    tempCtx.putImageData(overlayData, 0, 0)
+    ctx.drawImage(tempCanvas, 0, 0)
   }, [])
 
   useEffect(() => {
@@ -245,16 +254,18 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
     const maskCtx = maskCanvas.getContext("2d")
     if (!maskCtx) return
 
-    maskCtx.beginPath()
-    maskCtx.arc(x, y, brushSize / 2, 0, Math.PI * 2)
+    if (tool === "brush" || tool === "eraser") {
+      maskCtx.beginPath()
+      maskCtx.arc(x, y, brushSize / 2, 0, Math.PI * 2)
 
-    if (tool === "brush") {
-      maskCtx.fillStyle = "rgba(255, 255, 255, 1)"
-    } else if (tool === "eraser") {
-      maskCtx.fillStyle = "rgba(0, 0, 0, 1)"
+      if (tool === "brush") {
+        maskCtx.fillStyle = "rgba(255, 255, 255, 1)"
+      } else {
+        maskCtx.fillStyle = "rgba(0, 0, 0, 1)"
+      }
+
+      maskCtx.fill()
     }
-
-    maskCtx.fill()
 
     // Redraw canvas with updated mask
     redrawCanvas()

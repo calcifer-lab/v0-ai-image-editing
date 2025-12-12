@@ -62,7 +62,7 @@ export default function ResultsView({ originalImage, resultImage, onEdit, onRese
         </div>
       </div>
 
-      <div className="flex flex-1 flex-col items-center justify-center gap-6 p-8">
+      <div className="flex flex-1 flex-col items-center gap-6 overflow-y-auto p-8">
         <Tabs value={view} onValueChange={(v) => setView(v as "side" | "slider")} className="w-full max-w-5xl">
           <TabsList className="mx-auto grid w-full max-w-md grid-cols-2">
             <TabsTrigger value="side" className="gap-2">

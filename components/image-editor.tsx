@@ -9,6 +9,7 @@ import CanvasEditor from "@/components/canvas-editor"
 import ControlPanel from "@/components/control-panel"
 import ResultsView from "@/components/results-view"
 import { Upload, Wand2, ImageIcon } from "lucide-react"
+import { resizeToAspectRatio } from "@/lib/image-utils"
 
 export type EditorStep = "upload" | "edit" | "result"
 
@@ -22,11 +23,22 @@ export interface MaskData {
   coordinates: { x: number; y: number; width: number; height: number }
 }
 
+export type AspectRatio = "original" | "1:1" | "4:3" | "16:9" | "3:2" | "9:16" | "custom"
+export type ScaleMode = "fit" | "fill" | "stretch"
+
+export interface OutputDimensions {
+  aspectRatio: AspectRatio
+  scaleMode: ScaleMode
+  customWidth?: number
+  customHeight?: number
+}
+
 export interface EditParams {
   prompt: string
   strength: number
   guidance: number
   preserveStructure: boolean
+  outputDimensions: OutputDimensions
 }
 
 export default function ImageEditor() {
@@ -41,16 +53,51 @@ export default function ImageEditor() {
     strength: 0.8,
     guidance: 7.5,
     preserveStructure: true,
+    outputDimensions: {
+      aspectRatio: "original",
+      scaleMode: "fit",
+    },
   })
   const [resultImage, setResultImage] = useState<string | null>(null)
   const [isProcessing, setIsProcessing] = useState(false)
+  const [processingStatus, setProcessingStatus] = useState<string>("")
+  const [error, setError] = useState<string | null>(null)
+  const [imageAnalysis, setImageAnalysis] = useState<string | null>(null)
+  const [isAnalyzing, setIsAnalyzing] = useState(false)
 
-  const handleImagesUploaded = (elementImg: string, baseImg: string) => {
-    console.log("[v0] handleImagesUploaded called")
-    console.log("[v0] Setting images and moving to edit step")
+  const handleImagesUploaded = async (elementImg: string, baseImg: string) => {
+    console.log("[AI Editor] Images uploaded, analyzing element image...")
     setImages({ elementImage: elementImg, baseImage: baseImg })
+    setError(null)
+
+    // Automatically analyze the element image using GPT-4o-mini
+    setIsAnalyzing(true)
+    try {
+      const response = await fetch("/api/analyze-image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          image: elementImg,
+          prompt:
+            "Analyze this element image. Describe the main objects, colors, materials, and visual features that could be used as reference for image editing. Be specific and detailed.",
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error(`Analysis failed: ${response.status}`)
+      }
+
+      const data = await response.json()
+      setImageAnalysis(data.analysis)
+      console.log("[AI Editor] Image analysis complete:", data.analysis)
+    } catch (err) {
+      console.error("Failed to analyze image:", err)
+      setError(err instanceof Error ? err.message : "Failed to analyze image")
+    } finally {
+      setIsAnalyzing(false)
+    }
+
     setStep("edit")
-    console.log("[v0] Step should now be: edit")
   }
 
   const handleMaskCreated = (maskData: MaskData) => {
@@ -61,19 +108,68 @@ export default function ImageEditor() {
     if (!images.baseImage || !images.elementImage || !mask) return
 
     setIsProcessing(true)
+    setError(null)
+    setProcessingStatus("Preparing images...")
 
-    // Simulate AI processing
-    // In production, this would call your AI API endpoint
     try {
-      await new Promise((resolve) => setTimeout(resolve, 2000))
+      // Call the inpainting API
+      setProcessingStatus("Sending request to AI model...")
 
-      // Mock result - in production, this would be the AI-generated image
-      setResultImage(images.baseImage)
+      const response = await fetch("/api/inpaint", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          base_image: images.baseImage,
+          mask_image: mask.dataUrl,
+          reference_image: images.elementImage,
+          prompt: params.prompt || imageAnalysis || "Replace the selected region with content from the reference image",
+          options: {
+            strength: params.strength,
+            steps: 30,
+            guidance_scale: params.guidance,
+          },
+        }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || `API error: ${response.status}`)
+      }
+
+      setProcessingStatus("Processing complete, loading result...")
+
+      const data = await response.json()
+      let finalImage = data.result_image
+
+      // Apply output dimensions if not using original
+      if (params.outputDimensions.aspectRatio !== "original") {
+        setProcessingStatus("Adjusting output dimensions...")
+        try {
+          const resized = await resizeToAspectRatio(
+            finalImage,
+            params.outputDimensions.aspectRatio,
+            params.outputDimensions.scaleMode,
+            params.outputDimensions.customWidth,
+            params.outputDimensions.customHeight
+          )
+          finalImage = resized.dataUrl
+          console.log("[AI Editor] Resized to", resized.width, "x", resized.height)
+        } catch (resizeError) {
+          console.error("Failed to resize result:", resizeError)
+          // Continue with original result if resize fails
+        }
+      }
+
+      setResultImage(finalImage)
       setStep("result")
+
+      console.log("[AI Editor] Processing complete in", data.meta.duration_ms, "ms")
     } catch (error) {
       console.error("Processing failed:", error)
+      setError(error instanceof Error ? error.message : "Failed to process image")
     } finally {
       setIsProcessing(false)
+      setProcessingStatus("")
     }
   }
 
@@ -87,8 +183,16 @@ export default function ImageEditor() {
       strength: 0.8,
       guidance: 7.5,
       preserveStructure: true,
+      outputDimensions: {
+        aspectRatio: "original",
+        scaleMode: "fit",
+      },
     })
     setIsProcessing(false)
+    setError(null)
+    setImageAnalysis(null)
+    setIsAnalyzing(false)
+    setProcessingStatus("")
   }
 
   return (
@@ -146,6 +250,10 @@ export default function ImageEditor() {
                 onProcess={handleProcess}
                 isProcessing={isProcessing}
                 canProcess={!!mask}
+                processingStatus={processingStatus}
+                error={error}
+                imageAnalysis={imageAnalysis}
+                isAnalyzing={isAnalyzing}
               />
             </div>
           </div>
