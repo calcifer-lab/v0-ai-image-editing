@@ -9,9 +9,10 @@ import CanvasEditor from "@/components/canvas-editor"
 import ControlPanel from "@/components/control-panel"
 import ResultsView from "@/components/results-view"
 import { Upload, Wand2, ImageIcon } from "lucide-react"
-import { resizeToAspectRatio } from "@/lib/image-utils"
+import { resizeToAspectRatio, compositeImages } from "@/lib/image-utils"
 
 export type EditorStep = "upload" | "edit" | "result"
+export type EditMode = "ai" | "composite"
 
 export interface ImageData {
   elementImage: string | null
@@ -39,6 +40,7 @@ export interface EditParams {
   guidance: number
   preserveStructure: boolean
   outputDimensions: OutputDimensions
+  editMode: EditMode
 }
 
 export default function ImageEditor() {
@@ -57,6 +59,7 @@ export default function ImageEditor() {
       aspectRatio: "original",
       scaleMode: "fit",
     },
+    editMode: "ai", // Default to AI mode
   })
   const [resultImage, setResultImage] = useState<string | null>(null)
   const [isProcessing, setIsProcessing] = useState(false)
@@ -78,8 +81,7 @@ export default function ImageEditor() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           image: elementImg,
-          prompt:
-            "Analyze this element image. Describe the main objects, colors, materials, and visual features that could be used as reference for image editing. Be specific and detailed.",
+          // Using the default prompt from analyze-image API which is now optimized for object extraction
         }),
       })
 
@@ -112,34 +114,120 @@ export default function ImageEditor() {
     setProcessingStatus("Preparing images...")
 
     try {
-      // Call the inpainting API
-      setProcessingStatus("Sending request to AI model...")
+      let finalImage: string
 
-      const response = await fetch("/api/inpaint", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          base_image: images.baseImage,
-          mask_image: mask.dataUrl,
-          reference_image: images.elementImage,
-          prompt: params.prompt || imageAnalysis || "Replace the selected region with content from the reference image",
-          options: {
-            strength: params.strength,
-            steps: 30,
-            guidance_scale: params.guidance,
-          },
-        }),
-      })
+      if (params.editMode === "composite") {
+        // Direct composite mode - paste reference image directly
+        console.log("[AI Editor] Using direct composite mode")
+        
+        // Step 1: Remove background from reference image
+        setProcessingStatus("Removing background from reference image...")
+        let processedReference = images.elementImage
+        
+        try {
+          const bgResponse = await fetch("/api/remove-background", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ image: images.elementImage }),
+          })
+          
+          if (bgResponse.ok) {
+            const bgData = await bgResponse.json()
+            if (bgData.result_image) {
+              processedReference = bgData.result_image
+              console.log("[AI Editor] Background removed successfully")
+            }
+          } else {
+            console.warn("[AI Editor] Background removal failed, using original image")
+          }
+        } catch (bgError) {
+          console.warn("[AI Editor] Background removal error:", bgError)
+        }
+        
+        // Step 2: Composite the processed reference onto base image
+        setProcessingStatus("Compositing images...")
+        
+        finalImage = await compositeImages(
+          images.baseImage,
+          processedReference,
+          mask.dataUrl,
+          mask.coordinates
+        )
+        
+        console.log("[AI Editor] Direct composite complete")
+      } else {
+        // AI generation mode
+        setProcessingStatus("Sending request to AI model...")
 
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || `API error: ${response.status}`)
+        // Build prompt using AI analysis if available
+        // Priority: user's custom prompt > AI analysis > fallback
+        let finalPrompt: string
+        
+        if (params.prompt && params.prompt.trim()) {
+          // User provided custom prompt - use it directly
+          finalPrompt = params.prompt.trim()
+        } else if (imageAnalysis) {
+          // Extract key object description from AI analysis
+          let objectDescription = ""
+          let layeredStructure = ""
+          
+          // Try to extract from "Main Subject/Object" section
+          const mainSubjectMatch = imageAnalysis.match(/Main Subject[^:]*:?\s*([^\n]+)/i)
+          if (mainSubjectMatch) {
+            objectDescription = mainSubjectMatch[1].replace(/\*+/g, "").trim()
+          }
+          
+          // Try to extract layered structure
+          const layeredMatch = imageAnalysis.match(/Layered Structure[^:]*:?\s*([\s\S]*?)(?=\*\*|$)/i)
+          if (layeredMatch) {
+            layeredStructure = layeredMatch[1].replace(/\*+/g, "").trim().split('\n').slice(0, 3).join('; ')
+          }
+          
+          // Build comprehensive prompt
+          if (objectDescription) {
+            finalPrompt = `EXACTLY reproduce: ${objectDescription}.`
+            if (layeredStructure) {
+              finalPrompt += ` Structure: ${layeredStructure}.`
+            }
+            finalPrompt += ` Copy ALL elements faithfully, preserving every layer and detail. Match the target image's art style.`
+          } else {
+            // Use a condensed version of the analysis
+            const firstLine = imageAnalysis.split('\n')[0].replace(/\*+/g, "").trim()
+            finalPrompt = `EXACTLY reproduce: ${firstLine}. Copy all elements faithfully.`
+          }
+          
+          console.log("[AI Editor] Using AI analysis for prompt:", finalPrompt)
+        } else {
+          // Fallback
+          finalPrompt = "Replace the masked area with content from the reference image"
+        }
+
+        const response = await fetch("/api/inpaint", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            base_image: images.baseImage,
+            mask_image: mask.dataUrl,
+            reference_image: images.elementImage,
+            prompt: finalPrompt,
+            options: {
+              strength: params.strength,
+              steps: 30,
+              guidance_scale: params.guidance,
+            },
+          }),
+        })
+
+        if (!response.ok) {
+          const errorData = await response.json()
+          throw new Error(errorData.error || `API error: ${response.status}`)
+        }
+
+        setProcessingStatus("Processing complete, loading result...")
+
+        const data = await response.json()
+        finalImage = data.result_image
       }
-
-      setProcessingStatus("Processing complete, loading result...")
-
-      const data = await response.json()
-      let finalImage = data.result_image
 
       // Apply output dimensions if not using original
       if (params.outputDimensions.aspectRatio !== "original") {
@@ -163,7 +251,7 @@ export default function ImageEditor() {
       setResultImage(finalImage)
       setStep("result")
 
-      console.log("[AI Editor] Processing complete in", data.meta.duration_ms, "ms")
+      console.log("[AI Editor] Processing complete")
     } catch (error) {
       console.error("Processing failed:", error)
       setError(error instanceof Error ? error.message : "Failed to process image")
@@ -187,6 +275,7 @@ export default function ImageEditor() {
         aspectRatio: "original",
         scaleMode: "fit",
       },
+      editMode: "ai",
     })
     setIsProcessing(false)
     setError(null)

@@ -8,8 +8,8 @@ import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Sparkles, Maximize2 } from "lucide-react"
-import type { EditParams, AspectRatio, ScaleMode } from "./image-editor"
+import { Sparkles, Maximize2, Layers, Wand2 } from "lucide-react"
+import type { EditParams, AspectRatio, ScaleMode, EditMode } from "./image-editor"
 import { ASPECT_RATIOS } from "@/lib/image-utils"
 
 interface ControlPanelProps {
@@ -42,8 +42,54 @@ export default function ControlPanel({
         <p className="text-sm text-muted-foreground">Configure how AI will blend the elements</p>
       </div>
 
-      <div className="flex-1 space-y-6 overflow-auto p-4">
-        {/* Output Dimensions Section - MOVED TO TOP */}
+      {/* Edit Mode Selection - FIXED AT TOP */}
+      <div className="shrink-0 border-b p-4">
+        <div className="space-y-3 rounded-lg border-2 border-orange-200 bg-orange-50 p-4 dark:border-orange-800 dark:bg-orange-950">
+          <div className="flex items-center gap-2">
+            <Layers className="h-5 w-5 text-orange-600" />
+            <Label className="text-base font-semibold text-orange-900 dark:text-orange-100">Edit Mode</Label>
+          </div>
+          
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => onParamsChange({ ...params, editMode: "composite" })}
+              className={`flex flex-col items-center gap-1 rounded-lg border-2 p-3 transition-all ${
+                params.editMode === "composite"
+                  ? "border-orange-500 bg-orange-100 dark:bg-orange-900"
+                  : "border-gray-200 hover:border-orange-300 dark:border-gray-700"
+              }`}
+            >
+              <Layers className="h-5 w-5" />
+              <span className="text-xs font-medium">Direct Paste</span>
+              <span className="text-[10px] text-muted-foreground">Exact copy</span>
+            </button>
+            
+            <button
+              type="button"
+              onClick={() => onParamsChange({ ...params, editMode: "ai" })}
+              className={`flex flex-col items-center gap-1 rounded-lg border-2 p-3 transition-all ${
+                params.editMode === "ai"
+                  ? "border-orange-500 bg-orange-100 dark:bg-orange-900"
+                  : "border-gray-200 hover:border-orange-300 dark:border-gray-700"
+              }`}
+            >
+              <Wand2 className="h-5 w-5" />
+              <span className="text-xs font-medium">AI Generate</span>
+              <span className="text-[10px] text-muted-foreground">Style adapt</span>
+            </button>
+          </div>
+          
+          <p className="text-xs text-orange-800 dark:text-orange-200">
+            {params.editMode === "composite" 
+              ? "⚡ Direct paste: Copies reference image exactly to mask area. Fast & accurate."
+              : "🪄 AI generate: Adapts reference to target style. May vary from original."}
+          </p>
+        </div>
+      </div>
+
+      {/* Output Dimensions Section */}
+      <div className="shrink-0 border-b p-4">
         <div className="space-y-4 rounded-lg border-2 border-primary/20 bg-primary/5 p-4">
           <div className="flex items-center gap-2">
             <Maximize2 className="h-5 w-5 text-primary" />
@@ -163,7 +209,10 @@ export default function ControlPanel({
             </Select>
           </div>
         </div>
+      </div>
 
+      {/* Scrollable content area */}
+      <div className="flex-1 space-y-6 overflow-auto p-4">
         {/* AI Analysis Result */}
         {isAnalyzing && (
           <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 dark:border-blue-800 dark:bg-blue-950">
