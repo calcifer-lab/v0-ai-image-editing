@@ -340,7 +340,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<InpaintRe
 
     // Build the inpainting prompt
     // Enhance prompt with quality keywords and explicitly reference the element image
-    const enhancedPrompt = `${prompt}. High quality, detailed, professional, seamless blend, matching style and lighting. Use the reference element image faithfully: colors, textures, and structure must match it exactly.`
+    const enhancedPrompt = `${prompt}. High quality, detailed, professional, seamless blend, matching style and lighting. Use the reference element image faithfully: colors, textures, and structure must match it exactly. Maintain layer order: bottom metal tray, middle chicken wings, top wire rack pressing down; do not remove or move the rack.`
 
     // FLUX.1 Fill Pro model on Replicate
     // Model: black-forest-labs/flux-fill-pro

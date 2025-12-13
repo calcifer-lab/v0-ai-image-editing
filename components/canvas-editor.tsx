@@ -272,7 +272,7 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
   }
 
   return (
-    <Card className="flex h-full flex-col">
+    <Card className="flex flex-col">
       <div className="border-b p-4">
         <div className="mb-4 flex items-center justify-between">
           <h3 className="font-semibold">Select Region to Edit</h3>
@@ -319,7 +319,7 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
         </div>
       </div>
 
-      <div className="flex flex-1 items-center justify-center overflow-auto p-6">
+      <div className="flex items-center justify-center p-6">
         <div className="relative">
           <canvas
             ref={canvasRef}
@@ -328,7 +328,7 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
             onMouseUp={stopDrawing}
             onMouseLeave={stopDrawing}
             className="cursor-crosshair rounded-lg border shadow-lg"
-            style={{ maxWidth: "100%", height: "auto" }}
+            style={{ maxWidth: "100%", maxHeight: "min(400px, 50vh)", height: "auto" }}
           />
           <canvas ref={maskCanvasRef} className="hidden" />
         </div>

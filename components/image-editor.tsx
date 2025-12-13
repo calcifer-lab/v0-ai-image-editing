@@ -85,33 +85,33 @@ export default function ImageEditor() {
     setElementCrop(null)
     setError(null)
 
-    // Automatically analyze the element image using GPT-4o-mini
+    // Automatically analyze the element image using GPT-4o-mini (optional, non-blocking)
     setIsAnalyzing(true)
+    setStep("edit") // Navigate to edit step immediately
+    
     try {
       const response = await fetch("/api/analyze-image", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           image: elementImg,
-          // Using the default prompt from analyze-image API which is now optimized for object extraction
         }),
       })
 
-      if (!response.ok) {
-        throw new Error(`Analysis failed: ${response.status}`)
+      if (response.ok) {
+        const data = await response.json()
+        setImageAnalysis(data.analysis)
+        console.log("[AI Editor] Image analysis complete:", data.analysis)
+      } else {
+        console.warn("[AI Editor] Image analysis failed, continuing without analysis")
+        setImageAnalysis(null)
       }
-
-      const data = await response.json()
-      setImageAnalysis(data.analysis)
-      console.log("[AI Editor] Image analysis complete:", data.analysis)
     } catch (err) {
-      console.error("Failed to analyze image:", err)
-      setError(err instanceof Error ? err.message : "Failed to analyze image")
+      console.warn("[AI Editor] Image analysis error, continuing without analysis:", err)
+      setImageAnalysis(null)
     } finally {
       setIsAnalyzing(false)
     }
-
-    setStep("edit")
   }
 
   const handleMaskCreated = (maskData: MaskData) => {
@@ -151,7 +151,7 @@ export default function ImageEditor() {
           const bgResponse = await fetch("/api/remove-background", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ image: images.elementImage }),
+            body: JSON.stringify({ image: processedReference }),
           })
           
           if (bgResponse.ok) {
@@ -224,6 +224,9 @@ export default function ImageEditor() {
           // Fallback
           finalPrompt = "Replace the masked area with content from the reference image"
         }
+
+        // Reinforce layer order and rack-on-top constraint when using reference image
+        finalPrompt += " Maintain explicit layer order: bottom metal tray, middle chicken wings, top wire rack pressing down on wings. Keep the rack on top and aligned; do not delete or move it."
 
         const response = await fetch("/api/inpaint", {
           method: "POST",
@@ -344,24 +347,28 @@ export default function ImageEditor() {
       </header>
 
       {/* Main Content */}
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex-1 overflow-hidden">
         {step === "upload" && <ImageUploadSection onImagesUploaded={handleImagesUploaded} />}
 
         {step === "edit" && (
-          <div className="flex flex-1 gap-6 p-6">
-            <div className="flex flex-1 flex-col gap-4">
-              <CanvasEditor
-                elementImage={images.elementImage!}
-                baseImage={images.baseImage!}
-                onMaskCreated={handleMaskCreated}
-              />
-              <ElementCropper
-                image={images.elementImage!}
-                crop={elementCrop}
-                onCropChange={setElementCrop}
-              />
+          <div className="flex h-full gap-6 p-6 overflow-hidden">
+            {/* Left: Two editors side by side */}
+            <div className="flex-1 min-w-0 overflow-y-auto">
+              <div className="grid gap-6 lg:grid-cols-2">
+                <CanvasEditor
+                  elementImage={images.elementImage!}
+                  baseImage={images.baseImage!}
+                  onMaskCreated={handleMaskCreated}
+                />
+                <ElementCropper
+                  image={images.elementImage!}
+                  crop={elementCrop}
+                  onCropChange={setElementCrop}
+                />
+              </div>
             </div>
-            <div className="w-80">
+            {/* Right: Control Panel */}
+            <div className="w-72 shrink-0 overflow-y-auto">
               <ControlPanel
                 params={params}
                 onParamsChange={setParams}

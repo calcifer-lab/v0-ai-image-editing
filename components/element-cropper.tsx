@@ -81,9 +81,28 @@ export default function ElementCropper({ image, crop, onCropChange }: ElementCro
   const handleMouseDown = (e: React.MouseEvent) => {
     const { x, y, valid } = clampToImage(e.clientX, e.clientY)
     if (!valid) return
-    setIsDragging(true)
-    dragStart.current = { x, y }
-    setDraftSelection({ x, y, width: 0, height: 0 })
+
+    // Check if clicking inside existing selection for resize/move
+    if (displayedSelection && isInsideSelection(x, y, displayedSelection)) {
+      // Start dragging to move/resize existing selection
+      setIsDragging(true)
+      dragStart.current = { x, y }
+      setDraftSelection({
+        x: displayedSelection.x,
+        y: displayedSelection.y,
+        width: displayedSelection.width,
+        height: displayedSelection.height
+      })
+    } else {
+      // Click outside selection: create new selection from this point
+      setIsDragging(true)
+      dragStart.current = { x, y }
+      setDraftSelection({ x, y, width: 0, height: 0 })
+    }
+  }
+
+  const isInsideSelection = (x: number, y: number, sel: { x: number; y: number; width: number; height: number }) => {
+    return x >= sel.x && x <= sel.x + sel.width && y >= sel.y && y <= sel.y + sel.height
   }
 
   const handleMouseMove = (e: React.MouseEvent) => {
@@ -111,6 +130,34 @@ export default function ElementCropper({ image, crop, onCropChange }: ElementCro
     const scaleX = naturalSize.width / rect.width
     const scaleY = naturalSize.height / rect.height
 
+    // Handle single click (no drag): create a default-sized selection centered at click point
+    if (draftSelection.width < 3 && draftSelection.height < 3) {
+      // Default size: 30% of image dimensions
+      const defaultWidth = rect.width * 0.3
+      const defaultHeight = rect.height * 0.3
+
+      // Center the selection at click point, but clamp to image bounds
+      const centerX = draftSelection.x
+      const centerY = draftSelection.y
+      const x = Math.max(0, Math.min(centerX - defaultWidth / 2, rect.width - defaultWidth))
+      const y = Math.max(0, Math.min(centerY - defaultHeight / 2, rect.height - defaultHeight))
+
+      const nextCrop: CropRegion = {
+        x: Math.round(x * scaleX),
+        y: Math.round(y * scaleY),
+        width: Math.round(defaultWidth * scaleX),
+        height: Math.round(defaultHeight * scaleY),
+        imageWidth: naturalSize.width,
+        imageHeight: naturalSize.height,
+      }
+
+      onCropChange(nextCrop)
+      setDraftSelection(null)
+      dragStart.current = null
+      return
+    }
+
+    // Handle drag: use the dragged selection
     const nextCrop: CropRegion = {
       x: Math.round(draftSelection.x * scaleX),
       y: Math.round(draftSelection.y * scaleY),
@@ -142,11 +189,12 @@ export default function ElementCropper({ image, crop, onCropChange }: ElementCro
       </div>
 
       <div className="p-4">
-        <Label className="mb-2 block text-xs text-muted-foreground">
-          Drag to select the exact part of the element image to paste.
+        <Label className="mb-3 block text-xs text-muted-foreground">
+          Click to quick-select or drag to precisely select the exact part of the element image to paste.
         </Label>
         <div
-          className="relative mx-auto max-h-[320px] w-full max-w-[640px] overflow-hidden rounded-lg border"
+          className="relative mx-auto w-fit rounded-lg border bg-muted/30"
+          style={{ cursor: "crosshair" }}
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
@@ -156,13 +204,13 @@ export default function ElementCropper({ image, crop, onCropChange }: ElementCro
               setDraftSelection(null)
             }
           }}
-          style={{ cursor: "crosshair" }}
         >
           <img
             ref={imgRef}
             src={image}
             alt="Element to crop"
-            className="block h-auto w-full select-none"
+            className="block max-w-full object-contain select-none"
+            style={{ maxHeight: "min(400px, 50vh)" }}
             onLoad={handleImageLoad}
             crossOrigin="anonymous"
           />
