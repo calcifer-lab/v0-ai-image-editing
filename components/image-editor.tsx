@@ -225,8 +225,8 @@ export default function ImageEditor() {
           finalPrompt = "Replace the masked area with content from the reference image"
         }
 
-        // Reinforce layer order and rack-on-top constraint when using reference image
-        finalPrompt += " Maintain explicit layer order: bottom metal tray, middle chicken wings, top wire rack pressing down on wings. Keep the rack on top and aligned; do not delete or move it."
+        // Note: We no longer add hardcoded content descriptions here
+        // The prompt should be based entirely on the AI analysis or user input
 
         const response = await fetch("/api/inpaint", {
           method: "POST",

@@ -44,15 +44,10 @@ export async function POST(request: NextRequest) {
                   prompt ||
                   `Analyze this reference image for PRECISE object extraction and reproduction. Your response MUST follow this exact format:
 
-**Main Subject/Object**: [Provide a COMPLETE, SPECIFIC description of ALL visible objects. Include EVERY layer and component. Examples: 
-- "grilled chicken wings on a metal tray, with a wire rack pressing down on top of the wings"
-- "flaming fire wheels (风火轮) with golden rings and orange flames"
-- "a plate of food with sauce, garnish, and chopsticks resting on top"
-This description will be used to reproduce the EXACT content, so be thorough!]
+**Main Subject/Object**: [Provide a COMPLETE, SPECIFIC description of ALL visible objects. Include EVERY layer and component. Be thorough - this description will be used to reproduce the EXACT content!]
 
 **Layered Structure** (CRITICAL):
 - List EVERY layer from bottom to top
-- Example: "Bottom: metal tray → Middle: grilled chicken wings with sauce → Top: wire/metal rack pressing down on the food"
 - Be explicit about what is ON TOP of what
 - Do NOT skip any layers!
 
@@ -60,11 +55,11 @@ This description will be used to reproduce the EXACT content, so be thorough!]
 - Exact colors of each component
 - Textures (glossy, matte, metallic, crispy, etc.)
 - Shapes and proportions
-- Any dripping sauce, steam, or effects
+- Any special effects (flames, glow, steam, etc.)
 
 **Art Style**: photorealistic photo, cartoon, 3D render, anime, illustration, etc.
 
-IMPORTANT: The goal is to EXACTLY REPRODUCE this image content. Every detail matters - especially the LAYERED STRUCTURE (like a rack on top of food). Do not simplify or omit any components!`,
+IMPORTANT: The goal is to EXACTLY REPRODUCE this image content. Every detail matters - especially the LAYERED STRUCTURE. Do not simplify or omit any components!`,
               },
               {
                 type: "image_url",

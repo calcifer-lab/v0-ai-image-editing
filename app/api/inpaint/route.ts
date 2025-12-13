@@ -49,15 +49,15 @@ async function tryGeminiImageGeneration(
 CRITICAL INSTRUCTIONS - READ CAREFULLY:
 
 1. REFERENCE IMAGE shows the EXACT object you must reproduce. Look at EVERY detail:
-   - The exact food items (if any)
-   - Containers, trays, racks, plates
+   - All visible objects and elements
+   - Containers, supports, accessories
    - The LAYERED STRUCTURE (what's on top of what)
    - Colors, textures, shapes
    
 2. You must FAITHFULLY REPRODUCE the reference content - NOT create something similar or different!
-   - If reference shows grilled chicken wings on a tray with a metal rack on top → reproduce EXACTLY that
-   - Do NOT substitute with different food or objects
-   - Do NOT remove layers (like the metal rack pressing down on food)
+   - Reproduce EXACTLY what is shown in the reference image
+   - Do NOT substitute with different objects
+   - Do NOT remove or add layers
    - PRESERVE the complete structural hierarchy
 
 3. MASK IMAGE shows WHERE to place this content (white/bright area = target region)
@@ -339,8 +339,8 @@ export async function POST(request: NextRequest): Promise<NextResponse<InpaintRe
     console.log("[Inpaint] Mask resized to match image")
 
     // Build the inpainting prompt
-    // Enhance prompt with quality keywords and explicitly reference the element image
-    const enhancedPrompt = `${prompt}. High quality, detailed, professional, seamless blend, matching style and lighting. Use the reference element image faithfully: colors, textures, and structure must match it exactly. Maintain layer order: bottom metal tray, middle chicken wings, top wire rack pressing down; do not remove or move the rack.`
+    // Enhance prompt with quality keywords - do NOT add hardcoded content descriptions
+    const enhancedPrompt = `${prompt}. High quality, detailed, professional, seamless blend, matching style and lighting. Use the reference element image faithfully: colors, textures, and structure must match it exactly. Preserve all layers and structural elements from the reference image.`
 
     // FLUX.1 Fill Pro model on Replicate
     // Model: black-forest-labs/flux-fill-pro
