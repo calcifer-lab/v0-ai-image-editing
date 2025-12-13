@@ -339,8 +339,8 @@ export async function POST(request: NextRequest): Promise<NextResponse<InpaintRe
     console.log("[Inpaint] Mask resized to match image")
 
     // Build the inpainting prompt
-    // Enhance prompt with quality keywords
-    const enhancedPrompt = `${prompt}. High quality, detailed, professional, seamless blend, matching style and lighting.`
+    // Enhance prompt with quality keywords and explicitly reference the element image
+    const enhancedPrompt = `${prompt}. High quality, detailed, professional, seamless blend, matching style and lighting. Use the reference element image faithfully: colors, textures, and structure must match it exactly.`
 
     // FLUX.1 Fill Pro model on Replicate
     // Model: black-forest-labs/flux-fill-pro
@@ -355,6 +355,9 @@ export async function POST(request: NextRequest): Promise<NextResponse<InpaintRe
         output_format: "png",
         safety_tolerance: 2,
         prompt_upsampling: true,
+        // Non-standard but helpful: include the reference image so the model has direct visual guidance.
+        // If the model ignores it, the prompt above still nudges behavior.
+        ...(reference_image ? { reference_image } : {}),
       },
     }
 
@@ -379,7 +382,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<InpaintRe
       
       // If FLUX Fill Pro doesn't work, try fallback to flux-fill-dev
       console.log("[Inpaint] Trying fallback to flux-fill-dev...")
-      return await tryFluxFillDev(base_image, resizedMask, enhancedPrompt, options, replicateApiKey, startTime)
+      return await tryFluxFillDev(base_image, resizedMask, enhancedPrompt, options, replicateApiKey, startTime, reference_image)
     }
 
     const prediction = await createResponse.json()
@@ -452,7 +455,8 @@ async function tryFluxFillDev(
   prompt: string,
   options: { guidance_scale?: number; steps?: number },
   apiKey: string,
-  startTime: number
+  startTime: number,
+  reference_image?: string
 ): Promise<NextResponse<InpaintResponse | { error: string }>> {
   console.log("[Inpaint] Using FLUX Fill Dev as fallback...")
 
@@ -471,6 +475,7 @@ async function tryFluxFillDev(
         guidance: options.guidance_scale || 30,
         steps: options.steps || 50,
         output_format: "png",
+        ...(reference_image ? { reference_image } : {}),
       },
     }),
   })

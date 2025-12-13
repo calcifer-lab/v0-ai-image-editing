@@ -8,8 +8,9 @@ import ImageUploadSection from "@/components/image-upload-section"
 import CanvasEditor from "@/components/canvas-editor"
 import ControlPanel from "@/components/control-panel"
 import ResultsView from "@/components/results-view"
+import ElementCropper from "@/components/element-cropper"
 import { Upload, Wand2, ImageIcon } from "lucide-react"
-import { resizeToAspectRatio, compositeImages } from "@/lib/image-utils"
+import { resizeToAspectRatio, compositeImages, loadImage } from "@/lib/image-utils"
 
 export type EditorStep = "upload" | "edit" | "result"
 export type EditMode = "ai" | "composite"
@@ -43,6 +44,15 @@ export interface EditParams {
   editMode: EditMode
 }
 
+export interface CropRegion {
+  x: number
+  y: number
+  width: number
+  height: number
+  imageWidth: number
+  imageHeight: number
+}
+
 export default function ImageEditor() {
   const [step, setStep] = useState<EditorStep>("upload")
   const [images, setImages] = useState<ImageData>({
@@ -67,10 +77,12 @@ export default function ImageEditor() {
   const [error, setError] = useState<string | null>(null)
   const [imageAnalysis, setImageAnalysis] = useState<string | null>(null)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const [elementCrop, setElementCrop] = useState<CropRegion | null>(null)
 
   const handleImagesUploaded = async (elementImg: string, baseImg: string) => {
     console.log("[AI Editor] Images uploaded, analyzing element image...")
     setImages({ elementImage: elementImg, baseImage: baseImg })
+    setElementCrop(null)
     setError(null)
 
     // Automatically analyze the element image using GPT-4o-mini
@@ -119,10 +131,21 @@ export default function ImageEditor() {
       if (params.editMode === "composite") {
         // Direct composite mode - paste reference image directly
         console.log("[AI Editor] Using direct composite mode")
-        
-        // Step 1: Remove background from reference image
-        setProcessingStatus("Removing background from reference image...")
+
+        // Optional: crop the reference image before background removal
+        setProcessingStatus("Preparing reference image crop...")
         let processedReference = images.elementImage
+        if (elementCrop) {
+          try {
+            processedReference = await cropImageToDataUrl(images.elementImage, elementCrop)
+            console.log("[AI Editor] Applied user crop to reference image")
+          } catch (cropError) {
+            console.warn("[AI Editor] Failed to crop reference image, using original", cropError)
+          }
+        }
+
+        // Step 1: Remove background from reference image (after crop if applied)
+        setProcessingStatus("Removing background from reference image...")
         
         try {
           const bgResponse = await fetch("/api/remove-background", {
@@ -266,23 +289,24 @@ export default function ImageEditor() {
     setImages({ elementImage: null, baseImage: null })
     setMask(null)
     setResultImage(null)
-    setParams({
-      prompt: "",
-      strength: 0.8,
-      guidance: 7.5,
-      preserveStructure: true,
-      outputDimensions: {
-        aspectRatio: "original",
-        scaleMode: "fit",
-      },
-      editMode: "ai",
-    })
-    setIsProcessing(false)
-    setError(null)
-    setImageAnalysis(null)
-    setIsAnalyzing(false)
-    setProcessingStatus("")
-  }
+      setParams({
+        prompt: "",
+        strength: 0.8,
+        guidance: 7.5,
+        preserveStructure: true,
+        outputDimensions: {
+          aspectRatio: "original",
+          scaleMode: "fit",
+        },
+        editMode: "ai",
+      })
+      setIsProcessing(false)
+      setError(null)
+      setImageAnalysis(null)
+      setIsAnalyzing(false)
+      setProcessingStatus("")
+      setElementCrop(null)
+    }
 
   return (
     <div className="flex h-screen flex-col">
@@ -325,11 +349,16 @@ export default function ImageEditor() {
 
         {step === "edit" && (
           <div className="flex flex-1 gap-6 p-6">
-            <div className="flex-1">
+            <div className="flex flex-1 flex-col gap-4">
               <CanvasEditor
                 elementImage={images.elementImage!}
                 baseImage={images.baseImage!}
                 onMaskCreated={handleMaskCreated}
+              />
+              <ElementCropper
+                image={images.elementImage!}
+                crop={elementCrop}
+                onCropChange={setElementCrop}
               />
             </div>
             <div className="w-80">
@@ -388,4 +417,35 @@ function StepIndicator({
       <span className={`text-sm font-medium ${active ? "text-foreground" : "text-muted-foreground"}`}>{label}</span>
     </div>
   )
+}
+
+async function cropImageToDataUrl(imageUrl: string, crop: CropRegion): Promise<string> {
+  const img = await loadImage(imageUrl)
+
+  // Guard against stale crops that do not match the current image
+  const safeWidth = Math.min(crop.width, crop.imageWidth)
+  const safeHeight = Math.min(crop.height, crop.imageHeight)
+  const safeX = Math.min(Math.max(crop.x, 0), Math.max(0, crop.imageWidth - safeWidth))
+  const safeY = Math.min(Math.max(crop.y, 0), Math.max(0, crop.imageHeight - safeHeight))
+
+  const canvas = document.createElement("canvas")
+  canvas.width = safeWidth
+  canvas.height = safeHeight
+
+  const ctx = canvas.getContext("2d")
+  if (!ctx) throw new Error("Failed to get canvas context for crop")
+
+  ctx.drawImage(
+    img,
+    safeX,
+    safeY,
+    safeWidth,
+    safeHeight,
+    0,
+    0,
+    safeWidth,
+    safeHeight
+  )
+
+  return canvas.toDataURL("image/png")
 }
