@@ -1,15 +1,15 @@
 "use client"
 
 import type React from "react"
-
 import { useRef, useEffect, useState, useCallback } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Slider } from "@/components/ui/slider"
 import { Pencil, Eraser, Square, Circle, Undo, Redo, Trash2 } from "lucide-react"
-import type { MaskData } from "./image-editor"
+import type { MaskData } from "@/types"
 
+// ============ 类型定义 ============
 interface CanvasEditorProps {
   elementImage: string
   baseImage: string
@@ -18,6 +18,13 @@ interface CanvasEditorProps {
 
 type Tool = "brush" | "eraser" | "rectangle" | "circle"
 
+// ============ 常量 ============
+const MAX_CANVAS_WIDTH = 800
+const MAX_CANVAS_HEIGHT = 600
+const MASK_OVERLAY_COLOR = { r: 59, g: 130, b: 246 } // Primary blue
+const MASK_OVERLAY_ALPHA = 128
+
+// ============ 主组件 ============
 export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }: CanvasEditorProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const maskCanvasRef = useRef<HTMLCanvasElement>(null)
@@ -29,6 +36,7 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
   const baseImageRef = useRef<HTMLImageElement | null>(null)
   const isInitialized = useRef(false)
 
+  // 重绘画布
   const redrawCanvas = useCallback(() => {
     const canvas = canvasRef.current
     const maskCanvas = maskCanvasRef.current
@@ -38,12 +46,11 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
     const maskCtx = maskCanvas.getContext("2d")
     if (!ctx || !maskCtx) return
 
-    // Clear and redraw base image
+    // 清除并重绘基础图片
     ctx.clearRect(0, 0, canvas.width, canvas.height)
     ctx.drawImage(baseImageRef.current, 0, 0, canvas.width, canvas.height)
 
-    // Draw mask overlay with blue tint using a temporary canvas
-    // We use a temp canvas because putImageData replaces pixels instead of blending
+    // 创建遮罩覆盖层
     const tempCanvas = document.createElement("canvas")
     tempCanvas.width = maskCanvas.width
     tempCanvas.height = maskCanvas.height
@@ -51,26 +58,25 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
     if (!tempCtx) return
 
     const maskImageData = maskCtx.getImageData(0, 0, maskCanvas.width, maskCanvas.height)
-    const data = maskImageData.data
     const overlayData = tempCtx.createImageData(maskCanvas.width, maskCanvas.height)
 
-    for (let i = 0; i < data.length; i += 4) {
-      if (data[i] === 255) {
-        // White pixels in mask = selected region (show blue overlay)
-        overlayData.data[i] = 59 // Primary blue
-        overlayData.data[i + 1] = 130
-        overlayData.data[i + 2] = 246
-        overlayData.data[i + 3] = 128 // 50% opacity
+    for (let i = 0; i < maskImageData.data.length; i += 4) {
+      if (maskImageData.data[i] === 255) {
+        // 白色像素 = 选中区域
+        overlayData.data[i] = MASK_OVERLAY_COLOR.r
+        overlayData.data[i + 1] = MASK_OVERLAY_COLOR.g
+        overlayData.data[i + 2] = MASK_OVERLAY_COLOR.b
+        overlayData.data[i + 3] = MASK_OVERLAY_ALPHA
       } else {
-        overlayData.data[i + 3] = 0 // Transparent
+        overlayData.data[i + 3] = 0
       }
     }
 
-    // Put overlay data to temp canvas, then draw it on main canvas with blending
     tempCtx.putImageData(overlayData, 0, 0)
     ctx.drawImage(tempCanvas, 0, 0)
   }, [])
 
+  // 初始化画布
   useEffect(() => {
     const canvas = canvasRef.current
     const maskCanvas = maskCanvasRef.current
@@ -83,18 +89,16 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
     const img = new Image()
     img.crossOrigin = "anonymous"
     img.onload = () => {
-      const maxWidth = 800
-      const maxHeight = 600
-      let width = img.width
-      let height = img.height
+      let { width, height } = img
 
-      if (width > maxWidth) {
-        height = (height * maxWidth) / width
-        width = maxWidth
+      // 缩放以适应最大尺寸
+      if (width > MAX_CANVAS_WIDTH) {
+        height = (height * MAX_CANVAS_WIDTH) / width
+        width = MAX_CANVAS_WIDTH
       }
-      if (height > maxHeight) {
-        width = (width * maxHeight) / height
-        height = maxHeight
+      if (height > MAX_CANVAS_HEIGHT) {
+        width = (width * MAX_CANVAS_HEIGHT) / height
+        height = MAX_CANVAS_HEIGHT
       }
 
       canvas.width = width
@@ -105,11 +109,11 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
       ctx.drawImage(img, 0, 0, width, height)
       baseImageRef.current = img
 
-      // Initialize mask canvas (black = unselected)
+      // 初始化遮罩画布（黑色 = 未选中）
       maskCtx.fillStyle = "rgba(0, 0, 0, 1)"
       maskCtx.fillRect(0, 0, width, height)
 
-      // Save initial state
+      // 保存初始状态
       const initialState = maskCtx.getImageData(0, 0, width, height)
       setHistory([initialState])
       setHistoryIndex(0)
@@ -119,6 +123,7 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
     img.src = baseImage
   }, [baseImage])
 
+  // 保存到历史记录
   const saveToHistory = useCallback(
     (canvas: HTMLCanvasElement) => {
       const ctx = canvas.getContext("2d")
@@ -132,63 +137,22 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
       })
       setHistoryIndex((prev) => prev + 1)
     },
-    [historyIndex],
+    [historyIndex]
   )
 
-  const undo = () => {
-    if (historyIndex > 0) {
-      const maskCanvas = maskCanvasRef.current
-      if (!maskCanvas) return
-      const maskCtx = maskCanvas.getContext("2d")
-      if (!maskCtx) return
-
-      setHistoryIndex(historyIndex - 1)
-      maskCtx.putImageData(history[historyIndex - 1], 0, 0)
-      redrawCanvas()
-      updateMask()
-    }
-  }
-
-  const redo = () => {
-    if (historyIndex < history.length - 1) {
-      const maskCanvas = maskCanvasRef.current
-      if (!maskCanvas) return
-      const maskCtx = maskCanvas.getContext("2d")
-      if (!maskCtx) return
-
-      setHistoryIndex(historyIndex + 1)
-      maskCtx.putImageData(history[historyIndex + 1], 0, 0)
-      redrawCanvas()
-      updateMask()
-    }
-  }
-
-  const clearMask = () => {
-    const maskCanvas = maskCanvasRef.current
-    if (!maskCanvas) return
-    const maskCtx = maskCanvas.getContext("2d")
-    if (!maskCtx) return
-
-    maskCtx.fillStyle = "rgba(0, 0, 0, 1)"
-    maskCtx.fillRect(0, 0, maskCanvas.width, maskCanvas.height)
-    saveToHistory(maskCanvas)
-    redrawCanvas()
-    updateMask()
-  }
-
+  // 更新遮罩数据
   const updateMask = useCallback(() => {
     const maskCanvas = maskCanvasRef.current
     if (!maskCanvas) return
 
-    const dataUrl = maskCanvas.toDataURL()
-
-    // Calculate bounding box of the mask
     const maskCtx = maskCanvas.getContext("2d")
     if (!maskCtx) return
 
+    const dataUrl = maskCanvas.toDataURL()
     const imageData = maskCtx.getImageData(0, 0, maskCanvas.width, maskCanvas.height)
     const data = imageData.data
 
+    // 计算遮罩的边界框
     let minX = maskCanvas.width
     let minY = maskCanvas.height
     let maxX = 0
@@ -198,7 +162,6 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
     for (let y = 0; y < maskCanvas.height; y++) {
       for (let x = 0; x < maskCanvas.width; x++) {
         const i = (y * maskCanvas.width + x) * 4
-        // Check if pixel is white (selected area)
         if (data[i] === 255) {
           hasSelection = true
           minX = Math.min(minX, x)
@@ -222,6 +185,78 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
     }
   }, [onMaskCreated])
 
+  // 撤销
+  const undo = useCallback(() => {
+    if (historyIndex <= 0) return
+    const maskCanvas = maskCanvasRef.current
+    if (!maskCanvas) return
+    const maskCtx = maskCanvas.getContext("2d")
+    if (!maskCtx) return
+
+    setHistoryIndex(historyIndex - 1)
+    maskCtx.putImageData(history[historyIndex - 1], 0, 0)
+    redrawCanvas()
+    updateMask()
+  }, [historyIndex, history, redrawCanvas, updateMask])
+
+  // 重做
+  const redo = useCallback(() => {
+    if (historyIndex >= history.length - 1) return
+    const maskCanvas = maskCanvasRef.current
+    if (!maskCanvas) return
+    const maskCtx = maskCanvas.getContext("2d")
+    if (!maskCtx) return
+
+    setHistoryIndex(historyIndex + 1)
+    maskCtx.putImageData(history[historyIndex + 1], 0, 0)
+    redrawCanvas()
+    updateMask()
+  }, [historyIndex, history, redrawCanvas, updateMask])
+
+  // 清除遮罩
+  const clearMask = useCallback(() => {
+    const maskCanvas = maskCanvasRef.current
+    if (!maskCanvas) return
+    const maskCtx = maskCanvas.getContext("2d")
+    if (!maskCtx) return
+
+    maskCtx.fillStyle = "rgba(0, 0, 0, 1)"
+    maskCtx.fillRect(0, 0, maskCanvas.width, maskCanvas.height)
+    saveToHistory(maskCanvas)
+    redrawCanvas()
+    updateMask()
+  }, [saveToHistory, redrawCanvas, updateMask])
+
+  // 绘制处理
+  const draw = useCallback(
+    (e: React.MouseEvent<HTMLCanvasElement>) => {
+      if (!isDrawing && e.type !== "mousedown") return
+
+      const canvas = canvasRef.current
+      const maskCanvas = maskCanvasRef.current
+      if (!canvas || !maskCanvas) return
+
+      const rect = canvas.getBoundingClientRect()
+      const scaleX = canvas.width / rect.width
+      const scaleY = canvas.height / rect.height
+      const x = (e.clientX - rect.left) * scaleX
+      const y = (e.clientY - rect.top) * scaleY
+
+      const maskCtx = maskCanvas.getContext("2d")
+      if (!maskCtx) return
+
+      if (tool === "brush" || tool === "eraser") {
+        maskCtx.beginPath()
+        maskCtx.arc(x, y, brushSize / 2, 0, Math.PI * 2)
+        maskCtx.fillStyle = tool === "brush" ? "rgba(255, 255, 255, 1)" : "rgba(0, 0, 0, 1)"
+        maskCtx.fill()
+      }
+
+      redrawCanvas()
+    },
+    [isDrawing, tool, brushSize, redrawCanvas]
+  )
+
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
     setIsDrawing(true)
     draw(e)
@@ -238,41 +273,9 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
     setIsDrawing(false)
   }
 
-  const draw = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!isDrawing && e.type !== "mousedown") return
-
-    const canvas = canvasRef.current
-    const maskCanvas = maskCanvasRef.current
-    if (!canvas || !maskCanvas) return
-
-    const rect = canvas.getBoundingClientRect()
-    const scaleX = canvas.width / rect.width
-    const scaleY = canvas.height / rect.height
-    const x = (e.clientX - rect.left) * scaleX
-    const y = (e.clientY - rect.top) * scaleY
-
-    const maskCtx = maskCanvas.getContext("2d")
-    if (!maskCtx) return
-
-    if (tool === "brush" || tool === "eraser") {
-      maskCtx.beginPath()
-      maskCtx.arc(x, y, brushSize / 2, 0, Math.PI * 2)
-
-      if (tool === "brush") {
-        maskCtx.fillStyle = "rgba(255, 255, 255, 1)"
-      } else {
-        maskCtx.fillStyle = "rgba(0, 0, 0, 1)"
-      }
-
-      maskCtx.fill()
-    }
-
-    // Redraw canvas with updated mask
-    redrawCanvas()
-  }
-
   return (
     <Card className="flex flex-col">
+      {/* 工具栏 */}
       <div className="border-b p-4">
         <div className="mb-4 flex items-center justify-between">
           <h3 className="font-semibold">Select Region to Edit</h3>
@@ -319,6 +322,7 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
         </div>
       </div>
 
+      {/* 画布区域 */}
       <div className="flex items-center justify-center p-6">
         <div className="relative">
           <canvas
@@ -334,6 +338,7 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
         </div>
       </div>
 
+      {/* 说明 */}
       <div className="border-t p-4">
         <div className="flex items-center gap-2">
           <div className="h-4 w-4 rounded bg-primary" />

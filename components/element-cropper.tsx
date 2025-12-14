@@ -5,21 +5,35 @@ import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Crop, RefreshCcw } from "lucide-react"
-import type { CropRegion } from "./image-editor"
+import type { CropRegion } from "@/types"
 
+// ============ 类型定义 ============
 interface ElementCropperProps {
   image: string
   crop: CropRegion | null
   onCropChange: (crop: CropRegion | null) => void
 }
 
+interface Selection {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+// ============ 常量 ============
+const DEFAULT_SELECTION_SIZE = 0.3 // 30% of image dimensions
+const MIN_SELECTION_SIZE = 3
+
+// ============ 主组件 ============
 export default function ElementCropper({ image, crop, onCropChange }: ElementCropperProps) {
   const imgRef = useRef<HTMLImageElement>(null)
   const [isDragging, setIsDragging] = useState(false)
   const dragStart = useRef<{ x: number; y: number } | null>(null)
-  const [draftSelection, setDraftSelection] = useState<{ x: number; y: number; width: number; height: number } | null>(null)
+  const [draftSelection, setDraftSelection] = useState<Selection | null>(null)
   const [naturalSize, setNaturalSize] = useState<{ width: number; height: number }>({ width: 0, height: 0 })
 
+  // 设置全图裁剪
   const setFullCrop = useCallback(() => {
     if (!naturalSize.width || !naturalSize.height) return
     onCropChange({
@@ -32,35 +46,32 @@ export default function ElementCropper({ image, crop, onCropChange }: ElementCro
     })
   }, [naturalSize, onCropChange])
 
+  // 重置 draft 当 crop 外部改变时
   useEffect(() => {
-    // Reset draft when crop changes externally
     setDraftSelection(null)
   }, [crop])
 
+  // 计算显示的选区
   const displayedSelection = useMemo(() => {
     const img = imgRef.current
     if (!img) return null
 
     const rect = img.getBoundingClientRect()
-    const reference = draftSelection || (crop
-      ? {
-          x: (crop.x / crop.imageWidth) * rect.width,
-          y: (crop.y / crop.imageHeight) * rect.height,
-          width: (crop.width / crop.imageWidth) * rect.width,
-          height: (crop.height / crop.imageHeight) * rect.height,
-        }
-      : null)
+    const reference =
+      draftSelection ||
+      (crop
+        ? {
+            x: (crop.x / crop.imageWidth) * rect.width,
+            y: (crop.y / crop.imageHeight) * rect.height,
+            width: (crop.width / crop.imageWidth) * rect.width,
+            height: (crop.height / crop.imageHeight) * rect.height,
+          }
+        : null)
 
-    if (!reference) return null
-
-    return {
-      x: reference.x,
-      y: reference.y,
-      width: reference.width,
-      height: reference.height,
-    }
+    return reference
   }, [crop, draftSelection])
 
+  // 图片加载处理
   const handleImageLoad = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
     const target = e.currentTarget
     setNaturalSize({ width: target.naturalWidth, height: target.naturalHeight })
@@ -69,42 +80,38 @@ export default function ElementCropper({ image, crop, onCropChange }: ElementCro
     }
   }
 
+  // 将客户端坐标限制在图片范围内
   const clampToImage = (clientX: number, clientY: number) => {
     const img = imgRef.current
-    if (!img) return { x: 0, y: 0, valid: false }
+    if (!img) return { x: 0, y: 0, rect: null as DOMRect | null, valid: false }
     const rect = img.getBoundingClientRect()
     const x = Math.min(Math.max(clientX - rect.left, 0), rect.width)
     const y = Math.min(Math.max(clientY - rect.top, 0), rect.height)
     return { x, y, rect, valid: true }
   }
 
+  // 检查是否在选区内
+  const isInsideSelection = (x: number, y: number, sel: Selection) => {
+    return x >= sel.x && x <= sel.x + sel.width && y >= sel.y && y <= sel.y + sel.height
+  }
+
+  // 鼠标按下处理
   const handleMouseDown = (e: React.MouseEvent) => {
     const { x, y, valid } = clampToImage(e.clientX, e.clientY)
     if (!valid) return
 
-    // Check if clicking inside existing selection for resize/move
     if (displayedSelection && isInsideSelection(x, y, displayedSelection)) {
-      // Start dragging to move/resize existing selection
       setIsDragging(true)
       dragStart.current = { x, y }
-      setDraftSelection({
-        x: displayedSelection.x,
-        y: displayedSelection.y,
-        width: displayedSelection.width,
-        height: displayedSelection.height
-      })
+      setDraftSelection({ ...displayedSelection })
     } else {
-      // Click outside selection: create new selection from this point
       setIsDragging(true)
       dragStart.current = { x, y }
       setDraftSelection({ x, y, width: 0, height: 0 })
     }
   }
 
-  const isInsideSelection = (x: number, y: number, sel: { x: number; y: number; width: number; height: number }) => {
-    return x >= sel.x && x <= sel.x + sel.width && y >= sel.y && y <= sel.y + sel.height
-  }
-
+  // 鼠标移动处理
   const handleMouseMove = (e: React.MouseEvent) => {
     if (!isDragging || !dragStart.current) return
     const { x, y, valid } = clampToImage(e.clientX, e.clientY)
@@ -117,7 +124,8 @@ export default function ElementCropper({ image, crop, onCropChange }: ElementCro
     setDraftSelection({ x: selX, y: selY, width, height })
   }
 
-  const handleMouseUp = (e: React.MouseEvent) => {
+  // 鼠标释放处理
+  const handleMouseUp = () => {
     if (!isDragging || !draftSelection || !naturalSize.width || !naturalSize.height) {
       setIsDragging(false)
       return
@@ -130,13 +138,11 @@ export default function ElementCropper({ image, crop, onCropChange }: ElementCro
     const scaleX = naturalSize.width / rect.width
     const scaleY = naturalSize.height / rect.height
 
-    // Handle single click (no drag): create a default-sized selection centered at click point
-    if (draftSelection.width < 3 && draftSelection.height < 3) {
-      // Default size: 30% of image dimensions
-      const defaultWidth = rect.width * 0.3
-      const defaultHeight = rect.height * 0.3
+    // 处理单击（无拖动）：创建默认大小的选区
+    if (draftSelection.width < MIN_SELECTION_SIZE && draftSelection.height < MIN_SELECTION_SIZE) {
+      const defaultWidth = rect.width * DEFAULT_SELECTION_SIZE
+      const defaultHeight = rect.height * DEFAULT_SELECTION_SIZE
 
-      // Center the selection at click point, but clamp to image bounds
       const centerX = draftSelection.x
       const centerY = draftSelection.y
       const x = Math.max(0, Math.min(centerX - defaultWidth / 2, rect.width - defaultWidth))
@@ -157,7 +163,7 @@ export default function ElementCropper({ image, crop, onCropChange }: ElementCro
       return
     }
 
-    // Handle drag: use the dragged selection
+    // 处理拖动选区
     const nextCrop: CropRegion = {
       x: Math.round(draftSelection.x * scaleX),
       y: Math.round(draftSelection.y * scaleY),
@@ -174,12 +180,15 @@ export default function ElementCropper({ image, crop, onCropChange }: ElementCro
 
   return (
     <Card className="overflow-hidden">
+      {/* 标题栏 */}
       <div className="flex items-center justify-between border-b px-4 py-3">
         <div className="flex items-center gap-2">
           <Crop className="h-4 w-4 text-primary" />
           <div>
-            <h3 className="font-semibold">Element Crop</h3>
-            <p className="text-xs text-muted-foreground">Used only for Direct Paste</p>
+            <h3 className="font-semibold">Element Crop ⬅️ 重要!</h3>
+            <p className="text-xs text-muted-foreground">
+              Select ONLY the element to paste (e.g., just the wheels)
+            </p>
           </div>
         </div>
         <Button variant="ghost" size="sm" onClick={setFullCrop} disabled={!naturalSize.width}>
@@ -188,13 +197,13 @@ export default function ElementCropper({ image, crop, onCropChange }: ElementCro
         </Button>
       </div>
 
+      {/* 裁剪区域 */}
       <div className="p-4">
         <Label className="mb-3 block text-xs text-muted-foreground">
-          Click to quick-select or drag to precisely select the exact part of the element image to paste.
+          ⚠️ 重要：请只选择你想要粘贴的具体元素（如：只选风火轮，不选整个人物）。然后使用 Direct Paste 模式。
         </Label>
         <div
-          className="relative mx-auto w-fit rounded-lg border bg-muted/30"
-          style={{ cursor: "crosshair" }}
+          className="relative mx-auto w-fit cursor-crosshair rounded-lg border bg-muted/30"
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
@@ -209,27 +218,26 @@ export default function ElementCropper({ image, crop, onCropChange }: ElementCro
             ref={imgRef}
             src={image}
             alt="Element to crop"
-            className="block max-w-full object-contain select-none"
+            className="block max-w-full select-none object-contain"
             style={{ maxHeight: "min(400px, 50vh)" }}
             onLoad={handleImageLoad}
             crossOrigin="anonymous"
           />
 
+          {/* 选区显示 */}
           {displayedSelection && displayedSelection.width > 2 && displayedSelection.height > 2 && (
             <>
               <div
-                className="absolute border-2 border-primary/80 bg-primary/10 shadow-[0_0_0_9999px_rgba(0,0,0,0.35)]"
+                className="pointer-events-none absolute border-2 border-primary/80 bg-primary/10 shadow-[0_0_0_9999px_rgba(0,0,0,0.35)]"
                 style={{
                   left: displayedSelection.x,
                   top: displayedSelection.y,
                   width: displayedSelection.width,
                   height: displayedSelection.height,
-                  pointerEvents: "none",
                 }}
               />
               <div
-                className="absolute bottom-2 right-2 rounded bg-black/60 px-2 py-1 text-[10px] font-medium text-white"
-                style={{ pointerEvents: "none" }}
+                className="pointer-events-none absolute bottom-2 right-2 rounded bg-black/60 px-2 py-1 text-[10px] font-medium text-white"
               >
                 {Math.round(displayedSelection.width)} × {Math.round(displayedSelection.height)} px
               </div>

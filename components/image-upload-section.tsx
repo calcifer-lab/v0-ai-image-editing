@@ -1,32 +1,33 @@
 "use client"
 
 import type React from "react"
-
 import { useState, useCallback } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Upload, CheckCircle2, X, RefreshCw, Loader2 } from "lucide-react"
 import { removeWatermark } from "@/lib/image-utils"
 
+// ============ 类型定义 ============
 interface ImageUploadSectionProps {
   onImagesUploaded: (elementImage: string, baseImage: string) => void
 }
 
+type ImageType = "element" | "base"
+
+// ============ 主组件 ============
 export default function ImageUploadSection({ onImagesUploaded }: ImageUploadSectionProps) {
   const [elementImage, setElementImage] = useState<string | null>(null)
   const [baseImage, setBaseImage] = useState<string | null>(null)
   const [isProcessing, setIsProcessing] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
 
-  console.log("[v0] Upload section - Element image:", elementImage ? "loaded" : "null")
-  console.log("[v0] Upload section - Base image:", baseImage ? "loaded" : "null")
-
-  const handleFileUpload = useCallback(async (file: File, type: "element" | "base") => {
+  // 处理文件上传
+  const handleFileUpload = useCallback(async (file: File, type: ImageType) => {
     const reader = new FileReader()
     reader.onload = async (e) => {
       const result = e.target?.result as string
       
-      // Automatically remove AI watermark from the bottom of the image
+      // 自动移除 AI 水印
       setIsProcessing(true)
       try {
         const processedImage = await removeWatermark(result, 40)
@@ -35,10 +36,10 @@ export default function ImageUploadSection({ onImagesUploaded }: ImageUploadSect
         } else {
           setBaseImage(processedImage)
         }
-        console.log("[v0] Watermark removed from", type, "image")
+        console.log("[Upload] Watermark removed from", type, "image")
       } catch (err) {
         console.error("Failed to process image:", err)
-        // Fallback to original image if processing fails
+        // 回退到原始图片
         if (type === "element") {
           setElementImage(result)
         } else {
@@ -51,28 +52,31 @@ export default function ImageUploadSection({ onImagesUploaded }: ImageUploadSect
     reader.readAsDataURL(file)
   }, [])
 
+  // 处理拖放
   const handleDrop = useCallback(
-    (e: React.DragEvent, type: "element" | "base") => {
+    (e: React.DragEvent, type: ImageType) => {
       e.preventDefault()
       const file = e.dataTransfer.files[0]
       if (file && file.type.startsWith("image/")) {
         handleFileUpload(file, type)
       }
     },
-    [handleFileUpload],
+    [handleFileUpload]
   )
 
+  // 处理文件选择
   const handleFileSelect = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>, type: "element" | "base") => {
+    (e: React.ChangeEvent<HTMLInputElement>, type: ImageType) => {
       const file = e.target.files?.[0]
       if (file) {
         handleFileUpload(file, type)
       }
     },
-    [handleFileUpload],
+    [handleFileUpload]
   )
 
-  const handleDelete = useCallback((type: "element" | "base") => {
+  // 处理删除
+  const handleDelete = useCallback((type: ImageType) => {
     if (type === "element") {
       setElementImage(null)
     } else {
@@ -82,17 +86,12 @@ export default function ImageUploadSection({ onImagesUploaded }: ImageUploadSect
 
   const canContinue = elementImage && baseImage
 
-  console.log("[v0] Can continue:", canContinue)
-
+  // 处理继续
   const handleContinue = () => {
-    console.log("[v0] Continue button clicked")
-    console.log("[v0] Element image:", elementImage ? "loaded" : "null")
-    console.log("[v0] Base image:", baseImage ? "loaded" : "null")
     if (elementImage && baseImage) {
-      // Set loading state immediately for visual feedback
       setIsLoading(true)
-      console.log("[v0] Calling onImagesUploaded callback")
-      // Use setTimeout to ensure UI updates before heavy processing
+      console.log("[Upload] Calling onImagesUploaded callback")
+      // 延迟以确保 UI 更新
       setTimeout(() => {
         onImagesUploaded(elementImage, baseImage)
       }, 50)
@@ -110,7 +109,6 @@ export default function ImageUploadSection({ onImagesUploaded }: ImageUploadSect
         </div>
 
         <div className="grid w-full max-w-4xl gap-6 md:grid-cols-2">
-          {/* Element Image Upload */}
           <UploadCard
             title="A: Element Image"
             description="The source of elements you want to use"
@@ -121,7 +119,6 @@ export default function ImageUploadSection({ onImagesUploaded }: ImageUploadSect
             inputId="element-upload"
           />
 
-          {/* Base Image Upload */}
           <UploadCard
             title="B: Base Image"
             description="The image you want to edit"
@@ -134,11 +131,11 @@ export default function ImageUploadSection({ onImagesUploaded }: ImageUploadSect
         </div>
 
         <div className="mb-8 flex w-full justify-center">
-          <Button 
-            size="lg" 
-            disabled={!canContinue || isProcessing || isLoading} 
-            onClick={handleContinue} 
-            className="px-12 py-6 text-lg min-w-[240px]"
+          <Button
+            size="lg"
+            disabled={!canContinue || isProcessing || isLoading}
+            onClick={handleContinue}
+            className="min-w-[240px] px-12 py-6 text-lg"
           >
             {isLoading ? (
               <>
@@ -160,6 +157,18 @@ export default function ImageUploadSection({ onImagesUploaded }: ImageUploadSect
   )
 }
 
+// ============ 子组件 ============
+
+interface UploadCardProps {
+  title: string
+  description: string
+  image: string | null
+  onDrop: (e: React.DragEvent) => void
+  onFileSelect: (e: React.ChangeEvent<HTMLInputElement>) => void
+  onDelete: () => void
+  inputId: string
+}
+
 function UploadCard({
   title,
   description,
@@ -168,15 +177,7 @@ function UploadCard({
   onFileSelect,
   onDelete,
   inputId,
-}: {
-  title: string
-  description: string
-  image: string | null
-  onDrop: (e: React.DragEvent) => void
-  onFileSelect: (e: React.ChangeEvent<HTMLInputElement>) => void
-  onDelete: () => void
-  inputId: string
-}) {
+}: UploadCardProps) {
   return (
     <Card className="relative overflow-hidden">
       <div className="p-6">
@@ -191,50 +192,89 @@ function UploadCard({
           className="group relative aspect-[4/3] overflow-hidden rounded-lg border-2 border-dashed border-muted-foreground/25 bg-muted/30 transition-colors hover:border-muted-foreground/50 hover:bg-muted/50"
         >
           {image ? (
-            <div className="relative h-full w-full">
-              <img src={image || "/placeholder.svg"} alt={title} className="h-full w-full object-contain" />
-              <div className="absolute inset-0 flex items-center justify-center gap-2 bg-black/50 opacity-0 transition-opacity group-hover:opacity-100">
-                <label htmlFor={`${inputId}-replace`}>
-                  <Button variant="secondary" size="sm" className="gap-2" asChild>
-                    <span className="cursor-pointer">
-                      <RefreshCw className="h-4 w-4" />
-                      Replace
-                    </span>
-                  </Button>
-                </label>
-                <Button variant="destructive" size="sm" onClick={onDelete} className="gap-2">
-                  <X className="h-4 w-4" />
-                  Delete
-                </Button>
-              </div>
-              <div className="absolute right-2 top-2 rounded-full bg-primary p-1">
-                <CheckCircle2 className="h-4 w-4 text-primary-foreground" />
-              </div>
-              <input
-                id={`${inputId}-replace`}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={onFileSelect}
-              />
-            </div>
+            <ImagePreview
+              image={image}
+              title={title}
+              inputId={inputId}
+              onFileSelect={onFileSelect}
+              onDelete={onDelete}
+            />
           ) : (
-            <label
-              htmlFor={inputId}
-              className="flex h-full cursor-pointer flex-col items-center justify-center gap-3 p-6 text-center"
-            >
-              <div className="rounded-full bg-primary/10 p-3">
-                <Upload className="h-6 w-6 text-primary" />
-              </div>
-              <div>
-                <p className="font-medium">Drop image here or click to upload</p>
-                <p className="mt-1 text-xs text-muted-foreground">PNG, JPG up to 10MB</p>
-              </div>
-            </label>
+            <UploadPrompt inputId={inputId} onFileSelect={onFileSelect} />
           )}
-          {!image && <input id={inputId} type="file" accept="image/*" className="hidden" onChange={onFileSelect} />}
         </div>
       </div>
     </Card>
+  )
+}
+
+interface ImagePreviewProps {
+  image: string
+  title: string
+  inputId: string
+  onFileSelect: (e: React.ChangeEvent<HTMLInputElement>) => void
+  onDelete: () => void
+}
+
+function ImagePreview({ image, title, inputId, onFileSelect, onDelete }: ImagePreviewProps) {
+  return (
+    <div className="relative h-full w-full">
+      <img src={image} alt={title} className="h-full w-full object-contain" />
+      <div className="absolute inset-0 flex items-center justify-center gap-2 bg-black/50 opacity-0 transition-opacity group-hover:opacity-100">
+        <label htmlFor={`${inputId}-replace`}>
+          <Button variant="secondary" size="sm" className="gap-2" asChild>
+            <span className="cursor-pointer">
+              <RefreshCw className="h-4 w-4" />
+              Replace
+            </span>
+          </Button>
+        </label>
+        <Button variant="destructive" size="sm" onClick={onDelete} className="gap-2">
+          <X className="h-4 w-4" />
+          Delete
+        </Button>
+      </div>
+      <div className="absolute right-2 top-2 rounded-full bg-primary p-1">
+        <CheckCircle2 className="h-4 w-4 text-primary-foreground" />
+      </div>
+      <input
+        id={`${inputId}-replace`}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={onFileSelect}
+      />
+    </div>
+  )
+}
+
+interface UploadPromptProps {
+  inputId: string
+  onFileSelect: (e: React.ChangeEvent<HTMLInputElement>) => void
+}
+
+function UploadPrompt({ inputId, onFileSelect }: UploadPromptProps) {
+  return (
+    <>
+      <label
+        htmlFor={inputId}
+        className="flex h-full cursor-pointer flex-col items-center justify-center gap-3 p-6 text-center"
+      >
+        <div className="rounded-full bg-primary/10 p-3">
+          <Upload className="h-6 w-6 text-primary" />
+        </div>
+        <div>
+          <p className="font-medium">Drop image here or click to upload</p>
+          <p className="mt-1 text-xs text-muted-foreground">PNG, JPG up to 10MB</p>
+        </div>
+      </label>
+      <input
+        id={inputId}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={onFileSelect}
+      />
+    </>
   )
 }
