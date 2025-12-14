@@ -35,7 +35,7 @@ IMPORTANT: Look at the reference image RIGHT NOW. See what is under the characte
 }
 
 /**
- * 图像分析提示词
+ * 图像分析提示词 - 用于分析整个图片
  */
 export const IMAGE_ANALYSIS_PROMPT = `Analyze this reference image for element extraction. Your response MUST follow this exact format:
 
@@ -58,6 +58,34 @@ export const IMAGE_ANALYSIS_PROMPT = `Analyze this reference image for element e
 - Example: "golden fire wheels with orange flames on feet" or "red cape flowing behind"
 
 IMPORTANT: Focus on identifying DISTINCT EXTRACTABLE ELEMENTS so the AI knows what to copy when a specific region is masked.`
+
+/**
+ * 裁剪区域分析提示词 - 用于分析用户选择的特定区域
+ */
+export const CROPPED_REGION_ANALYSIS_PROMPT = `You are analyzing a CROPPED/SELECTED region from an image. The user has specifically selected this area because they want to extract or transfer this element.
+
+CRITICAL INSTRUCTIONS:
+1. ONLY describe what you see in THIS CROPPED IMAGE - nothing else
+2. Do NOT speculate about what might be outside the visible area
+3. Do NOT describe characters, people, or context that is NOT visible
+4. Focus ENTIRELY on the objects/elements visible in this cropped selection
+
+Your response MUST follow this exact format:
+
+**Selected Element**: [What is the main object/element in this cropped selection? Be specific: food, object, item, clothing piece, etc.]
+
+**Visual Description**:
+- Object: [Exact description of the main object/element selected]
+- Colors: [Exact colors you see]
+- Material/Texture: [What material or texture does it appear to be?]
+- Shape: [Describe the shape and form]
+
+**Style**: [photorealistic, cartoon, 3D render, anime, illustration, etc.]
+
+**Key Details to Preserve**:
+- List 2-3 most important visual details that MUST be faithfully reproduced when transferring this element
+
+REMEMBER: Only describe what is VISIBLE in this cropped image. If you see food on a tray, describe the food and tray. Do NOT describe people holding it if they are not in this cropped selection.`
 
 /**
  * FLUX 增强提示词

@@ -87,6 +87,43 @@ async function cropImageToDataUrl(imageUrl: string, crop: CropRegion): Promise<s
 }
 
 function buildPromptFromAnalysis(imageAnalysis: string): string {
+  // 首先检测是否为裁剪区域分析格式 (新格式)
+  const selectedElementMatch = imageAnalysis.match(/Selected Element[^:]*:?\s*([^\n]+)/i)
+  
+  if (selectedElementMatch) {
+    // 新格式：裁剪区域分析
+    const selectedElement = selectedElementMatch[1].replace(/\*+/g, "").trim()
+    
+    // 提取 Visual Description
+    const objectMatch = imageAnalysis.match(/Object[^:]*:?\s*([^\n]+)/i)
+    const objectDesc = objectMatch ? objectMatch[1].replace(/\*+/g, "").trim() : ""
+    
+    // 提取 Key Details to Preserve
+    const keyDetailsMatch = imageAnalysis.match(/Key Details[^:]*:?\s*([\s\S]*?)(?=\*\*|$)/i)
+    const keyDetails = keyDetailsMatch 
+      ? keyDetailsMatch[1].replace(/\*+/g, "").trim().split('\n').filter(l => l.trim()).slice(0, 3).join('; ')
+      : ""
+    
+    // 提取 Style
+    const styleMatch = imageAnalysis.match(/Style[^:]*:?\s*([^\n]+)/i)
+    const style = styleMatch ? styleMatch[1].replace(/\*+/g, "").trim() : ""
+    
+    let finalPrompt = `COPY EXACTLY the ${selectedElement} from the reference image into the masked region. `
+    if (objectDesc) {
+      finalPrompt += `The element is: ${objectDesc}. `
+    }
+    if (keyDetails) {
+      finalPrompt += `Key details to preserve: ${keyDetails}. `
+    }
+    if (style) {
+      finalPrompt += `Match the ${style} style. `
+    }
+    finalPrompt += `DO NOT invent new objects. Copy the EXACT visual elements from the reference.`
+    
+    return finalPrompt
+  }
+  
+  // 旧格式：完整图片分析
   let keyElements = ""
   let specialItems = ""
   
@@ -136,14 +173,35 @@ export function useImageEditor(): UseImageEditorReturn {
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [elementCrop, setElementCrop] = useState<CropRegion | null>(null)
 
-  // 分析图片
-  const analyzeImage = useCallback(async (elementImg: string) => {
+  // 分析图片 - 支持传入裁剪区域以聚焦分析
+  const analyzeImage = useCallback(async (elementImg: string, crop?: CropRegion | null) => {
     setIsAnalyzing(true)
     try {
+      // 如果有裁剪区域，先裁剪图片再分析
+      let imageToAnalyze = elementImg
+      let useCroppedPrompt = false
+      
+      if (crop && crop.width > 0 && crop.height > 0) {
+        try {
+          imageToAnalyze = await cropImageToDataUrl(elementImg, crop)
+          useCroppedPrompt = true
+          console.log("[AI Editor] Analyzing cropped region:", crop.width, "x", crop.height)
+        } catch (cropError) {
+          console.warn("[AI Editor] Failed to crop for analysis, using original image:", cropError)
+        }
+      }
+
+      // 根据是否裁剪选择不同的提示词
+      const { CROPPED_REGION_ANALYSIS_PROMPT, IMAGE_ANALYSIS_PROMPT } = await import("@/lib/api/prompts")
+      const analysisPrompt = useCroppedPrompt ? CROPPED_REGION_ANALYSIS_PROMPT : IMAGE_ANALYSIS_PROMPT
+
       const response = await fetch("/api/analyze-image", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image: elementImg }),
+        body: JSON.stringify({ 
+          image: imageToAnalyze,
+          prompt: analysisPrompt 
+        }),
       })
 
       if (response.ok) {
@@ -238,10 +296,10 @@ export function useImageEditor(): UseImageEditorReturn {
       throw new Error("Missing required images or mask")
     }
 
-    // Trigger image analysis if not already done
+    // Trigger image analysis if not already done - 传入 elementCrop 以聚焦分析用户选择的区域
     if (!imageAnalysis && !params.prompt.trim()) {
-      setProcessingStatus("Analyzing element image...")
-      await analyzeImage(images.elementImage)
+      setProcessingStatus("Analyzing selected element region...")
+      await analyzeImage(images.elementImage, elementCrop)
     }
 
     setProcessingStatus("Sending request to AI model...")
@@ -281,7 +339,7 @@ export function useImageEditor(): UseImageEditorReturn {
     setProcessingStatus("Processing complete, loading result...")
     const data = await response.json()
     return data.result_image
-  }, [images, mask, params, imageAnalysis, analyzeImage])
+  }, [images, mask, params, imageAnalysis, analyzeImage, elementCrop])
 
   // 处理主流程
   const handleProcess = useCallback(async () => {
