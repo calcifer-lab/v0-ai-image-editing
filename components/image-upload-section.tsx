@@ -7,27 +7,22 @@ import { Button } from "@/components/ui/button"
 import { Upload, CheckCircle2, X, RefreshCw, Loader2 } from "lucide-react"
 import { removeWatermark } from "@/lib/image-utils"
 
-// ============ 类型定义 ============
 interface ImageUploadSectionProps {
   onImagesUploaded: (elementImage: string, baseImage: string) => void
 }
 
 type ImageType = "element" | "base"
 
-// ============ 主组件 ============
 export default function ImageUploadSection({ onImagesUploaded }: ImageUploadSectionProps) {
   const [elementImage, setElementImage] = useState<string | null>(null)
   const [baseImage, setBaseImage] = useState<string | null>(null)
   const [isProcessing, setIsProcessing] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
 
-  // 处理文件上传
   const handleFileUpload = useCallback(async (file: File, type: ImageType) => {
     const reader = new FileReader()
     reader.onload = async (e) => {
       const result = e.target?.result as string
-      
-      // 自动移除 AI 水印
       setIsProcessing(true)
       try {
         const processedImage = await removeWatermark(result, 40)
@@ -39,7 +34,6 @@ export default function ImageUploadSection({ onImagesUploaded }: ImageUploadSect
         console.log("[Upload] Watermark removed from", type, "image")
       } catch (err) {
         console.error("Failed to process image:", err)
-        // 回退到原始图片
         if (type === "element") {
           setElementImage(result)
         } else {
@@ -52,7 +46,6 @@ export default function ImageUploadSection({ onImagesUploaded }: ImageUploadSect
     reader.readAsDataURL(file)
   }, [])
 
-  // 处理拖放
   const handleDrop = useCallback(
     (e: React.DragEvent, type: ImageType) => {
       e.preventDefault()
@@ -64,7 +57,6 @@ export default function ImageUploadSection({ onImagesUploaded }: ImageUploadSect
     [handleFileUpload]
   )
 
-  // 处理文件选择
   const handleFileSelect = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>, type: ImageType) => {
       const file = e.target.files?.[0]
@@ -75,7 +67,6 @@ export default function ImageUploadSection({ onImagesUploaded }: ImageUploadSect
     [handleFileUpload]
   )
 
-  // 处理删除
   const handleDelete = useCallback((type: ImageType) => {
     if (type === "element") {
       setElementImage(null)
@@ -86,12 +77,9 @@ export default function ImageUploadSection({ onImagesUploaded }: ImageUploadSect
 
   const canContinue = elementImage && baseImage
 
-  // 处理继续
   const handleContinue = () => {
     if (elementImage && baseImage) {
       setIsLoading(true)
-      console.log("[Upload] Calling onImagesUploaded callback")
-      // 延迟以确保 UI 更新
       setTimeout(() => {
         onImagesUploaded(elementImage, baseImage)
       }, 50)
@@ -156,8 +144,6 @@ export default function ImageUploadSection({ onImagesUploaded }: ImageUploadSect
     </div>
   )
 }
-
-// ============ 子组件 ============
 
 interface UploadCardProps {
   title: string

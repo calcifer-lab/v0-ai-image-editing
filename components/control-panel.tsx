@@ -12,7 +12,6 @@ import { Sparkles, Maximize2, Layers, Wand2 } from "lucide-react"
 import type { EditParams, AspectRatio, ScaleMode } from "@/types"
 import { ASPECT_RATIOS } from "@/lib/image-utils"
 
-// ============ 类型定义 ============
 interface ControlPanelProps {
   params: EditParams
   onParamsChange: (params: EditParams) => void
@@ -25,7 +24,6 @@ interface ControlPanelProps {
   isAnalyzing?: boolean
 }
 
-// ============ 主组件 ============
 export default function ControlPanel({
   params,
   onParamsChange,
@@ -44,28 +42,19 @@ export default function ControlPanel({
         <p className="text-sm text-muted-foreground">Configure how AI will blend the elements</p>
       </div>
 
-      {/* 编辑模式选择 */}
       <EditModeSection params={params} onParamsChange={onParamsChange} />
-
-      {/* 输出尺寸配置 */}
       <OutputDimensionsSection params={params} onParamsChange={onParamsChange} />
 
-      {/* 可滚动内容区域 */}
       <div className="flex-1 space-y-6 overflow-auto p-4">
-        {/* AI 分析状态 */}
         <AnalysisStatus isAnalyzing={isAnalyzing} imageAnalysis={imageAnalysis} />
-
-        {/* 错误显示 */}
         {error && <ErrorDisplay error={error} />}
 
-        {/* 提示词输入 */}
         <PromptInput
           value={params.prompt}
           onChange={(prompt) => onParamsChange({ ...params, prompt })}
           hasAnalysis={!!imageAnalysis}
         />
 
-        {/* 生成强度滑块 */}
         <SliderControl
           label="Generation Strength"
           value={params.strength}
@@ -76,7 +65,6 @@ export default function ControlPanel({
           description="Higher values generate more creative content"
         />
 
-        {/* 引导强度滑块 */}
         <SliderControl
           label="Guidance Scale"
           value={params.guidance}
@@ -87,7 +75,6 @@ export default function ControlPanel({
           description="How closely to follow the reference image"
         />
 
-        {/* 保持结构开关 */}
         <div className="flex items-center justify-between rounded-lg border p-4">
           <div className="space-y-0.5">
             <Label htmlFor="preserve-structure">Preserve Structure</Label>
@@ -101,7 +88,6 @@ export default function ControlPanel({
         </div>
       </div>
 
-      {/* 处理按钮 */}
       <ProcessButton
         onProcess={onProcess}
         isProcessing={isProcessing}
@@ -111,8 +97,6 @@ export default function ControlPanel({
     </Card>
   )
 }
-
-// ============ 子组件 ============
 
 function EditModeSection({
   params,
@@ -148,10 +132,10 @@ function EditModeSection({
           />
         </div>
         
-        <p className="text-xs text-orange-800 dark:text-orange-200">
+        <p className="text-xs text-muted-foreground">
           {params.editMode === "composite"
-            ? "⚡ 推荐！先在右侧裁剪出要粘贴的元素，然后精确粘贴到目标区域。"
-            : "🪄 AI 会尝试理解并生成，但可能创造不同的内容。适合风格转换。"}
+            ? "Recommended for precise element transfer. Select the element area on the right."
+            : "AI interprets and adapts the style. Results may vary from the original."}
         </p>
       </div>
     </div>
@@ -203,7 +187,6 @@ function OutputDimensionsSection({
           <Label className="text-base font-semibold">Output Dimensions</Label>
         </div>
 
-        {/* 宽高比选择器 */}
         <div className="space-y-2">
           <Label htmlFor="aspect-ratio">Aspect Ratio</Label>
           <Select
@@ -231,7 +214,6 @@ function OutputDimensionsSection({
           </Select>
         </div>
 
-        {/* 自定义尺寸输入 */}
         {params.outputDimensions.aspectRatio === "custom" && (
           <div className="space-y-2">
             <Label>Custom Dimensions</Label>
@@ -278,7 +260,6 @@ function OutputDimensionsSection({
           </div>
         )}
 
-        {/* 缩放模式选择器 */}
         <div className="space-y-2">
           <Label htmlFor="scale-mode">Scale Mode</Label>
           <Select

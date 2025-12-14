@@ -10,7 +10,6 @@ import ElementCropper from "@/components/element-cropper"
 import { Upload, Wand2, ImageIcon } from "lucide-react"
 import { useImageEditor } from "@/hooks"
 
-// 重新导出类型以保持向后兼容
 export type { EditorStep, EditMode, ImageData, MaskData, AspectRatio, ScaleMode, OutputDimensions, EditParams, CropRegion } from "@/types"
 
 export default function ImageEditor() {
@@ -93,7 +92,6 @@ export default function ImageEditor() {
   )
 }
 
-// ============ 子组件 ============
 
 interface EditorHeaderProps {
   step: "upload" | "edit" | "result"

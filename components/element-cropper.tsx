@@ -7,7 +7,6 @@ import { Label } from "@/components/ui/label"
 import { Crop, RefreshCcw } from "lucide-react"
 import type { CropRegion } from "@/types"
 
-// ============ 类型定义 ============
 interface ElementCropperProps {
   image: string
   crop: CropRegion | null
@@ -21,11 +20,8 @@ interface Selection {
   height: number
 }
 
-// ============ 常量 ============
-const DEFAULT_SELECTION_SIZE = 0.3 // 30% of image dimensions
+const DEFAULT_SELECTION_SIZE = 0.3
 const MIN_SELECTION_SIZE = 3
-
-// ============ 主组件 ============
 export default function ElementCropper({ image, crop, onCropChange }: ElementCropperProps) {
   const imgRef = useRef<HTMLImageElement>(null)
   const [isDragging, setIsDragging] = useState(false)
@@ -33,7 +29,6 @@ export default function ElementCropper({ image, crop, onCropChange }: ElementCro
   const [draftSelection, setDraftSelection] = useState<Selection | null>(null)
   const [naturalSize, setNaturalSize] = useState<{ width: number; height: number }>({ width: 0, height: 0 })
 
-  // 设置全图裁剪
   const setFullCrop = useCallback(() => {
     if (!naturalSize.width || !naturalSize.height) return
     onCropChange({
@@ -46,12 +41,10 @@ export default function ElementCropper({ image, crop, onCropChange }: ElementCro
     })
   }, [naturalSize, onCropChange])
 
-  // 重置 draft 当 crop 外部改变时
   useEffect(() => {
     setDraftSelection(null)
   }, [crop])
 
-  // 计算显示的选区
   const displayedSelection = useMemo(() => {
     const img = imgRef.current
     if (!img) return null
@@ -71,7 +64,6 @@ export default function ElementCropper({ image, crop, onCropChange }: ElementCro
     return reference
   }, [crop, draftSelection])
 
-  // 图片加载处理
   const handleImageLoad = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
     const target = e.currentTarget
     setNaturalSize({ width: target.naturalWidth, height: target.naturalHeight })
@@ -80,7 +72,6 @@ export default function ElementCropper({ image, crop, onCropChange }: ElementCro
     }
   }
 
-  // 将客户端坐标限制在图片范围内
   const clampToImage = (clientX: number, clientY: number) => {
     const img = imgRef.current
     if (!img) return { x: 0, y: 0, rect: null as DOMRect | null, valid: false }
@@ -90,12 +81,10 @@ export default function ElementCropper({ image, crop, onCropChange }: ElementCro
     return { x, y, rect, valid: true }
   }
 
-  // 检查是否在选区内
   const isInsideSelection = (x: number, y: number, sel: Selection) => {
     return x >= sel.x && x <= sel.x + sel.width && y >= sel.y && y <= sel.y + sel.height
   }
 
-  // 鼠标按下处理
   const handleMouseDown = (e: React.MouseEvent) => {
     const { x, y, valid } = clampToImage(e.clientX, e.clientY)
     if (!valid) return
@@ -111,7 +100,6 @@ export default function ElementCropper({ image, crop, onCropChange }: ElementCro
     }
   }
 
-  // 鼠标移动处理
   const handleMouseMove = (e: React.MouseEvent) => {
     if (!isDragging || !dragStart.current) return
     const { x, y, valid } = clampToImage(e.clientX, e.clientY)
@@ -124,7 +112,6 @@ export default function ElementCropper({ image, crop, onCropChange }: ElementCro
     setDraftSelection({ x: selX, y: selY, width, height })
   }
 
-  // 鼠标释放处理
   const handleMouseUp = () => {
     if (!isDragging || !draftSelection || !naturalSize.width || !naturalSize.height) {
       setIsDragging(false)
@@ -138,7 +125,6 @@ export default function ElementCropper({ image, crop, onCropChange }: ElementCro
     const scaleX = naturalSize.width / rect.width
     const scaleY = naturalSize.height / rect.height
 
-    // 处理单击（无拖动）：创建默认大小的选区
     if (draftSelection.width < MIN_SELECTION_SIZE && draftSelection.height < MIN_SELECTION_SIZE) {
       const defaultWidth = rect.width * DEFAULT_SELECTION_SIZE
       const defaultHeight = rect.height * DEFAULT_SELECTION_SIZE
@@ -163,7 +149,6 @@ export default function ElementCropper({ image, crop, onCropChange }: ElementCro
       return
     }
 
-    // 处理拖动选区
     const nextCrop: CropRegion = {
       x: Math.round(draftSelection.x * scaleX),
       y: Math.round(draftSelection.y * scaleY),
@@ -180,14 +165,13 @@ export default function ElementCropper({ image, crop, onCropChange }: ElementCro
 
   return (
     <Card className="overflow-hidden">
-      {/* 标题栏 */}
       <div className="flex items-center justify-between border-b px-4 py-3">
         <div className="flex items-center gap-2">
           <Crop className="h-4 w-4 text-primary" />
           <div>
-            <h3 className="font-semibold">Element Crop ⬅️ 重要!</h3>
+            <h3 className="font-semibold">Element Selection</h3>
             <p className="text-xs text-muted-foreground">
-              Select ONLY the element to paste (e.g., just the wheels)
+              Select the specific element to transfer
             </p>
           </div>
         </div>
@@ -197,10 +181,9 @@ export default function ElementCropper({ image, crop, onCropChange }: ElementCro
         </Button>
       </div>
 
-      {/* 裁剪区域 */}
       <div className="p-4">
         <Label className="mb-3 block text-xs text-muted-foreground">
-          ⚠️ 重要：请只选择你想要粘贴的具体元素（如：只选风火轮，不选整个人物）。然后使用 Direct Paste 模式。
+          Click or drag to select the element you want to paste into the target image.
         </Label>
         <div
           className="relative mx-auto w-fit cursor-crosshair rounded-lg border bg-muted/30"
@@ -224,7 +207,6 @@ export default function ElementCropper({ image, crop, onCropChange }: ElementCro
             crossOrigin="anonymous"
           />
 
-          {/* 选区显示 */}
           {displayedSelection && displayedSelection.width > 2 && displayedSelection.height > 2 && (
             <>
               <div

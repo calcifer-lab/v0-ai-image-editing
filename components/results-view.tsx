@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Download, Edit, RotateCcw, ArrowLeftRight } from "lucide-react"
 
-// ============ 类型定义 ============
 interface ResultsViewProps {
   originalImage: string
   resultImage: string
@@ -16,14 +15,12 @@ interface ResultsViewProps {
 
 type ViewMode = "side" | "slider"
 
-// ============ 主组件 ============
 export default function ResultsView({ originalImage, resultImage, onEdit, onReset }: ResultsViewProps) {
   const [view, setView] = useState<ViewMode>("side")
   const [sliderPosition, setSliderPosition] = useState(50)
   const sliderContainerRef = useRef<HTMLDivElement>(null)
   const [containerWidth, setContainerWidth] = useState(0)
 
-  // 更新容器宽度
   useEffect(() => {
     const updateWidth = () => {
       if (sliderContainerRef.current) {
@@ -35,7 +32,6 @@ export default function ResultsView({ originalImage, resultImage, onEdit, onRese
     return () => window.removeEventListener("resize", updateWidth)
   }, [])
 
-  // 下载结果图片
   const handleDownload = () => {
     const link = document.createElement("a")
     link.href = resultImage
@@ -45,10 +41,8 @@ export default function ResultsView({ originalImage, resultImage, onEdit, onRese
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      {/* 头部 */}
       <ResultsHeader onEdit={onEdit} onReset={onReset} onDownload={handleDownload} />
 
-      {/* 内容区域 */}
       <div className="flex-1 overflow-y-auto">
         <div className="flex flex-col items-center gap-6 p-8">
           <Tabs
@@ -87,8 +81,6 @@ export default function ResultsView({ originalImage, resultImage, onEdit, onRese
     </div>
   )
 }
-
-// ============ 子组件 ============
 
 function ResultsHeader({
   onEdit,
@@ -188,7 +180,6 @@ function SliderCompareView({
       </div>
       <div className="p-4">
         <div ref={containerRef} className="relative overflow-hidden rounded-lg border">
-          {/* 结果图片（背景） */}
           <img
             src={resultImage || "/placeholder.svg"}
             alt="Result"
@@ -196,7 +187,6 @@ function SliderCompareView({
             crossOrigin="anonymous"
           />
 
-          {/* 原始图片（前景，裁剪） */}
           <div
             className="absolute inset-y-0 left-0 overflow-hidden"
             style={{ width: `${sliderPosition}%` }}
@@ -213,7 +203,6 @@ function SliderCompareView({
             />
           </div>
 
-          {/* 滑块手柄 */}
           <div
             className="absolute inset-y-0 z-10 w-1 bg-white shadow-lg"
             style={{ left: `${sliderPosition}%`, transform: "translateX(-50%)" }}
@@ -223,7 +212,6 @@ function SliderCompareView({
             </div>
           </div>
 
-          {/* 不可见滑块输入 */}
           <input
             type="range"
             min="0"
