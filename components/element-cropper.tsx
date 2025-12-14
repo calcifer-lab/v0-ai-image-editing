@@ -4,7 +4,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
-import { Crop, RefreshCcw } from "lucide-react"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Slider } from "@/components/ui/slider"
+import { Crop, RefreshCcw, Pencil, Eraser, Square, Undo, Redo } from "lucide-react"
 import type { CropRegion } from "@/types"
 
 interface ElementCropperProps {
@@ -20,17 +22,168 @@ interface Selection {
   height: number
 }
 
+type Tool = "selection" | "brush" | "eraser"
+
 const DEFAULT_SELECTION_SIZE = 0.3
 const MIN_SELECTION_SIZE = 3
+const MASK_OVERLAY_COLOR = { r: 59, g: 130, b: 246 }
+const MASK_OVERLAY_ALPHA = 128
 export default function ElementCropper({ image, crop, onCropChange }: ElementCropperProps) {
   const imgRef = useRef<HTMLImageElement>(null)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const maskCanvasRef = useRef<HTMLCanvasElement>(null)
   const [isDragging, setIsDragging] = useState(false)
   const dragStart = useRef<{ x: number; y: number } | null>(null)
   const [draftSelection, setDraftSelection] = useState<Selection | null>(null)
   const [naturalSize, setNaturalSize] = useState<{ width: number; height: number }>({ width: 0, height: 0 })
+  const [tool, setTool] = useState<Tool>("selection")
+  const [brushSize, setBrushSize] = useState(20)
+  const [history, setHistory] = useState<ImageData[]>([])
+  const [historyIndex, setHistoryIndex] = useState(-1)
+  const isInitialized = useRef(false)
+
+  // Redraw canvas with mask overlay
+  const redrawCanvas = useCallback(() => {
+    const canvas = canvasRef.current
+    const maskCanvas = maskCanvasRef.current
+    const img = imgRef.current
+    if (!canvas || !maskCanvas || !img) return
+
+    const ctx = canvas.getContext("2d")
+    const maskCtx = maskCanvas.getContext("2d")
+    if (!ctx || !maskCtx) return
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height)
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+
+    const maskImageData = maskCtx.getImageData(0, 0, maskCanvas.width, maskCanvas.height)
+    const overlayCanvas = document.createElement("canvas")
+    overlayCanvas.width = maskCanvas.width
+    overlayCanvas.height = maskCanvas.height
+    const overlayCtx = overlayCanvas.getContext("2d")
+    if (!overlayCtx) return
+
+    const overlayData = overlayCtx.createImageData(maskCanvas.width, maskCanvas.height)
+    for (let i = 0; i < maskImageData.data.length; i += 4) {
+      if (maskImageData.data[i] === 255) {
+        overlayData.data[i] = MASK_OVERLAY_COLOR.r
+        overlayData.data[i + 1] = MASK_OVERLAY_COLOR.g
+        overlayData.data[i + 2] = MASK_OVERLAY_COLOR.b
+        overlayData.data[i + 3] = MASK_OVERLAY_ALPHA
+      } else {
+        overlayData.data[i + 3] = 0
+      }
+    }
+    overlayCtx.putImageData(overlayData, 0, 0)
+    ctx.drawImage(overlayCanvas, 0, 0)
+  }, [])
+
+  // Save to history
+  const saveToHistory = useCallback(
+    (canvas: HTMLCanvasElement) => {
+      const ctx = canvas.getContext("2d")
+      if (!ctx) return
+
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+      setHistory((prev) => {
+        const newHistory = prev.slice(0, historyIndex + 1)
+        newHistory.push(imageData)
+        return newHistory
+      })
+      setHistoryIndex((prev) => prev + 1)
+    },
+    [historyIndex]
+  )
+
+  // Undo
+  const undo = useCallback(() => {
+    if (historyIndex <= 0) return
+    const maskCanvas = maskCanvasRef.current
+    if (!maskCanvas) return
+    const maskCtx = maskCanvas.getContext("2d")
+    if (!maskCtx) return
+
+    setHistoryIndex(historyIndex - 1)
+    maskCtx.putImageData(history[historyIndex - 1], 0, 0)
+    redrawCanvas()
+    updateCropFromMask()
+  }, [historyIndex, history, redrawCanvas])
+
+  // Redo
+  const redo = useCallback(() => {
+    if (historyIndex >= history.length - 1) return
+    const maskCanvas = maskCanvasRef.current
+    if (!maskCanvas) return
+    const maskCtx = maskCanvas.getContext("2d")
+    if (!maskCtx) return
+
+    setHistoryIndex(historyIndex + 1)
+    maskCtx.putImageData(history[historyIndex + 1], 0, 0)
+    redrawCanvas()
+    updateCropFromMask()
+  }, [historyIndex, history, redrawCanvas])
+
+  // Update crop region from mask
+  const updateCropFromMask = useCallback(() => {
+    const maskCanvas = maskCanvasRef.current
+    if (!maskCanvas || !naturalSize.width || !naturalSize.height) return
+
+    const maskCtx = maskCanvas.getContext("2d")
+    if (!maskCtx) return
+
+    const imageData = maskCtx.getImageData(0, 0, maskCanvas.width, maskCanvas.height)
+    const data = imageData.data
+
+    let minX = maskCanvas.width
+    let minY = maskCanvas.height
+    let maxX = 0
+    let maxY = 0
+    let hasSelection = false
+
+    for (let y = 0; y < maskCanvas.height; y++) {
+      for (let x = 0; x < maskCanvas.width; x++) {
+        const i = (y * maskCanvas.width + x) * 4
+        if (data[i] === 255) {
+          hasSelection = true
+          minX = Math.min(minX, x)
+          minY = Math.min(minY, y)
+          maxX = Math.max(maxX, x)
+          maxY = Math.max(maxY, y)
+        }
+      }
+    }
+
+    if (hasSelection) {
+      onCropChange({
+        x: minX,
+        y: minY,
+        width: maxX - minX + 1,
+        height: maxY - minY + 1,
+        imageWidth: naturalSize.width,
+        imageHeight: naturalSize.height,
+      })
+    }
+  }, [naturalSize, onCropChange])
 
   const setFullCrop = useCallback(() => {
     if (!naturalSize.width || !naturalSize.height) return
+
+    // If in brush mode, fill the entire mask
+    if (tool === "brush" || tool === "eraser") {
+      const maskCanvas = maskCanvasRef.current
+      if (maskCanvas) {
+        const maskCtx = maskCanvas.getContext("2d")
+        if (maskCtx) {
+          maskCtx.fillStyle = "rgba(255, 255, 255, 1)"
+          maskCtx.fillRect(0, 0, maskCanvas.width, maskCanvas.height)
+          saveToHistory(maskCanvas)
+          redrawCanvas()
+          updateCropFromMask()
+          return
+        }
+      }
+    }
+
     onCropChange({
       x: 0,
       y: 0,
@@ -39,11 +192,48 @@ export default function ElementCropper({ image, crop, onCropChange }: ElementCro
       imageWidth: naturalSize.width,
       imageHeight: naturalSize.height,
     })
-  }, [naturalSize, onCropChange])
+  }, [naturalSize, onCropChange, tool, saveToHistory, redrawCanvas, updateCropFromMask])
 
   useEffect(() => {
     setDraftSelection(null)
   }, [crop])
+
+  // Re-initialize canvas when switching to brush/eraser mode
+  useEffect(() => {
+    if (tool === "brush" || tool === "eraser") {
+      const canvas = canvasRef.current
+      const maskCanvas = maskCanvasRef.current
+      const img = imgRef.current
+      if (!canvas || !maskCanvas || !img || !img.complete || !img.naturalWidth) return
+
+      // Use natural dimensions scaled to display size
+      const maxHeight = Math.min(400, window.innerHeight * 0.5)
+      const scale = Math.min(1, maxHeight / img.naturalHeight)
+      const displayWidth = img.naturalWidth * scale
+      const displayHeight = img.naturalHeight * scale
+
+      if (canvas.width !== displayWidth || canvas.height !== displayHeight) {
+        canvas.width = displayWidth
+        canvas.height = displayHeight
+        maskCanvas.width = displayWidth
+        maskCanvas.height = displayHeight
+
+        const ctx = canvas.getContext("2d")
+        const maskCtx = maskCanvas.getContext("2d")
+        if (ctx && maskCtx) {
+          ctx.drawImage(img, 0, 0, displayWidth, displayHeight)
+          maskCtx.fillStyle = "rgba(0, 0, 0, 1)"
+          maskCtx.fillRect(0, 0, displayWidth, displayHeight)
+
+          const initialState = maskCtx.getImageData(0, 0, displayWidth, displayHeight)
+          setHistory([initialState])
+          setHistoryIndex(0)
+        }
+      } else {
+        redrawCanvas()
+      }
+    }
+  }, [tool, redrawCanvas])
 
   const displayedSelection = useMemo(() => {
     const img = imgRef.current
@@ -67,6 +257,34 @@ export default function ElementCropper({ image, crop, onCropChange }: ElementCro
   const handleImageLoad = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
     const target = e.currentTarget
     setNaturalSize({ width: target.naturalWidth, height: target.naturalHeight })
+
+    // Initialize canvases for brush mode
+    const canvas = canvasRef.current
+    const maskCanvas = maskCanvasRef.current
+    if (canvas && maskCanvas && !isInitialized.current) {
+      const rect = target.getBoundingClientRect()
+      const displayWidth = rect.width
+      const displayHeight = rect.height
+
+      canvas.width = displayWidth
+      canvas.height = displayHeight
+      maskCanvas.width = displayWidth
+      maskCanvas.height = displayHeight
+
+      const ctx = canvas.getContext("2d")
+      const maskCtx = maskCanvas.getContext("2d")
+      if (ctx && maskCtx) {
+        ctx.drawImage(target, 0, 0, displayWidth, displayHeight)
+        maskCtx.fillStyle = "rgba(0, 0, 0, 1)"
+        maskCtx.fillRect(0, 0, displayWidth, displayHeight)
+
+        const initialState = maskCtx.getImageData(0, 0, displayWidth, displayHeight)
+        setHistory([initialState])
+        setHistoryIndex(0)
+        isInitialized.current = true
+      }
+    }
+
     if (!crop) {
       setFullCrop()
     }
@@ -85,7 +303,42 @@ export default function ElementCropper({ image, crop, onCropChange }: ElementCro
     return x >= sel.x && x <= sel.x + sel.width && y >= sel.y && y <= sel.y + sel.height
   }
 
+  // Brush drawing handler
+  const drawBrush = useCallback(
+    (e: React.MouseEvent<HTMLCanvasElement>) => {
+      if (!isDragging && e.type !== "mousedown") return
+      if (tool !== "brush" && tool !== "eraser") return
+
+      const canvas = canvasRef.current
+      const maskCanvas = maskCanvasRef.current
+      if (!canvas || !maskCanvas) return
+
+      const rect = canvas.getBoundingClientRect()
+      const scaleX = canvas.width / rect.width
+      const scaleY = canvas.height / rect.height
+      const x = (e.clientX - rect.left) * scaleX
+      const y = (e.clientY - rect.top) * scaleY
+
+      const maskCtx = maskCanvas.getContext("2d")
+      if (!maskCtx) return
+
+      maskCtx.beginPath()
+      maskCtx.arc(x, y, brushSize / 2, 0, Math.PI * 2)
+      maskCtx.fillStyle = tool === "brush" ? "rgba(255, 255, 255, 1)" : "rgba(0, 0, 0, 1)"
+      maskCtx.fill()
+
+      redrawCanvas()
+    },
+    [isDragging, tool, brushSize, redrawCanvas]
+  )
+
   const handleMouseDown = (e: React.MouseEvent) => {
+    if (tool === "brush" || tool === "eraser") {
+      setIsDragging(true)
+      drawBrush(e as React.MouseEvent<HTMLCanvasElement>)
+      return
+    }
+
     const { x, y, valid } = clampToImage(e.clientX, e.clientY)
     if (!valid) return
 
@@ -101,6 +354,11 @@ export default function ElementCropper({ image, crop, onCropChange }: ElementCro
   }
 
   const handleMouseMove = (e: React.MouseEvent) => {
+    if (tool === "brush" || tool === "eraser") {
+      drawBrush(e as React.MouseEvent<HTMLCanvasElement>)
+      return
+    }
+
     if (!isDragging || !dragStart.current) return
     const { x, y, valid } = clampToImage(e.clientX, e.clientY)
     if (!valid) return
@@ -113,6 +371,18 @@ export default function ElementCropper({ image, crop, onCropChange }: ElementCro
   }
 
   const handleMouseUp = () => {
+    if (tool === "brush" || tool === "eraser") {
+      if (isDragging) {
+        const maskCanvas = maskCanvasRef.current
+        if (maskCanvas) {
+          saveToHistory(maskCanvas)
+          updateCropFromMask()
+        }
+      }
+      setIsDragging(false)
+      return
+    }
+
     if (!isDragging || !draftSelection || !naturalSize.width || !naturalSize.height) {
       setIsDragging(false)
       return
@@ -165,64 +435,120 @@ export default function ElementCropper({ image, crop, onCropChange }: ElementCro
 
   return (
     <Card className="overflow-hidden">
-      <div className="flex items-center justify-between border-b px-4 py-3">
-        <div className="flex items-center gap-2">
-          <Crop className="h-4 w-4 text-primary" />
-          <div>
-            <h3 className="font-semibold">Element Selection</h3>
-            <p className="text-xs text-muted-foreground">
-              Select the specific element to transfer
-            </p>
+      <div className="border-b px-4 py-3">
+        <div className="mb-3 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Crop className="h-4 w-4 text-primary" />
+            <div>
+              <h3 className="font-semibold">Element Crop</h3>
+              <p className="text-xs text-muted-foreground">Select ONLY the element to paste</p>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={undo} disabled={historyIndex <= 0}>
+              <Undo className="h-4 w-4" />
+            </Button>
+            <Button variant="outline" size="sm" onClick={redo} disabled={historyIndex >= history.length - 1}>
+              <Redo className="h-4 w-4" />
+            </Button>
+            <Button variant="ghost" size="sm" onClick={setFullCrop} disabled={!naturalSize.width}>
+              <RefreshCcw className="mr-2 h-4 w-4" />
+              Reset
+            </Button>
           </div>
         </div>
-        <Button variant="ghost" size="sm" onClick={setFullCrop} disabled={!naturalSize.width}>
-          <RefreshCcw className="mr-2 h-4 w-4" />
-          Reset
-        </Button>
+
+        <Tabs value={tool} onValueChange={(v) => setTool(v as Tool)}>
+          <TabsList className="grid w-full grid-cols-3">
+            <TabsTrigger value="selection" className="gap-2">
+              <Square className="h-4 w-4" />
+              Box
+            </TabsTrigger>
+            <TabsTrigger value="brush" className="gap-2">
+              <Pencil className="h-4 w-4" />
+              Brush
+            </TabsTrigger>
+            <TabsTrigger value="eraser" className="gap-2">
+              <Eraser className="h-4 w-4" />
+              Eraser
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
+
+        {(tool === "brush" || tool === "eraser") && (
+          <div className="mt-3">
+            <div className="mb-2 flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Brush Size</span>
+              <span className="font-medium">{brushSize}px</span>
+            </div>
+            <Slider value={[brushSize]} onValueChange={(v) => setBrushSize(v[0])} min={5} max={100} step={5} />
+          </div>
+        )}
       </div>
 
       <div className="p-4">
         <Label className="mb-3 block text-xs text-muted-foreground">
-          Click or drag to select the element you want to paste into the target image.
+          {tool === "selection"
+            ? "Click or drag to select the element area"
+            : "Paint to select the element you want to transfer"}
         </Label>
         <div
-          className="relative mx-auto w-fit cursor-crosshair rounded-lg border bg-muted/30"
+          className="relative mx-auto w-fit cursor-crosshair overflow-hidden rounded-lg border bg-muted/30"
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
           onMouseLeave={() => {
             if (isDragging) {
-              setIsDragging(false)
-              setDraftSelection(null)
+              handleMouseUp()
             }
           }}
         >
-          <img
-            ref={imgRef}
-            src={image}
-            alt="Element to crop"
-            className="block max-w-full select-none object-contain"
-            style={{ maxHeight: "min(400px, 50vh)" }}
-            onLoad={handleImageLoad}
-            crossOrigin="anonymous"
-          />
-
-          {displayedSelection && displayedSelection.width > 2 && displayedSelection.height > 2 && (
+          {tool === "selection" ? (
             <>
-              <div
-                className="pointer-events-none absolute border-2 border-primary/80 bg-primary/10 shadow-[0_0_0_9999px_rgba(0,0,0,0.35)]"
-                style={{
-                  left: displayedSelection.x,
-                  top: displayedSelection.y,
-                  width: displayedSelection.width,
-                  height: displayedSelection.height,
-                }}
+              <img
+                ref={imgRef}
+                src={image}
+                alt="Element to crop"
+                className="block max-w-full select-none object-contain"
+                style={{ maxHeight: "min(400px, 50vh)" }}
+                onLoad={handleImageLoad}
+                crossOrigin="anonymous"
               />
-              <div
-                className="pointer-events-none absolute bottom-2 right-2 rounded bg-black/60 px-2 py-1 text-[10px] font-medium text-white"
-              >
-                {Math.round(displayedSelection.width)} × {Math.round(displayedSelection.height)} px
-              </div>
+
+              {displayedSelection && displayedSelection.width > 2 && displayedSelection.height > 2 && (
+                <>
+                  <div
+                    className="pointer-events-none absolute border-2 border-primary/80 bg-primary/10 shadow-[0_0_0_9999px_rgba(0,0,0,0.35)]"
+                    style={{
+                      left: displayedSelection.x,
+                      top: displayedSelection.y,
+                      width: displayedSelection.width,
+                      height: displayedSelection.height,
+                    }}
+                  />
+                  <div className="pointer-events-none absolute bottom-2 right-2 rounded bg-black/60 px-2 py-1 text-[10px] font-medium text-white">
+                    {Math.round(displayedSelection.width)} × {Math.round(displayedSelection.height)} px
+                  </div>
+                </>
+              )}
+            </>
+          ) : (
+            <>
+              <img
+                ref={imgRef}
+                src={image}
+                alt="Element to crop"
+                className="absolute opacity-0 pointer-events-none"
+                style={{ maxHeight: "min(400px, 50vh)" }}
+                onLoad={handleImageLoad}
+                crossOrigin="anonymous"
+              />
+              <canvas
+                ref={canvasRef}
+                className="block max-w-full cursor-crosshair rounded-lg"
+                style={{ maxHeight: "min(400px, 50vh)" }}
+              />
+              <canvas ref={maskCanvasRef} className="hidden" />
             </>
           )}
         </div>

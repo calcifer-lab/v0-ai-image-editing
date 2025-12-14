@@ -164,15 +164,13 @@ export function useImageEditor(): UseImageEditorReturn {
 
   // 处理图片上传
   const handleImagesUploaded = useCallback(async (elementImg: string, baseImg: string) => {
-    console.log("[AI Editor] Images uploaded, analyzing element image...")
+    console.log("[AI Editor] Images uploaded")
     setImages({ elementImage: elementImg, baseImage: baseImg })
     setElementCrop(null)
     setError(null)
     setStep("edit")
-    
-    // 异步分析图片
-    analyzeImage(elementImg)
-  }, [analyzeImage])
+    // Image analysis is now deferred until Generate button is clicked
+  }, [])
 
   // 处理遮罩创建
   const handleMaskCreated = useCallback((maskData: MaskData) => {
@@ -240,6 +238,12 @@ export function useImageEditor(): UseImageEditorReturn {
       throw new Error("Missing required images or mask")
     }
 
+    // Trigger image analysis if not already done
+    if (!imageAnalysis && !params.prompt.trim()) {
+      setProcessingStatus("Analyzing element image...")
+      await analyzeImage(images.elementImage)
+    }
+
     setProcessingStatus("Sending request to AI model...")
 
     // 构建提示词
@@ -277,7 +281,7 @@ export function useImageEditor(): UseImageEditorReturn {
     setProcessingStatus("Processing complete, loading result...")
     const data = await response.json()
     return data.result_image
-  }, [images, mask, params, imageAnalysis])
+  }, [images, mask, params, imageAnalysis, analyzeImage])
 
   // 处理主流程
   const handleProcess = useCallback(async () => {

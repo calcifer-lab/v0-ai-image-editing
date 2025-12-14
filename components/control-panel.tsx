@@ -39,53 +39,24 @@ export default function ControlPanel({
     <Card className="flex h-full flex-col">
       <div className="border-b p-4">
         <h3 className="font-semibold">Edit Parameters</h3>
-        <p className="text-sm text-muted-foreground">Configure how AI will blend the elements</p>
+        <p className="text-sm text-muted-foreground">Configure your editing workflow</p>
       </div>
 
       <EditModeSection params={params} onParamsChange={onParamsChange} />
-      <OutputDimensionsSection params={params} onParamsChange={onParamsChange} />
 
       <div className="flex-1 space-y-6 overflow-auto p-4">
-        <AnalysisStatus isAnalyzing={isAnalyzing} imageAnalysis={imageAnalysis} />
         {error && <ErrorDisplay error={error} />}
 
-        <PromptInput
-          value={params.prompt}
-          onChange={(prompt) => onParamsChange({ ...params, prompt })}
-          hasAnalysis={!!imageAnalysis}
-        />
-
-        <SliderControl
-          label="Generation Strength"
-          value={params.strength}
-          onChange={(strength) => onParamsChange({ ...params, strength })}
-          min={0.1}
-          max={1.0}
-          step={0.1}
-          description="Higher values generate more creative content"
-        />
-
-        <SliderControl
-          label="Guidance Scale"
-          value={params.guidance}
-          onChange={(guidance) => onParamsChange({ ...params, guidance })}
-          min={1}
-          max={20}
-          step={0.5}
-          description="How closely to follow the reference image"
-        />
-
-        <div className="flex items-center justify-between rounded-lg border p-4">
-          <div className="space-y-0.5">
-            <Label htmlFor="preserve-structure">Preserve Structure</Label>
-            <p className="text-xs text-muted-foreground">Maintain the original composition</p>
-          </div>
-          <Switch
-            id="preserve-structure"
-            checked={params.preserveStructure}
-            onCheckedChange={(checked) => onParamsChange({ ...params, preserveStructure: checked })}
+        {params.editMode === "composite" ? (
+          <DirectPasteSettings params={params} onParamsChange={onParamsChange} />
+        ) : (
+          <AIGenerateSettings
+            params={params}
+            onParamsChange={onParamsChange}
+            imageAnalysis={imageAnalysis}
+            isAnalyzing={isAnalyzing}
           />
-        </div>
+        )}
       </div>
 
       <ProcessButton
@@ -93,6 +64,7 @@ export default function ControlPanel({
         isProcessing={isProcessing}
         canProcess={canProcess}
         processingStatus={processingStatus}
+        editMode={params.editMode}
       />
     </Card>
   )
@@ -107,36 +79,28 @@ function EditModeSection({
 }) {
   return (
     <div className="shrink-0 border-b p-4">
-      <div className="space-y-3 rounded-lg border-2 border-orange-200 bg-orange-50 p-4 dark:border-orange-800 dark:bg-orange-950">
+      <div className="space-y-3">
         <div className="flex items-center gap-2">
-          <Layers className="h-5 w-5 text-orange-600" />
-          <Label className="text-base font-semibold text-orange-900 dark:text-orange-100">
-            Edit Mode
-          </Label>
+          <Layers className="h-5 w-5 text-primary" />
+          <Label className="text-base font-semibold">Edit Mode</Label>
         </div>
-        
-        <div className="grid grid-cols-2 gap-2">
+
+        <div className="grid grid-cols-2 gap-3">
           <ModeButton
             active={params.editMode === "composite"}
             onClick={() => onParamsChange({ ...params, editMode: "composite" })}
             icon={Layers}
-            label="Direct Paste"
-            description="Exact copy"
+            label="Direct"
+            description="Paste as-is"
           />
           <ModeButton
             active={params.editMode === "ai"}
             onClick={() => onParamsChange({ ...params, editMode: "ai" })}
             icon={Wand2}
-            label="AI Generate"
-            description="Style adapt"
+            label="AIgenerate"
+            description="AI blend"
           />
         </div>
-        
-        <p className="text-xs text-muted-foreground">
-          {params.editMode === "composite"
-            ? "Recommended for precise element transfer. Select the element area on the right."
-            : "AI interprets and adapts the style. Results may vary from the original."}
-        </p>
       </div>
     </div>
   )
@@ -159,16 +123,125 @@ function ModeButton({
     <button
       type="button"
       onClick={onClick}
-      className={`flex flex-col items-center gap-1 rounded-lg border-2 p-3 transition-all ${
+      className={`flex flex-col items-center gap-2 rounded-lg border-2 p-4 transition-all ${
         active
-          ? "border-orange-500 bg-orange-100 dark:bg-orange-900"
-          : "border-gray-200 hover:border-orange-300 dark:border-gray-700"
+          ? "border-primary bg-primary/10 shadow-sm"
+          : "border-border hover:border-primary/50 hover:bg-accent"
       }`}
     >
-      <Icon className="h-5 w-5" />
-      <span className="text-xs font-medium">{label}</span>
-      <span className="text-[10px] text-muted-foreground">{description}</span>
+      <Icon className={`h-5 w-5 ${active ? "text-primary" : "text-muted-foreground"}`} />
+      <div className="text-center">
+        <div className={`text-sm font-semibold ${active ? "text-foreground" : "text-muted-foreground"}`}>
+          {label}
+        </div>
+        <div className="text-xs text-muted-foreground">{description}</div>
+      </div>
     </button>
+  )
+}
+
+function DirectPasteSettings({
+  params,
+  onParamsChange,
+}: {
+  params: EditParams
+  onParamsChange: (params: EditParams) => void
+}) {
+  return (
+    <div className="space-y-4">
+      <Card className="border-2 bg-card p-4">
+        <div className="space-y-3">
+          <div className="flex items-start gap-3">
+            <div className="rounded-full bg-primary/10 p-2">
+              <Layers className="h-5 w-5 text-primary" />
+            </div>
+            <div className="flex-1">
+              <h4 className="font-semibold">Direct Paste Mode</h4>
+              <p className="mt-1 text-sm text-muted-foreground">
+                The selected element will be copied exactly as-is and pasted into the target region. Background will be
+                automatically removed.
+              </p>
+            </div>
+          </div>
+        </div>
+      </Card>
+
+      <OutputDimensionsSection params={params} onParamsChange={onParamsChange} />
+    </div>
+  )
+}
+
+function AIGenerateSettings({
+  params,
+  onParamsChange,
+  imageAnalysis,
+  isAnalyzing,
+}: {
+  params: EditParams
+  onParamsChange: (params: EditParams) => void
+  imageAnalysis: string | null
+  isAnalyzing: boolean
+}) {
+  return (
+    <div className="space-y-4">
+      <Card className="border-2 bg-card p-4">
+        <div className="space-y-3">
+          <div className="flex items-start gap-3">
+            <div className="rounded-full bg-primary/10 p-2">
+              <Wand2 className="h-5 w-5 text-primary" />
+            </div>
+            <div className="flex-1">
+              <h4 className="font-semibold">AI Generate Mode</h4>
+              <p className="mt-1 text-sm text-muted-foreground">
+                AI will analyze the element and blend it naturally into the target region, adapting style and context.
+              </p>
+            </div>
+          </div>
+        </div>
+      </Card>
+
+      <AnalysisStatus isAnalyzing={isAnalyzing} imageAnalysis={imageAnalysis} />
+
+      <PromptInput
+        value={params.prompt}
+        onChange={(prompt) => onParamsChange({ ...params, prompt })}
+        hasAnalysis={!!imageAnalysis}
+      />
+
+      <SliderControl
+        label="Generation Strength"
+        value={params.strength}
+        onChange={(strength) => onParamsChange({ ...params, strength })}
+        min={0.1}
+        max={1.0}
+        step={0.1}
+        description="Higher values generate more creative content"
+      />
+
+      <SliderControl
+        label="Guidance Scale"
+        value={params.guidance}
+        onChange={(guidance) => onParamsChange({ ...params, guidance })}
+        min={1}
+        max={20}
+        step={0.5}
+        description="How closely to follow the reference image"
+      />
+
+      <div className="flex items-center justify-between rounded-lg border p-4">
+        <div className="space-y-0.5">
+          <Label htmlFor="preserve-structure">Preserve Structure</Label>
+          <p className="text-xs text-muted-foreground">Maintain the original composition</p>
+        </div>
+        <Switch
+          id="preserve-structure"
+          checked={params.preserveStructure}
+          onCheckedChange={(checked) => onParamsChange({ ...params, preserveStructure: checked })}
+        />
+      </div>
+
+      <OutputDimensionsSection params={params} onParamsChange={onParamsChange} />
+    </div>
   )
 }
 
@@ -180,15 +253,17 @@ function OutputDimensionsSection({
   onParamsChange: (params: EditParams) => void
 }) {
   return (
-    <div className="shrink-0 border-b p-4">
-      <div className="space-y-4 rounded-lg border-2 border-primary/20 bg-primary/5 p-4">
+    <Card className="border-2 bg-card p-4">
+      <div className="space-y-4">
         <div className="flex items-center gap-2">
           <Maximize2 className="h-5 w-5 text-primary" />
           <Label className="text-base font-semibold">Output Dimensions</Label>
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="aspect-ratio">Aspect Ratio</Label>
+          <Label htmlFor="aspect-ratio" className="text-sm">
+            Aspect Ratio
+          </Label>
           <Select
             value={params.outputDimensions.aspectRatio}
             onValueChange={(value: AspectRatio) =>
@@ -198,7 +273,7 @@ function OutputDimensionsSection({
               })
             }
           >
-            <SelectTrigger id="aspect-ratio" className="h-11 text-base font-medium">
+            <SelectTrigger id="aspect-ratio">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -216,7 +291,7 @@ function OutputDimensionsSection({
 
         {params.outputDimensions.aspectRatio === "custom" && (
           <div className="space-y-2">
-            <Label>Custom Dimensions</Label>
+            <Label className="text-sm">Custom Dimensions</Label>
             <div className="flex gap-2">
               <div className="flex-1">
                 <Input
@@ -261,7 +336,9 @@ function OutputDimensionsSection({
         )}
 
         <div className="space-y-2">
-          <Label htmlFor="scale-mode">Scale Mode</Label>
+          <Label htmlFor="scale-mode" className="text-sm">
+            Scale Mode
+          </Label>
           <Select
             value={params.outputDimensions.scaleMode}
             onValueChange={(value: ScaleMode) =>
@@ -271,7 +348,7 @@ function OutputDimensionsSection({
               })
             }
           >
-            <SelectTrigger id="scale-mode" className="h-11">
+            <SelectTrigger id="scale-mode">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -297,7 +374,7 @@ function OutputDimensionsSection({
           </Select>
         </div>
       </div>
-    </div>
+    </Card>
   )
 }
 
@@ -410,12 +487,17 @@ function ProcessButton({
   isProcessing,
   canProcess,
   processingStatus,
+  editMode,
 }: {
   onProcess: () => void
   isProcessing: boolean
   canProcess: boolean
   processingStatus: string
+  editMode: "ai" | "composite"
 }) {
+  const buttonText = editMode === "composite" ? "Paste" : "Generate"
+  const Icon = editMode === "composite" ? Layers : Sparkles
+
   return (
     <div className="border-t p-4">
       <Button className="w-full" size="lg" onClick={onProcess} disabled={!canProcess || isProcessing}>
@@ -426,8 +508,8 @@ function ProcessButton({
           </>
         ) : (
           <>
-            <Sparkles className="mr-2 h-4 w-4" />
-            Generate
+            <Icon className="mr-2 h-4 w-4" />
+            {buttonText}
           </>
         )}
       </Button>
