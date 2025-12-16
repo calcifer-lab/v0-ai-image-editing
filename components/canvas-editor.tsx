@@ -27,7 +27,7 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
   const maskCanvasRef = useRef<HTMLCanvasElement>(null)
   const [isDrawing, setIsDrawing] = useState(false)
   const [tool, setTool] = useState<Tool>("brush")
-  const [brushSize, setBrushSize] = useState(20)
+  const [brushSize, setBrushSize] = useState(80)
   const [history, setHistory] = useState<ImageData[]>([])
   const [historyIndex, setHistoryIndex] = useState(-1)
   const baseImageRef = useRef<HTMLImageElement | null>(null)

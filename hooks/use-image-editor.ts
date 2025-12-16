@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useRef } from "react"
 import type {
   EditorStep,
   ImageData,
@@ -101,6 +101,45 @@ function blobToDataUrl(blob: Blob): Promise<string> {
     reader.onerror = reject
     reader.readAsDataURL(blob)
   })
+}
+
+async function removeMaskedRegionFromBase(baseDataUrl: string, maskDataUrl: string): Promise<string> {
+  const [baseImg, maskImg] = await Promise.all([loadImage(baseDataUrl), loadImage(maskDataUrl)])
+
+  const canvas = document.createElement("canvas")
+  canvas.width = baseImg.width
+  canvas.height = baseImg.height
+  const ctx = canvas.getContext("2d")
+  if (!ctx) throw new Error("Failed to get canvas context for base masking")
+
+  // Build an alpha-only mask: white => remove, black => keep
+  const maskCanvas = document.createElement("canvas")
+  maskCanvas.width = baseImg.width
+  maskCanvas.height = baseImg.height
+  const maskCtx = maskCanvas.getContext("2d")
+  if (!maskCtx) throw new Error("Failed to get mask canvas context")
+  maskCtx.drawImage(maskImg, 0, 0, baseImg.width, baseImg.height)
+  const maskData = maskCtx.getImageData(0, 0, baseImg.width, baseImg.height)
+  const data = maskData.data
+  for (let i = 0; i < data.length; i += 4) {
+    const r = data[i]
+    const g = data[i + 1]
+    const b = data[i + 2]
+    const isWhite = r > 200 && g > 200 && b > 200
+    data[i] = 0
+    data[i + 1] = 0
+    data[i + 2] = 0
+    data[i + 3] = isWhite ? 255 : 0
+  }
+  maskCtx.putImageData(maskData, 0, 0)
+
+  // Draw base, then punch a hole where mask is white
+  ctx.drawImage(baseImg, 0, 0, baseImg.width, baseImg.height)
+  ctx.globalCompositeOperation = "destination-out"
+  ctx.drawImage(maskCanvas, 0, 0, baseImg.width, baseImg.height)
+  ctx.globalCompositeOperation = "source-over"
+
+  return canvas.toDataURL("image/png")
 }
 
 function buildPromptFromAnalysis(imageAnalysis: string): string {
@@ -214,12 +253,44 @@ export function useImageEditor(): UseImageEditorReturn {
   const [imageAnalysis, setImageAnalysis] = useState<string | null>(null)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [elementCrop, setElementCrop] = useState<CropRegion | null>(null)
+  const progressDriftTimer = useRef<number | null>(null)
+
+  const stopProgressDrift = useCallback(() => {
+    if (progressDriftTimer.current !== null) {
+      clearInterval(progressDriftTimer.current)
+      progressDriftTimer.current = null
+    }
+  }, [])
+
+  const startProgressDrift = useCallback(
+    (target: number) => {
+      stopProgressDrift()
+      progressDriftTimer.current = window.setInterval(() => {
+        setProcessingProgress((prev) => {
+          const next = Math.min(prev + 1, target - 1)
+          if (next >= target - 1) {
+            stopProgressDrift()
+          }
+          return next
+        })
+      }, 500)
+    },
+    [stopProgressDrift]
+  )
 
   // 辅助函数：更新处理状态和进度
-  const updateProgress = useCallback((status: string, progress: number) => {
-    setProcessingStatus(status)
-    setProcessingProgress(progress)
-  }, [])
+  const updateProgress = useCallback(
+    (status: string, progress: number, options?: { driftTo?: number }) => {
+      setProcessingStatus(status)
+      setProcessingProgress(progress)
+
+      stopProgressDrift()
+      if (options?.driftTo && options.driftTo > progress) {
+        startProgressDrift(options.driftTo)
+      }
+    },
+    [startProgressDrift, stopProgressDrift]
+  )
 
   // 分析图片 - 支持传入裁剪区域以聚焦分析
   // 返回分析结果字符串，以便调用者可以立即使用（避免闭包捕获的状态值过时问题）
@@ -341,7 +412,7 @@ export function useImageEditor(): UseImageEditorReturn {
     console.log("[AI Editor] Composite complete, starting AI fusion...")
 
     // AI 融合后处理 (60%)
-    updateProgress("AI fusion: Harmonizing lighting and style...", 60)
+    updateProgress("AI fusion: Harmonizing lighting and style...", 60, { driftTo: 78 })
     try {
       const fusionResponse = await fetch("/api/fusion", {
         method: "POST",
@@ -386,13 +457,17 @@ export function useImageEditor(): UseImageEditorReturn {
 
     const [compressedBase, compressedMask, compressedReference] = await Promise.all([
       resizeImageBlob(baseBlob, 1536, 0.85),
-      resizeImageBlob(maskBlob, 768, 0.9),
+      // Keep mask aligned to the same dimensions as the base to avoid misalignment
+      resizeImageBlob(maskBlob, 1536, 0.95),
       resizeImageBlob(referenceBlob, 768, 0.85),
     ])
 
     let processedBaseImage = await blobToDataUrl(compressedBase)
     let processedReferenceImage = await blobToDataUrl(compressedReference)
     const processedMaskImage = await blobToDataUrl(compressedMask)
+
+    // Remove masked region from the base so the model is forced to replace it
+    processedBaseImage = await removeMaskedRegionFromBase(processedBaseImage, processedMaskImage)
 
     // 使用局部变量跟踪分析结果，避免闭包捕获的状态值过时问题
     let currentAnalysis = imageAnalysis
@@ -492,9 +567,12 @@ export function useImageEditor(): UseImageEditorReturn {
         }
       }
 
-      // 调整输出尺寸 (80%)
+      // 融合结果得到图像后继续进度 (80%)
+      updateProgress("Stabilizing blend...", 80)
+
+      // 调整输出尺寸 (85%)
       if (params.outputDimensions.aspectRatio !== "original") {
-        updateProgress("Adjusting output dimensions...", 80)
+        updateProgress("Adjusting output dimensions...", 85)
         try {
           const resized = await resizeToAspectRatio(
             finalImage,
@@ -518,11 +596,12 @@ export function useImageEditor(): UseImageEditorReturn {
       console.error("Processing failed:", error)
       setError(error instanceof Error ? error.message : "Failed to process image")
     } finally {
+      stopProgressDrift()
       setIsProcessing(false)
       setProcessingStatus("")
       setProcessingProgress(0)
     }
-  }, [images, mask, params, processCompositeMode, processAIMode, updateProgress])
+  }, [images, mask, params, processCompositeMode, processAIMode, updateProgress, stopProgressDrift])
 
   // 重置状态
   const handleReset = useCallback(() => {
@@ -537,7 +616,8 @@ export function useImageEditor(): UseImageEditorReturn {
     setIsAnalyzing(false)
     setProcessingStatus("")
     setElementCrop(null)
-  }, [])
+    stopProgressDrift()
+  }, [stopProgressDrift])
 
   return {
     step,

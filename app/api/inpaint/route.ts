@@ -25,6 +25,10 @@ async function tryGeminiImageGeneration(
   console.log("[Inpaint] Using Gemini 2.5 Flash Image (google/gemini-2.5-flash-image)...")
   console.log("[Inpaint] Prompt:", prompt)
 
+  // Align mask dimensions with the base image so the model applies it correctly
+  const baseDims = await getImageDimensions(base_image)
+  const alignedMask = await resizeMaskToMatchImage(mask_image, baseDims.width, baseDims.height)
+
   // 调试日志：验证图片大小
   const getBase64Size = (dataUrl: string) => {
     const base64 = dataUrl.split(",")[1] || dataUrl
@@ -66,7 +70,7 @@ async function tryGeminiImageGeneration(
     { type: "text", text: "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" },
     { type: "text", text: "⬜ IMAGE 3: MASK (DELETION/INSERTION ZONE)" },
     { type: "text", text: "White pixels = DELETE Image 2's content here and INSERT Image 1's content instead. Black pixels = keep Image 2's original content unchanged." },
-    { type: "image_url", image_url: { url: mask_image } },
+    { type: "image_url", image_url: { url: alignedMask } },
     { type: "text", text: "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" },
     { type: "text", text: "🎯 FINAL COMMAND - READ CAREFULLY:" },
     { type: "text", text: "Generate a NEW image where:\n✓ BLACK masked area = Keep Image 2's original content\n✓ WHITE masked area = COMPLETELY REPLACE with Image 1's content (NOT Image 2's!)\n\n⚠️ The white-masked region MUST look DIFFERENT from Image 2's original.\n⚠️ The white-masked region MUST show Image 1's elements CLEARLY.\n⚠️ This is INPAINTING (replacement), NOT blending or harmonization.\n\nSTART GENERATING NOW." },
