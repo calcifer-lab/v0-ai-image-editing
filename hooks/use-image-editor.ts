@@ -9,7 +9,7 @@ import type {
   CropRegion,
   DEFAULT_EDIT_PARAMS,
 } from "@/types"
-import { resizeToAspectRatio, compositeImages, loadImage } from "@/lib/image-utils"
+import { resizeToAspectRatio, compositeImages, loadImage, resizeImage, compressImage } from "@/lib/image-utils"
 import { resizeImage as resizeImageBlob } from "@/utils/imageResize"
 import { safeParseJSON } from "@/utils/safeParse"
 
@@ -239,6 +239,17 @@ function buildPromptFromAnalysis(imageAnalysis: string): string {
   return finalPrompt
 }
 
+// Compress large data URLs before network upload to stay under server limits
+async function compressDataUrlForUpload(imageDataUrl: string): Promise<string> {
+  try {
+    const { dataUrl } = await resizeImage(imageDataUrl, 1536, 1536)
+    return await compressImage(dataUrl, 0.85)
+  } catch (error) {
+    console.warn("[AI Editor] Image compression failed, using original", error)
+    return imageDataUrl
+  }
+}
+
 // ============ Hook 实现 ============
 export function useImageEditor(): UseImageEditorReturn {
   const [step, setStep] = useState<EditorStep>("upload")
@@ -414,12 +425,17 @@ export function useImageEditor(): UseImageEditorReturn {
     // AI 融合后处理 (60%)
     updateProgress("AI fusion: Harmonizing lighting and style...", 60, { driftTo: 78 })
     try {
+      const [compressedComposite, compressedBase] = await Promise.all([
+        compressDataUrlForUpload(compositeResult),
+        compressDataUrlForUpload(images.baseImage),
+      ])
+
       const fusionResponse = await fetch("/api/fusion", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          composite_image: compositeResult,
-          original_base: images.baseImage,
+          composite_image: compressedComposite,
+          original_base: compressedBase,
           mask_region: mask.coordinates,
         }),
       })
