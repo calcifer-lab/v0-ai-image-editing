@@ -36,7 +36,7 @@ export default function ElementCropper({ image, crop, onCropChange }: ElementCro
   const dragStart = useRef<{ x: number; y: number } | null>(null)
   const [draftSelection, setDraftSelection] = useState<Selection | null>(null)
   const [naturalSize, setNaturalSize] = useState<{ width: number; height: number }>({ width: 0, height: 0 })
-  const [tool, setTool] = useState<Tool>("selection")
+  const [tool, setTool] = useState<Tool>("brush")
   const [brushSize, setBrushSize] = useState(80)
   const [history, setHistory] = useState<ImageData[]>([])
   const [historyIndex, setHistoryIndex] = useState(-1)

@@ -448,6 +448,8 @@ export function useImageEditor(): UseImageEditorReturn {
       throw new Error("Missing required images or mask")
     }
 
+    updateProgress("Compressing images for upload...", 12, { driftTo: 18 })
+
     // Downscale inputs to avoid oversized payloads before calling inpaint
     const [baseBlob, maskBlob, referenceBlob] = await Promise.all([
       dataUrlToBlob(images.baseImage),
@@ -466,6 +468,7 @@ export function useImageEditor(): UseImageEditorReturn {
     let processedReferenceImage = await blobToDataUrl(compressedReference)
     const processedMaskImage = await blobToDataUrl(compressedMask)
 
+    updateProgress("Cleaning masked region...", 20, { driftTo: 28 })
     // Remove masked region from the base so the model is forced to replace it
     processedBaseImage = await removeMaskedRegionFromBase(processedBaseImage, processedMaskImage)
 
@@ -474,14 +477,14 @@ export function useImageEditor(): UseImageEditorReturn {
 
     // Trigger image analysis if not already done - 传入 elementCrop 以聚焦分析用户选择的区域
     if (!currentAnalysis && !params.prompt.trim()) {
-      setProcessingStatus("Analyzing selected element region...")
+      updateProgress("Analyzing selected element region...", 28, { driftTo: 36 })
       const freshAnalysis = await analyzeImage(images.elementImage, elementCrop)
       // 立即使用新鲜的分析结果，避免依赖可能为 null 的旧状态
       currentAnalysis = freshAnalysis
     }
 
     // 裁剪参考图片（如果用户有选择裁剪区域）
-    setProcessingStatus("Preparing reference image...")
+    updateProgress("Preparing reference image...", 38, { driftTo: 44 })
     let processedReference = processedReferenceImage
     if (elementCrop && elementCrop.width > 0 && elementCrop.height > 0) {
       try {
@@ -492,7 +495,7 @@ export function useImageEditor(): UseImageEditorReturn {
       }
     }
 
-    setProcessingStatus("Sending request to AI model...")
+    updateProgress("Sending request to AI model...", 48, { driftTo: 62 })
 
     // 构建提示词
     let finalPrompt: string
@@ -533,7 +536,7 @@ export function useImageEditor(): UseImageEditorReturn {
       throw new Error(await response.text() || `API error: ${response.status}`)
     }
 
-    setProcessingStatus("Processing complete, loading result...")
+    updateProgress("AI model processing response...", 72, { driftTo: 78 })
     const data = await safeParseJSON(response) as { result_image?: string }
 
     if (!data.result_image) {
@@ -541,7 +544,7 @@ export function useImageEditor(): UseImageEditorReturn {
     }
 
     return data.result_image
-  }, [images, mask, params, imageAnalysis, analyzeImage, elementCrop])
+  }, [images, mask, params, imageAnalysis, analyzeImage, elementCrop, updateProgress])
 
   // 处理主流程
   const handleProcess = useCallback(async () => {
@@ -549,7 +552,7 @@ export function useImageEditor(): UseImageEditorReturn {
 
     setIsProcessing(true)
     setError(null)
-    setProcessingStatus("Preparing images...")
+    updateProgress("Preparing images...", 5)
 
     try {
       let finalImage: string
@@ -561,7 +564,7 @@ export function useImageEditor(): UseImageEditorReturn {
           finalImage = await processAIMode()
         } catch (aiError) {
           console.warn("[AI Editor] Inpaint failed, falling back to Direct Patch", aiError)
-          setProcessingStatus("AI inpaint failed, using direct composite fallback...")
+          updateProgress("AI inpaint failed, using direct composite fallback...", 65)
           finalImage = await processCompositeMode()
           console.log("[AI Editor] Fallback composite complete")
         }
