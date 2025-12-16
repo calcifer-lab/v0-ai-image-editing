@@ -87,19 +87,34 @@ async function cropImageToDataUrl(imageUrl: string, crop: CropRegion): Promise<s
 }
 
 function buildPromptFromAnalysis(imageAnalysis: string): string {
-  // 首先检测是否为裁剪区域分析格式 (新格式)
+  // 首先检测是否为裁剪区域分析格式 (新格式 - 带层级结构)
   const selectedElementMatch = imageAnalysis.match(/Selected Element[^:]*:?\s*([^\n]+)/i)
   
   if (selectedElementMatch) {
     // 新格式：裁剪区域分析
     const selectedElement = selectedElementMatch[1].replace(/\*+/g, "").trim()
     
-    // 提取 Visual Description
-    const objectMatch = imageAnalysis.match(/Object[^:]*:?\s*([^\n]+)/i)
-    const objectDesc = objectMatch ? objectMatch[1].replace(/\*+/g, "").trim() : ""
+    // 提取 Layer Structure（新增的层级结构）
+    const layerStructureMatch = imageAnalysis.match(/Layer Structure[^:]*:?\s*([\s\S]*?)(?=\*\*Spatial|\*\*Visual|\*\*Style|$)/i)
+    const layers: string[] = []
+    if (layerStructureMatch) {
+      const layerText = layerStructureMatch[1]
+      const layerLines = layerText.split('\n').filter(l => l.trim().match(/Layer\s*\d|Top|Bottom/i))
+      layerLines.forEach(line => {
+        const cleaned = line.replace(/^[-\s*]+/, '').replace(/\*+/g, '').trim()
+        if (cleaned) layers.push(cleaned)
+      })
+    }
     
-    // 提取 Key Details to Preserve
-    const keyDetailsMatch = imageAnalysis.match(/Key Details[^:]*:?\s*([\s\S]*?)(?=\*\*|$)/i)
+    // 提取 Spatial Relationships（空间关系）
+    const spatialMatch = imageAnalysis.match(/Spatial Relationships[^:]*:?\s*([\s\S]*?)(?=\*\*Visual|\*\*Style|$)/i)
+    const spatialRelations = spatialMatch 
+      ? spatialMatch[1].replace(/\*+/g, "").trim().split('\n').filter(l => l.trim()).slice(0, 3).join('; ')
+      : ""
+    
+    // 提取 Key Structural Details
+    const keyDetailsMatch = imageAnalysis.match(/Key Structural Details[^:]*:?\s*([\s\S]*?)(?=\*\*|$)/i)
+      || imageAnalysis.match(/Key Details[^:]*:?\s*([\s\S]*?)(?=\*\*|$)/i)
     const keyDetails = keyDetailsMatch 
       ? keyDetailsMatch[1].replace(/\*+/g, "").trim().split('\n').filter(l => l.trim()).slice(0, 3).join('; ')
       : ""
@@ -108,17 +123,26 @@ function buildPromptFromAnalysis(imageAnalysis: string): string {
     const styleMatch = imageAnalysis.match(/Style[^:]*:?\s*([^\n]+)/i)
     const style = styleMatch ? styleMatch[1].replace(/\*+/g, "").trim() : ""
     
+    // 构建包含层级结构的提示词
     let finalPrompt = `COPY EXACTLY the ${selectedElement} from the reference image into the masked region. `
-    if (objectDesc) {
-      finalPrompt += `The element is: ${objectDesc}. `
+    
+    // 添加层级结构描述
+    if (layers.length > 0) {
+      finalPrompt += `STRUCTURE (from top to bottom): ${layers.join(' → ')}. `
     }
+    
+    // 添加空间关系
+    if (spatialRelations) {
+      finalPrompt += `Relationships: ${spatialRelations}. `
+    }
+    
     if (keyDetails) {
-      finalPrompt += `Key details to preserve: ${keyDetails}. `
+      finalPrompt += `Key details: ${keyDetails}. `
     }
     if (style) {
       finalPrompt += `Match the ${style} style. `
     }
-    finalPrompt += `DO NOT invent new objects. Copy the EXACT visual elements from the reference.`
+    finalPrompt += `PRESERVE the exact layer structure and spatial relationships. DO NOT invent new objects.`
     
     return finalPrompt
   }
@@ -174,7 +198,8 @@ export function useImageEditor(): UseImageEditorReturn {
   const [elementCrop, setElementCrop] = useState<CropRegion | null>(null)
 
   // 分析图片 - 支持传入裁剪区域以聚焦分析
-  const analyzeImage = useCallback(async (elementImg: string, crop?: CropRegion | null) => {
+  // 返回分析结果字符串，以便调用者可以立即使用（避免闭包捕获的状态值过时问题）
+  const analyzeImage = useCallback(async (elementImg: string, crop?: CropRegion | null): Promise<string | null> => {
     setIsAnalyzing(true)
     try {
       // 如果有裁剪区域，先裁剪图片再分析
@@ -208,13 +233,16 @@ export function useImageEditor(): UseImageEditorReturn {
         const data = await response.json()
         setImageAnalysis(data.analysis)
         console.log("[AI Editor] Image analysis complete:", data.analysis)
+        return data.analysis
       } else {
         console.warn("[AI Editor] Image analysis failed, continuing without analysis")
         setImageAnalysis(null)
+        return null
       }
     } catch (err) {
       console.warn("[AI Editor] Image analysis error:", err)
       setImageAnalysis(null)
+      return null
     } finally {
       setIsAnalyzing(false)
     }
@@ -296,10 +324,27 @@ export function useImageEditor(): UseImageEditorReturn {
       throw new Error("Missing required images or mask")
     }
 
+    // 使用局部变量跟踪分析结果，避免闭包捕获的状态值过时问题
+    let currentAnalysis = imageAnalysis
+
     // Trigger image analysis if not already done - 传入 elementCrop 以聚焦分析用户选择的区域
-    if (!imageAnalysis && !params.prompt.trim()) {
+    if (!currentAnalysis && !params.prompt.trim()) {
       setProcessingStatus("Analyzing selected element region...")
-      await analyzeImage(images.elementImage, elementCrop)
+      const freshAnalysis = await analyzeImage(images.elementImage, elementCrop)
+      // 立即使用新鲜的分析结果，避免依赖可能为 null 的旧状态
+      currentAnalysis = freshAnalysis
+    }
+
+    // 裁剪参考图片（如果用户有选择裁剪区域）
+    setProcessingStatus("Preparing reference image...")
+    let processedReference = images.elementImage
+    if (elementCrop && elementCrop.width > 0 && elementCrop.height > 0) {
+      try {
+        processedReference = await cropImageToDataUrl(images.elementImage, elementCrop)
+        console.log("[AI Editor] Applied user crop to reference image for AI mode:", elementCrop.width, "x", elementCrop.height)
+      } catch (cropError) {
+        console.warn("[AI Editor] Failed to crop reference image, using original:", cropError)
+      }
     }
 
     setProcessingStatus("Sending request to AI model...")
@@ -308,12 +353,20 @@ export function useImageEditor(): UseImageEditorReturn {
     let finalPrompt: string
     if (params.prompt && params.prompt.trim()) {
       finalPrompt = params.prompt.trim()
-    } else if (imageAnalysis) {
-      finalPrompt = buildPromptFromAnalysis(imageAnalysis)
-      console.log("[AI Editor] Using AI analysis for prompt:", finalPrompt)
+      console.log("[AI Editor] Using user-provided prompt:", finalPrompt)
+    } else if (currentAnalysis) {
+      finalPrompt = buildPromptFromAnalysis(currentAnalysis)
+      console.log("[AI Editor] Using AI analysis for prompt")
+      console.log("[AI Editor] Analysis:", currentAnalysis)
+      console.log("[AI Editor] Built prompt:", finalPrompt)
     } else {
+      // 如果分析失败，使用通用提示词作为后备
       finalPrompt = "COPY the EXACT elements from the reference image into the masked region. Do NOT create new objects. Do NOT invent decorations. Only reproduce what you SEE in the reference."
+      console.warn("[AI Editor] No analysis available, using fallback prompt")
     }
+
+    console.log("[AI Editor] Final prompt being sent:", finalPrompt)
+    console.log("[AI Editor] Has elementCrop:", !!elementCrop, elementCrop)
 
     const response = await fetch("/api/inpaint", {
       method: "POST",
@@ -321,7 +374,7 @@ export function useImageEditor(): UseImageEditorReturn {
       body: JSON.stringify({
         base_image: images.baseImage,
         mask_image: mask.dataUrl,
-        reference_image: images.elementImage,
+        reference_image: processedReference,  // 使用裁剪后的参考图片
         prompt: finalPrompt,
         options: {
           strength: params.strength,

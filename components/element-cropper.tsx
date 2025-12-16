@@ -154,11 +154,23 @@ export default function ElementCropper({ image, crop, onCropChange }: ElementCro
     }
 
     if (hasSelection) {
+      // 将 maskCanvas 坐标（显示尺寸）转换为原始图片坐标
+      const scaleX = naturalSize.width / maskCanvas.width
+      const scaleY = naturalSize.height / maskCanvas.height
+      
+      const cropX = Math.round(minX * scaleX)
+      const cropY = Math.round(minY * scaleY)
+      const cropWidth = Math.round((maxX - minX + 1) * scaleX)
+      const cropHeight = Math.round((maxY - minY + 1) * scaleY)
+      
+      console.log("[ElementCropper] Crop region (display):", minX, minY, maxX - minX + 1, maxY - minY + 1)
+      console.log("[ElementCropper] Crop region (natural):", cropX, cropY, cropWidth, cropHeight)
+      
       onCropChange({
-        x: minX,
-        y: minY,
-        width: maxX - minX + 1,
-        height: maxY - minY + 1,
+        x: cropX,
+        y: cropY,
+        width: cropWidth,
+        height: cropHeight,
         imageWidth: naturalSize.width,
         imageHeight: naturalSize.height,
       })

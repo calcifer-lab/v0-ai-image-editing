@@ -9,7 +9,6 @@ interface PostProcessRequest {
   mask_image: string // base64
   options?: {
     blend_edges?: boolean
-    match_brightness?: boolean
     blur_radius?: number
   }
 }
@@ -47,16 +46,35 @@ export async function POST(request: NextRequest) {
       // Apply edge blending using the mask
       // This creates a smoother transition between the inpainted region and the original
       try {
+        // Get metadata from result image to ensure dimensions match
+        const resultMetadata = await sharp(resultBuffer).metadata()
+        const maskWidth = resultMetadata.width || 0
+        const maskHeight = resultMetadata.height || 0
+
         // Create a blurred version of the mask for soft edges
         const blurredMask = await sharp(maskBuffer)
+          .resize(maskWidth, maskHeight, { fit: "fill" })
           .blur(blur_radius)
+          .toFormat("png")
           .toBuffer()
 
-        // Composite the result with the base using the blurred mask
+        // Extract the alpha channel from the blurred mask (assuming mask is white areas on black background)
+        // We need to convert the mask to an alpha channel
+        const blurredMaskWithAlpha = await sharp(blurredMask)
+          .extractChannel("red") // Use red channel as grayscale mask
+          .toBuffer()
+
+        // Create a 4-channel version of the result with the blurred mask as alpha
+        const resultWithAlpha = await sharp(resultBuffer)
+          .ensureAlpha()
+          .joinChannel(blurredMaskWithAlpha, { replaceAlpha: true })
+          .toBuffer()
+
+        // Composite the result with the base using the blurred mask as alpha
         processedImage = await sharp(baseBuffer)
           .composite([
             {
-              input: resultBuffer,
+              input: resultWithAlpha,
               blend: "over",
             },
           ])

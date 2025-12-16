@@ -25,16 +25,46 @@ async function tryGeminiImageGeneration(
   console.log("[Inpaint] Using Gemini 2.5 Flash Image (google/gemini-2.5-flash-image)...")
   console.log("[Inpaint] Prompt:", prompt)
 
+  // 调试日志：验证图片大小
+  const getBase64Size = (dataUrl: string) => {
+    const base64 = dataUrl.split(",")[1] || dataUrl
+    return Math.round((base64.length * 3) / 4 / 1024) // KB
+  }
+  console.log("[Inpaint] Reference image size:", getBase64Size(reference_image), "KB")
+  console.log("[Inpaint] Base image size:", getBase64Size(base_image), "KB")
+  console.log("[Inpaint] Mask image size:", getBase64Size(mask_image), "KB")
+
+  // 调试：检查掩码是否包含白色像素
+  try {
+    const maskBase64 = mask_image.split(",")[1] || mask_image
+    console.log("[Inpaint] Mask format check:", mask_image.substring(0, 50))
+
+    // 验证掩码是否实际包含白色像素
+    if (typeof window === 'undefined') {
+      // Server-side: use Buffer to decode base64
+      const Buffer = require('buffer').Buffer
+      const imgData = Buffer.from(maskBase64, 'base64')
+      console.log("[Inpaint] Mask data size:", imgData.length, "bytes")
+    }
+  } catch (e) {
+    console.warn("[Inpaint] Could not analyze mask:", e)
+  }
+
   const systemPrompt = buildGeminiInpaintPrompt(prompt)
+  console.log("[Inpaint] System prompt length:", systemPrompt.length, "chars")
   
   const content = [
     { type: "text", text: systemPrompt },
-    { type: "text", text: "⬇️ REFERENCE IMAGE - STUDY THIS CAREFULLY! Copy the EXACT elements you see here:" },
+    { type: "text", text: "=== IMAGE 1: REFERENCE/SOURCE (COPY FROM THIS) ===" },
+    { type: "text", text: "This is the REFERENCE image containing the elements to extract and copy. Study this carefully - these elements should appear in your output." },
     { type: "image_url", image_url: { url: reference_image } },
-    { type: "text", text: "⬇️ TARGET IMAGE (the image to edit):" },
+    { type: "text", text: "=== IMAGE 2: TARGET/BASE (PASTE INTO THIS) ===" },
+    { type: "text", text: "This is the TARGET image that will be modified. This is the background/base. You will INSERT elements from Image 1 into this image." },
     { type: "image_url", image_url: { url: base_image } },
-    { type: "text", text: "⬇️ MASK IMAGE (white area = where to paste the content from REFERENCE IMAGE):" },
+    { type: "text", text: "=== IMAGE 3: MASK (WHITE = WHERE TO PASTE) ===" },
+    { type: "text", text: "This is the MASK. White pixels show WHERE to insert Image 1's content. Black pixels = keep Image 2's original content." },
     { type: "image_url", image_url: { url: mask_image } },
+    { type: "text", text: "\n🎯 FINAL INSTRUCTION:\nGenerate a NEW IMAGE that combines:\n- Image 2's content in the BLACK masked areas (unchanged)\n- Image 1's content in the WHITE masked areas (copied and pasted)\n\nThe result MUST be DIFFERENT from Image 2. The elements from Image 1 MUST be VISIBLE in the output." },
   ]
 
   const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
@@ -58,6 +88,13 @@ async function tryGeminiImageGeneration(
 
   const data = await response.json()
   console.log("[Inpaint] Gemini response received")
+  console.log("[Inpaint] Response structure:", JSON.stringify({
+    hasChoices: !!data.choices,
+    choicesLength: data.choices?.length,
+    hasMessage: !!data.choices?.[0]?.message,
+    hasImages: !!data.choices?.[0]?.message?.images,
+    messageKeys: data.choices?.[0]?.message ? Object.keys(data.choices[0].message) : []
+  }))
 
   // 提取生成的图片
   const message = data.choices?.[0]?.message
@@ -314,7 +351,9 @@ export async function POST(request: NextRequest): Promise<NextResponse<InpaintRe
     }
 
     console.log("[Inpaint] Has reference image:", !!reference_image)
+    console.log("[Inpaint] Reference image preview:", reference_image ? reference_image.substring(0, 50) + "..." : "null")
     console.log("[Inpaint] Prompt:", prompt)
+    console.log("[Inpaint] Options:", JSON.stringify(options))
 
     // 优先使用 Gemini（如果有参考图片且配置了 OpenRouter API key）
     const openRouterApiKey = process.env.OPENROUTER_API_KEY

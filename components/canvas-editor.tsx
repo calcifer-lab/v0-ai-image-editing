@@ -159,15 +159,23 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
     }
 
     if (hasSelection) {
-      onMaskCreated({
-        dataUrl,
-        coordinates: {
-          x: minX,
-          y: minY,
-          width: maxX - minX,
-          height: maxY - minY,
-        },
-      })
+      const width = maxX - minX + 1
+      const height = maxY - minY + 1
+
+      // 验证掩码尺寸非零
+      if (width > 0 && height > 0) {
+        onMaskCreated({
+          dataUrl,
+          coordinates: {
+            x: minX,
+            y: minY,
+            width,
+            height,
+          },
+        })
+      } else {
+        console.warn("[Canvas Editor] Invalid mask dimensions:", { width, height })
+      }
     }
   }, [onMaskCreated])
 

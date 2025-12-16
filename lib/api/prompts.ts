@@ -6,32 +6,41 @@
  * Gemini 图像合成系统提示词
  */
 export function buildGeminiInpaintPrompt(userPrompt: string): string {
-  return `You are a precision image compositor. Your task is to COPY the EXACT visual content from the REFERENCE IMAGE into the masked region.
+  return `You are a professional image compositor. I will provide THREE images in order:
 
-CRITICAL INSTRUCTIONS - YOU MUST FOLLOW EXACTLY:
+IMAGE 1 - REFERENCE/SOURCE: The element I want to COPY FROM (what should appear in the final result)
+IMAGE 2 - TARGET/BASE: The background image I want to PASTE INTO (this will be modified)
+IMAGE 3 - MASK: White pixels = WHERE to paste; Black pixels = keep original
 
-1. LOOK AT THE REFERENCE IMAGE CAREFULLY:
-   - Study the REFERENCE IMAGE in detail
-   - Identify EXACTLY what objects/elements appear in the region corresponding to the mask
-   - For feet/lower body: look for wheels, fire wheels (风火轮 - golden rings with flames), special footwear, platforms, etc.
-   - DO NOT INVENT OR CREATE NEW OBJECTS - only copy what you SEE in the reference
+YOUR TASK - DETAILED STEP BY STEP:
+1. Examine IMAGE 1 (Reference): Identify ALL visible elements, their layers, colors, and structure
+2. Examine IMAGE 2 (Target): This is the BASE that will be modified
+3. Examine IMAGE 3 (Mask): White region = exact location to INSERT the reference content
+4. Generate OUTPUT: IMAGE 2 with the white-masked region REPLACED by elements from IMAGE 1
 
-2. COPY EXACTLY WHAT YOU SEE:
-   - If the reference shows FIRE WHEELS (金色圆环带火焰的风火轮) under the feet → reproduce those EXACT fire wheels
-   - If the reference shows golden circular wheels with orange flames → copy those EXACT golden wheels with flames
-   - Do NOT substitute with different objects
-   - Do NOT create random decorative elements
-   - Do NOT simplify or abstract the objects
+CRITICAL SUCCESS CRITERIA:
+✓ The OUTPUT must be VISIBLY DIFFERENT from IMAGE 2 (the original target)
+✓ Elements from IMAGE 1 must be CLEARLY VISIBLE in the white-masked area
+✓ Preserve the EXACT structure, layers, and details from IMAGE 1
+✓ Match lighting, perspective, and style between inserted content and background
+✓ Maintain realistic shadows, reflections, and depth
 
-3. VISUAL FIDELITY IS CRITICAL:
-   - Match the EXACT shape (circular wheels, not random shapes)
-   - Match the EXACT colors (golden rings, orange/red flames)
-   - Match the EXACT effects (fire, glow, energy)
-   - The output must look like a direct copy-paste of the reference element
+WHAT TO COPY from IMAGE 1:
+${userPrompt}
 
-4. User's request: ${userPrompt}
+COMMON MISTAKES TO AVOID:
+✗ Do NOT return IMAGE 2 unchanged
+✗ Do NOT ignore IMAGE 1 content
+✗ Do NOT blend so heavily that IMAGE 1 elements become invisible
+✗ Do NOT create new objects not present in IMAGE 1
+✗ Do NOT swap which image is the source vs target
 
-IMPORTANT: Look at the reference image RIGHT NOW. See what is under the character's feet. Copy THAT EXACT THING. Do not create something different.`
+VERIFICATION: Before outputting, ask yourself:
+- Can I clearly see elements from IMAGE 1 in the result?
+- Is the result different from the original IMAGE 2?
+- Did I copy the complete layer structure from IMAGE 1?
+
+OUTPUT FORMAT: A single modified image that is IMAGE 2 with IMAGE 1's content inserted into the masked region.`
 }
 
 /**
@@ -69,23 +78,42 @@ CRITICAL INSTRUCTIONS:
 2. Do NOT speculate about what might be outside the visible area
 3. Do NOT describe characters, people, or context that is NOT visible
 4. Focus ENTIRELY on the objects/elements visible in this cropped selection
+5. MUST identify the LAYERED STRUCTURE - what is on top, what is below, what contains what
 
 Your response MUST follow this exact format:
 
-**Selected Element**: [What is the main object/element in this cropped selection? Be specific: food, object, item, clothing piece, etc.]
+**Selected Element**: [What is the overall selection? Be specific]
 
-**Visual Description**:
-- Object: [Exact description of the main object/element selected]
-- Colors: [Exact colors you see]
-- Material/Texture: [What material or texture does it appear to be?]
-- Shape: [Describe the shape and form]
+**Layer Structure** (CRITICAL - from TOP to BOTTOM):
+- Layer 1 (Top): [What is on the very top? e.g., "food items", "decorations"]
+- Layer 2: [What is directly below Layer 1? e.g., "metal grill/rack", "plate"]
+- Layer 3: [If exists, what is below Layer 2? e.g., "tray base", "container"]
+- ... [Continue for all visible layers]
+- Layer N (Bottom): [What is at the very bottom of the selection?]
+
+**Spatial Relationships**:
+- [Describe how layers relate: "Food items REST ON the metal grill", "Grill SITS INSIDE the tray", etc.]
+- [Note any containment: "X contains Y", "Y is held by X"]
+
+**Visual Details Per Layer**:
+- Layer 1: [Colors, texture, material, shape]
+- Layer 2: [Colors, texture, material, shape]
+- ... [For each layer]
 
 **Style**: [photorealistic, cartoon, 3D render, anime, illustration, etc.]
 
-**Key Details to Preserve**:
-- List 2-3 most important visual details that MUST be faithfully reproduced when transferring this element
+**Key Structural Details to Preserve**:
+1. [Most important structural relationship]
+2. [Second most important detail]
+3. [Third important detail]
 
-REMEMBER: Only describe what is VISIBLE in this cropped image. If you see food on a tray, describe the food and tray. Do NOT describe people holding it if they are not in this cropped selection.`
+EXAMPLE for food on a tray:
+- Layer 1 (Top): 6 glazed pastries, golden-brown color
+- Layer 2: Metal wire grill/rack with parallel bars
+- Layer 3 (Bottom): Dark rectangular tray with raised edges
+- Relationships: Pastries rest on grill; Grill sits in tray; Tray contains everything
+
+REMEMBER: Accurately identifying layers and their relationships is ESSENTIAL for faithful reproduction.`
 
 /**
  * FLUX 增强提示词
