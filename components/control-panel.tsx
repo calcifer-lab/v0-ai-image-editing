@@ -19,6 +19,7 @@ interface ControlPanelProps {
   isProcessing: boolean
   canProcess: boolean
   processingStatus?: string
+  processingProgress?: number
   error?: string | null
   imageAnalysis?: string | null
   isAnalyzing?: boolean
@@ -31,6 +32,7 @@ export default function ControlPanel({
   isProcessing,
   canProcess,
   processingStatus = "",
+  processingProgress = 0,
   error = null,
   imageAnalysis = null,
   isAnalyzing = false,
@@ -64,6 +66,7 @@ export default function ControlPanel({
         isProcessing={isProcessing}
         canProcess={canProcess}
         processingStatus={processingStatus}
+        processingProgress={processingProgress}
         editMode={params.editMode}
       />
     </Card>
@@ -90,8 +93,8 @@ function EditModeSection({
             active={params.editMode === "composite"}
             onClick={() => onParamsChange({ ...params, editMode: "composite" })}
             icon={Layers}
-            label="Direct"
-            description="Paste as-is"
+            label="Direct Patch"
+            description="AI-enhanced"
           />
           <ModeButton
             active={params.editMode === "ai"}
@@ -156,10 +159,9 @@ function DirectPasteSettings({
               <Layers className="h-5 w-5 text-primary" />
             </div>
             <div className="flex-1">
-              <h4 className="font-semibold">Direct Paste Mode</h4>
+              <h4 className="font-semibold">Direct Patch Mode</h4>
               <p className="mt-1 text-sm text-muted-foreground">
-                The selected element will be copied exactly as-is and pasted into the target region. Background will be
-                automatically removed.
+                The selected element will be intelligently patched into the target region with AI-powered fusion for natural integration, style consistency, and seamless blending.
               </p>
             </div>
           </div>
@@ -487,15 +489,17 @@ function ProcessButton({
   isProcessing,
   canProcess,
   processingStatus,
+  processingProgress,
   editMode,
 }: {
   onProcess: () => void
   isProcessing: boolean
   canProcess: boolean
   processingStatus: string
+  processingProgress: number
   editMode: "ai" | "composite"
 }) {
-  const buttonText = editMode === "composite" ? "Paste" : "Generate"
+  const buttonText = editMode === "composite" ? "Patch" : "Generate"
   const Icon = editMode === "composite" ? Layers : Sparkles
 
   return (
@@ -518,8 +522,21 @@ function ProcessButton({
           Select a region on the canvas to continue
         </p>
       )}
-      {isProcessing && processingStatus && (
-        <p className="mt-2 text-center text-xs text-muted-foreground">{processingStatus}</p>
+      {isProcessing && (
+        <div className="mt-3 space-y-2">
+          {/* Progress bar */}
+          <div className="w-full bg-secondary rounded-full h-2 overflow-hidden">
+            <div
+              className="bg-primary h-full transition-all duration-300 ease-in-out"
+              style={{ width: `${processingProgress}%` }}
+            />
+          </div>
+          {/* Status text with percentage */}
+          <div className="flex justify-between text-xs text-muted-foreground">
+            <span>{processingStatus}</span>
+            <span className="font-mono font-semibold">{processingProgress}%</span>
+          </div>
+        </div>
       )}
     </div>
   )

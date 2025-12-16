@@ -10,6 +10,8 @@ import type {
   DEFAULT_EDIT_PARAMS,
 } from "@/types"
 import { resizeToAspectRatio, compositeImages, loadImage } from "@/lib/image-utils"
+import { resizeImage as resizeImageBlob } from "@/utils/imageResize"
+import { safeParseJSON } from "@/utils/safeParse"
 
 // ============ 初始状态 ============
 const INITIAL_IMAGES: ImageData = {
@@ -39,6 +41,7 @@ export interface UseImageEditorReturn {
   resultImage: string | null
   isProcessing: boolean
   processingStatus: string
+  processingProgress: number // 0-100 百分比
   error: string | null
   imageAnalysis: string | null
   isAnalyzing: boolean
@@ -84,6 +87,20 @@ async function cropImageToDataUrl(imageUrl: string, crop: CropRegion): Promise<s
   )
 
   return canvas.toDataURL("image/png")
+}
+
+async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
+  const response = await fetch(dataUrl)
+  return response.blob()
+}
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onloadend = () => resolve(reader.result as string)
+    reader.onerror = reject
+    reader.readAsDataURL(blob)
+  })
 }
 
 function buildPromptFromAnalysis(imageAnalysis: string): string {
@@ -192,10 +209,17 @@ export function useImageEditor(): UseImageEditorReturn {
   const [resultImage, setResultImage] = useState<string | null>(null)
   const [isProcessing, setIsProcessing] = useState(false)
   const [processingStatus, setProcessingStatus] = useState("")
+  const [processingProgress, setProcessingProgress] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [imageAnalysis, setImageAnalysis] = useState<string | null>(null)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [elementCrop, setElementCrop] = useState<CropRegion | null>(null)
+
+  // 辅助函数：更新处理状态和进度
+  const updateProgress = useCallback((status: string, progress: number) => {
+    setProcessingStatus(status)
+    setProcessingProgress(progress)
+  }, [])
 
   // 分析图片 - 支持传入裁剪区域以聚焦分析
   // 返回分析结果字符串，以便调用者可以立即使用（避免闭包捕获的状态值过时问题）
@@ -263,16 +287,16 @@ export function useImageEditor(): UseImageEditorReturn {
     setMask(maskData)
   }, [])
 
-  // 处理直接合成模式
+  // 处理直接合成模式（带 AI 融合）
   const processCompositeMode = useCallback(async (): Promise<string> => {
     if (!images.baseImage || !images.elementImage || !mask) {
       throw new Error("Missing required images or mask")
     }
 
-    console.log("[AI Editor] Using direct composite mode")
+    console.log("[AI Editor] Using Direct Patch mode with AI fusion")
 
-    // 裁剪参考图片
-    setProcessingStatus("Preparing reference image crop...")
+    // 裁剪参考图片 (10%)
+    updateProgress("Preparing reference image...", 10)
     let processedReference = images.elementImage
     if (elementCrop) {
       try {
@@ -283,15 +307,15 @@ export function useImageEditor(): UseImageEditorReturn {
       }
     }
 
-    // 移除背景
-    setProcessingStatus("Removing background from reference image...")
+    // 移除背景 (25%)
+    updateProgress("Removing background...", 25)
     try {
       const bgResponse = await fetch("/api/remove-background", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ image: processedReference }),
       })
-      
+
       if (bgResponse.ok) {
         const bgData = await bgResponse.json()
         if (bgData.result_image) {
@@ -304,18 +328,47 @@ export function useImageEditor(): UseImageEditorReturn {
     } catch (bgError) {
       console.warn("[AI Editor] Background removal error:", bgError)
     }
-    
-    // 合成图片
-    setProcessingStatus("Compositing images...")
-    const result = await compositeImages(
+
+    // 合成图片 (40%)
+    updateProgress("Patching element into image...", 40)
+    const compositeResult = await compositeImages(
       images.baseImage,
       processedReference,
       mask.dataUrl,
       mask.coordinates
     )
-    
-    console.log("[AI Editor] Direct composite complete")
-    return result
+
+    console.log("[AI Editor] Composite complete, starting AI fusion...")
+
+    // AI 融合后处理 (60%)
+    updateProgress("AI fusion: Harmonizing lighting and style...", 60)
+    try {
+      const fusionResponse = await fetch("/api/fusion", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          composite_image: compositeResult,
+          original_base: images.baseImage,
+          mask_region: mask.coordinates,
+        }),
+      })
+
+      if (fusionResponse.ok) {
+        const fusionData = await fusionResponse.json()
+        if (fusionData.fused_image) {
+          console.log("[AI Editor] AI fusion complete:", fusionData.meta.model)
+          return fusionData.fused_image
+        }
+      } else {
+        console.warn("[AI Editor] AI fusion failed, using composite result")
+      }
+    } catch (fusionError) {
+      console.warn("[AI Editor] AI fusion error:", fusionError)
+    }
+
+    // 如果融合失败，返回合成结果
+    console.log("[AI Editor] Direct Patch complete (no fusion)")
+    return compositeResult
   }, [images, mask, elementCrop])
 
   // 处理 AI 生成模式
@@ -323,6 +376,23 @@ export function useImageEditor(): UseImageEditorReturn {
     if (!images.baseImage || !images.elementImage || !mask) {
       throw new Error("Missing required images or mask")
     }
+
+    // Downscale inputs to avoid oversized payloads before calling inpaint
+    const [baseBlob, maskBlob, referenceBlob] = await Promise.all([
+      dataUrlToBlob(images.baseImage),
+      dataUrlToBlob(mask.dataUrl),
+      dataUrlToBlob(images.elementImage),
+    ])
+
+    const [compressedBase, compressedMask, compressedReference] = await Promise.all([
+      resizeImageBlob(baseBlob, 1536, 0.85),
+      resizeImageBlob(maskBlob, 768, 0.9),
+      resizeImageBlob(referenceBlob, 768, 0.85),
+    ])
+
+    let processedBaseImage = await blobToDataUrl(compressedBase)
+    let processedReferenceImage = await blobToDataUrl(compressedReference)
+    const processedMaskImage = await blobToDataUrl(compressedMask)
 
     // 使用局部变量跟踪分析结果，避免闭包捕获的状态值过时问题
     let currentAnalysis = imageAnalysis
@@ -337,10 +407,10 @@ export function useImageEditor(): UseImageEditorReturn {
 
     // 裁剪参考图片（如果用户有选择裁剪区域）
     setProcessingStatus("Preparing reference image...")
-    let processedReference = images.elementImage
+    let processedReference = processedReferenceImage
     if (elementCrop && elementCrop.width > 0 && elementCrop.height > 0) {
       try {
-        processedReference = await cropImageToDataUrl(images.elementImage, elementCrop)
+        processedReference = await cropImageToDataUrl(processedReferenceImage, elementCrop)
         console.log("[AI Editor] Applied user crop to reference image for AI mode:", elementCrop.width, "x", elementCrop.height)
       } catch (cropError) {
         console.warn("[AI Editor] Failed to crop reference image, using original:", cropError)
@@ -372,8 +442,8 @@ export function useImageEditor(): UseImageEditorReturn {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        base_image: images.baseImage,
-        mask_image: mask.dataUrl,
+        base_image: processedBaseImage,
+        mask_image: processedMaskImage,
         reference_image: processedReference,  // 使用裁剪后的参考图片
         prompt: finalPrompt,
         options: {
@@ -385,12 +455,16 @@ export function useImageEditor(): UseImageEditorReturn {
     })
 
     if (!response.ok) {
-      const errorData = await response.json()
-      throw new Error(errorData.error || `API error: ${response.status}`)
+      throw new Error(await response.text() || `API error: ${response.status}`)
     }
 
     setProcessingStatus("Processing complete, loading result...")
-    const data = await response.json()
+    const data = await safeParseJSON(response) as { result_image?: string }
+
+    if (!data.result_image) {
+      throw new Error("Inpainting API response missing result image")
+    }
+
     return data.result_image
   }, [images, mask, params, imageAnalysis, analyzeImage, elementCrop])
 
@@ -408,12 +482,19 @@ export function useImageEditor(): UseImageEditorReturn {
       if (params.editMode === "composite") {
         finalImage = await processCompositeMode()
       } else {
-        finalImage = await processAIMode()
+        try {
+          finalImage = await processAIMode()
+        } catch (aiError) {
+          console.warn("[AI Editor] Inpaint failed, falling back to Direct Patch", aiError)
+          setProcessingStatus("AI inpaint failed, using direct composite fallback...")
+          finalImage = await processCompositeMode()
+          console.log("[AI Editor] Fallback composite complete")
+        }
       }
 
-      // 调整输出尺寸
+      // 调整输出尺寸 (80%)
       if (params.outputDimensions.aspectRatio !== "original") {
-        setProcessingStatus("Adjusting output dimensions...")
+        updateProgress("Adjusting output dimensions...", 80)
         try {
           const resized = await resizeToAspectRatio(
             finalImage,
@@ -429,6 +510,7 @@ export function useImageEditor(): UseImageEditorReturn {
         }
       }
 
+      updateProgress("Complete!", 90)
       setResultImage(finalImage)
       setStep("result")
       console.log("[AI Editor] Processing complete")
@@ -438,8 +520,9 @@ export function useImageEditor(): UseImageEditorReturn {
     } finally {
       setIsProcessing(false)
       setProcessingStatus("")
+      setProcessingProgress(0)
     }
-  }, [images, mask, params, processCompositeMode, processAIMode])
+  }, [images, mask, params, processCompositeMode, processAIMode, updateProgress])
 
   // 重置状态
   const handleReset = useCallback(() => {
@@ -464,6 +547,7 @@ export function useImageEditor(): UseImageEditorReturn {
     resultImage,
     isProcessing,
     processingStatus,
+    processingProgress,
     error,
     imageAnalysis,
     isAnalyzing,

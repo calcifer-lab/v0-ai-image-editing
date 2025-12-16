@@ -140,11 +140,14 @@ export default function ElementCropper({ image, crop, onCropChange }: ElementCro
     let maxY = 0
     let hasSelection = false
 
+    // First pass: find exact bounding box of white pixels
+    const whitePixels: { x: number; y: number }[] = []
     for (let y = 0; y < maskCanvas.height; y++) {
       for (let x = 0; x < maskCanvas.width; x++) {
         const i = (y * maskCanvas.width + x) * 4
         if (data[i] === 255) {
           hasSelection = true
+          whitePixels.push({ x, y })
           minX = Math.min(minX, x)
           minY = Math.min(minY, y)
           maxX = Math.max(maxX, x)
@@ -153,19 +156,84 @@ export default function ElementCropper({ image, crop, onCropChange }: ElementCro
       }
     }
 
+    // Optional: Remove outlier pixels (top/bottom 2% of pixels based on density)
+    // This helps if user accidentally painted in unwanted areas
+    if (whitePixels.length > 100) {
+      // Calculate density in regions to detect sparse outliers
+      const regionSize = 20 // pixels
+      const densityMap = new Map<string, number>()
+
+      whitePixels.forEach(({ x, y }) => {
+        const rx = Math.floor(x / regionSize)
+        const ry = Math.floor(y / regionSize)
+        const key = `${rx},${ry}`
+        densityMap.set(key, (densityMap.get(key) || 0) + 1)
+      })
+
+      // Find regions with low density (potential outliers)
+      const avgDensity = Array.from(densityMap.values()).reduce((a, b) => a + b, 0) / densityMap.size
+      const threshold = avgDensity * 0.15 // Regions with <15% of average density are outliers
+
+      // Recalculate bounds excluding sparse regions
+      let filteredMinX = maskCanvas.width
+      let filteredMinY = maskCanvas.height
+      let filteredMaxX = 0
+      let filteredMaxY = 0
+      let hasFiltered = false
+
+      whitePixels.forEach(({ x, y }) => {
+        const rx = Math.floor(x / regionSize)
+        const ry = Math.floor(y / regionSize)
+        const key = `${rx},${ry}`
+        const density = densityMap.get(key) || 0
+
+        if (density >= threshold) {
+          hasFiltered = true
+          filteredMinX = Math.min(filteredMinX, x)
+          filteredMinY = Math.min(filteredMinY, y)
+          filteredMaxX = Math.max(filteredMaxX, x)
+          filteredMaxY = Math.max(filteredMaxY, y)
+        }
+      })
+
+      // Use filtered bounds if they're significantly tighter (at least 5% reduction)
+      if (hasFiltered) {
+        const originalArea = (maxX - minX + 1) * (maxY - minY + 1)
+        const filteredArea = (filteredMaxX - filteredMinX + 1) * (filteredMaxY - filteredMinY + 1)
+
+        if (filteredArea < originalArea * 0.95 && filteredArea > 0) {
+          console.log("[ElementCropper] Outlier removal reduced area by", ((1 - filteredArea / originalArea) * 100).toFixed(1), "%")
+          minX = filteredMinX
+          minY = filteredMinY
+          maxX = filteredMaxX
+          maxY = filteredMaxY
+        }
+      }
+    }
+
     if (hasSelection) {
+      // Apply a small inward padding to avoid edge artifacts (2-5 pixels depending on brush size)
+      // This helps exclude accidentally painted edge pixels
+      const paddingX = Math.max(1, Math.min(3, Math.floor((maxX - minX) * 0.02)))
+      const paddingY = Math.max(1, Math.min(3, Math.floor((maxY - minY) * 0.02)))
+
+      minX = Math.min(minX + paddingX, maxX)
+      minY = Math.min(minY + paddingY, maxY)
+      maxX = Math.max(maxX - paddingX, minX)
+      maxY = Math.max(maxY - paddingY, minY)
+
       // 将 maskCanvas 坐标（显示尺寸）转换为原始图片坐标
       const scaleX = naturalSize.width / maskCanvas.width
       const scaleY = naturalSize.height / maskCanvas.height
-      
+
       const cropX = Math.round(minX * scaleX)
       const cropY = Math.round(minY * scaleY)
       const cropWidth = Math.round((maxX - minX + 1) * scaleX)
       const cropHeight = Math.round((maxY - minY + 1) * scaleY)
-      
-      console.log("[ElementCropper] Crop region (display):", minX, minY, maxX - minX + 1, maxY - minY + 1)
+
+      console.log("[ElementCropper] Crop region (display, with padding):", minX, minY, maxX - minX + 1, maxY - minY + 1)
       console.log("[ElementCropper] Crop region (natural):", cropX, cropY, cropWidth, cropHeight)
-      
+
       onCropChange({
         x: cropX,
         y: cropY,
@@ -453,7 +521,7 @@ export default function ElementCropper({ image, crop, onCropChange }: ElementCro
             <Crop className="h-4 w-4 text-primary" />
             <div>
               <h3 className="font-semibold">Element Crop</h3>
-              <p className="text-xs text-muted-foreground">Select ONLY the element to paste</p>
+              <p className="text-xs text-muted-foreground">Select ONLY the element to patch</p>
             </div>
           </div>
           <div className="flex gap-2">

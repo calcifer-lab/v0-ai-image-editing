@@ -21,6 +21,7 @@ export default function ImageEditor() {
     resultImage,
     isProcessing,
     processingStatus,
+    processingProgress,
     error,
     imageAnalysis,
     isAnalyzing,
@@ -71,6 +72,7 @@ export default function ImageEditor() {
                 isProcessing={isProcessing}
                 canProcess={!!mask}
                 processingStatus={processingStatus}
+                processingProgress={processingProgress}
                 error={error}
                 imageAnalysis={imageAnalysis}
                 isAnalyzing={isAnalyzing}
