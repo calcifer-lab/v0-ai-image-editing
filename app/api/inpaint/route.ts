@@ -55,16 +55,21 @@ async function tryGeminiImageGeneration(
   
   const content = [
     { type: "text", text: systemPrompt },
-    { type: "text", text: "=== IMAGE 1: REFERENCE/SOURCE (COPY FROM THIS) ===" },
-    { type: "text", text: "This is the REFERENCE image containing the elements to extract and copy. Study this carefully - these elements should appear in your output." },
+    { type: "text", text: "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" },
+    { type: "text", text: "📥 IMAGE 1: REFERENCE/SOURCE (NEW CONTENT TO INSERT)" },
+    { type: "text", text: "This contains the NEW elements that must REPLACE the masked region in Image 2. Study every detail - colors, textures, layers, structure. These MUST appear in your final output." },
     { type: "image_url", image_url: { url: reference_image } },
-    { type: "text", text: "=== IMAGE 2: TARGET/BASE (PASTE INTO THIS) ===" },
-    { type: "text", text: "This is the TARGET image that will be modified. This is the background/base. You will INSERT elements from Image 1 into this image." },
+    { type: "text", text: "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" },
+    { type: "text", text: "🎨 IMAGE 2: TARGET/BASE (CANVAS TO MODIFY)" },
+    { type: "text", text: "This is the background that will be MODIFIED. The masked region in this image will be DELETED and REPLACED with Image 1's content. Do NOT preserve Image 2's content in the masked area." },
     { type: "image_url", image_url: { url: base_image } },
-    { type: "text", text: "=== IMAGE 3: MASK (WHITE = WHERE TO PASTE) ===" },
-    { type: "text", text: "This is the MASK. White pixels show WHERE to insert Image 1's content. Black pixels = keep Image 2's original content." },
+    { type: "text", text: "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" },
+    { type: "text", text: "⬜ IMAGE 3: MASK (DELETION/INSERTION ZONE)" },
+    { type: "text", text: "White pixels = DELETE Image 2's content here and INSERT Image 1's content instead. Black pixels = keep Image 2's original content unchanged." },
     { type: "image_url", image_url: { url: mask_image } },
-    { type: "text", text: "\n🎯 FINAL INSTRUCTION:\nGenerate a NEW IMAGE that combines:\n- Image 2's content in the BLACK masked areas (unchanged)\n- Image 1's content in the WHITE masked areas (copied and pasted)\n\nThe result MUST be DIFFERENT from Image 2. The elements from Image 1 MUST be VISIBLE in the output." },
+    { type: "text", text: "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" },
+    { type: "text", text: "🎯 FINAL COMMAND - READ CAREFULLY:" },
+    { type: "text", text: "Generate a NEW image where:\n✓ BLACK masked area = Keep Image 2's original content\n✓ WHITE masked area = COMPLETELY REPLACE with Image 1's content (NOT Image 2's!)\n\n⚠️ The white-masked region MUST look DIFFERENT from Image 2's original.\n⚠️ The white-masked region MUST show Image 1's elements CLEARLY.\n⚠️ This is INPAINTING (replacement), NOT blending or harmonization.\n\nSTART GENERATING NOW." },
   ]
 
   const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {

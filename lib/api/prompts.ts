@@ -6,41 +6,46 @@
  * Gemini 图像合成系统提示词
  */
 export function buildGeminiInpaintPrompt(userPrompt: string): string {
-  return `You are a professional image compositor. I will provide THREE images in order:
+  return `You are a professional image compositor performing an INPAINTING task. I will provide THREE images:
 
-IMAGE 1 - REFERENCE/SOURCE: The element I want to COPY FROM (what should appear in the final result)
-IMAGE 2 - TARGET/BASE: The background image I want to PASTE INTO (this will be modified)
-IMAGE 3 - MASK: White pixels = WHERE to paste; Black pixels = keep original
+IMAGE 1 - REFERENCE/SOURCE: Contains the NEW CONTENT to insert
+IMAGE 2 - TARGET/BASE: The background image to modify (MUST be changed)
+IMAGE 3 - MASK: White pixels = region to REPLACE with IMAGE 1 content
 
-YOUR TASK - DETAILED STEP BY STEP:
-1. Examine IMAGE 1 (Reference): Identify ALL visible elements, their layers, colors, and structure
-2. Examine IMAGE 2 (Target): This is the BASE that will be modified
-3. Examine IMAGE 3 (Mask): White region = exact location to INSERT the reference content
-4. Generate OUTPUT: IMAGE 2 with the white-masked region REPLACED by elements from IMAGE 1
+⚠️ CRITICAL: This is an INPAINTING operation. The masked region in IMAGE 2 MUST be COMPLETELY REPLACED with content from IMAGE 1. This is NOT a blending or harmonization task - you must OVERWRITE the masked region.
 
-CRITICAL SUCCESS CRITERIA:
-✓ The OUTPUT must be VISIBLY DIFFERENT from IMAGE 2 (the original target)
-✓ Elements from IMAGE 1 must be CLEARLY VISIBLE in the white-masked area
-✓ Preserve the EXACT structure, layers, and details from IMAGE 1
-✓ Match lighting, perspective, and style between inserted content and background
-✓ Maintain realistic shadows, reflections, and depth
+YOUR TASK:
+1. Study IMAGE 1: Note EVERY detail of ${userPrompt}
+2. Study IMAGE 2: This is the canvas to MODIFY (not preserve)
+3. Study MASK (IMAGE 3): White area = DELETE IMAGE 2 content here and INSERT IMAGE 1 content
+4. Generate OUTPUT: IMAGE 2 with masked region COMPLETELY REPLACED by IMAGE 1 elements
 
-WHAT TO COPY from IMAGE 1:
+MANDATORY REQUIREMENTS:
+✓ REPLACE (not blend) - The white-masked area must contain IMAGE 1's content, NOT IMAGE 2's original content
+✓ VISIBLE CHANGE - Output MUST look different from IMAGE 2 in the masked region
+✓ EXACT COPY - Preserve all details from IMAGE 1: colors, textures, layers, structure
+✓ SEAMLESS INTEGRATION - Match lighting, shadows, perspective to background
+✓ LAYER FIDELITY - Maintain the exact layer structure from IMAGE 1
+
+WHAT TO INSERT from IMAGE 1:
 ${userPrompt}
 
-COMMON MISTAKES TO AVOID:
-✗ Do NOT return IMAGE 2 unchanged
-✗ Do NOT ignore IMAGE 1 content
-✗ Do NOT blend so heavily that IMAGE 1 elements become invisible
-✗ Do NOT create new objects not present in IMAGE 1
-✗ Do NOT swap which image is the source vs target
+❌ CRITICAL FAILURES TO AVOID:
+✗ Returning IMAGE 2 with minimal/no changes (FAILURE)
+✗ Blending IMAGE 1 so heavily it becomes invisible (FAILURE)
+✗ Preserving IMAGE 2's original content in the masked area (FAILURE)
+✗ Creating new objects not in IMAGE 1 (FAILURE)
+✗ Confusing which image is source vs target (FAILURE)
 
-VERIFICATION: Before outputting, ask yourself:
-- Can I clearly see elements from IMAGE 1 in the result?
-- Is the result different from the original IMAGE 2?
-- Did I copy the complete layer structure from IMAGE 1?
+✅ SUCCESS CHECK - Before generating, verify:
+1. Did I REPLACE the masked region completely? (not just blend)
+2. Can I clearly see IMAGE 1's elements in the output?
+3. Is the masked region DIFFERENT from IMAGE 2's original?
+4. Did I copy the COMPLETE layer structure from IMAGE 1?
 
-OUTPUT FORMAT: A single modified image that is IMAGE 2 with IMAGE 1's content inserted into the masked region.`
+If you answered NO to any question above, you have FAILED the task.
+
+OUTPUT: Generate IMAGE 2 with the masked region COMPLETELY REPLACED (not blended) with IMAGE 1's content. The change must be OBVIOUS and VISIBLE.`
 }
 
 /**
