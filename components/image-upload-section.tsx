@@ -13,12 +13,12 @@ interface ImageUploadSectionProps {
 
 type ImageType = "element" | "base"
 
-const DEMO_IMAGE_URLS = [
-  "https://api.dicebear.com/7.x/lorelei/svg?seed=nezuko-face",
-  "https://api.dicebear.com/7.x/lorelei/svg?seed=anime-girl-portrait",
-  "https://api.dicebear.com/7.x/lorelei/svg?seed=samurai-boy",
-  "https://api.dicebear.com/7.x/lorelei/svg?seed=mystic-elf",
-  "https://api.dicebear.com/7.x/lorelei/svg?seed=demon-slayer",
+const DEMO_PRESETS = [
+  { element: "https://api.dicebear.com/7.x/lorelei/svg?seed=nezuko-face", base: "https://api.dicebear.com/7.x/lorelei/svg?seed=anime-girl-portrait" },
+  { element: "https://api.dicebear.com/7.x/lorelei/svg?seed=samurai-boy", base: "https://api.dicebear.com/7.x/lorelei/svg?seed=mystic-elf" },
+  { element: "https://api.dicebear.com/7.x/lorelei/svg?seed=demon-slayer", base: "https://api.dicebear.com/7.x/lorelei/svg?seed=nezuko-face" },
+  { element: "https://api.dicebear.com/7.x/lorelei/svg?seed=anime-girl-portrait", base: "https://api.dicebear.com/7.x/lorelei/svg?seed=samurai-boy" },
+  { element: "https://api.dicebear.com/7.x/lorelei/svg?seed=mystic-elf", base: "https://api.dicebear.com/7.x/lorelei/svg?seed=demon-slayer" },
 ]
 
 export default function ImageUploadSection({ onImagesUploaded }: ImageUploadSectionProps) {
@@ -106,11 +106,11 @@ export default function ImageUploadSection({ onImagesUploaded }: ImageUploadSect
   }, [onImagesUploaded])
 
   const handleTryDemo = useCallback(
-    (demoUrl: string) => {
-      setElementImage(demoUrl)
-      setBaseImage(demoUrl)
-      elementImageRef.current = demoUrl
-      baseImageRef.current = demoUrl
+    (preset: { element: string; base: string }) => {
+      setElementImage(preset.element)
+      setBaseImage(preset.base)
+      elementImageRef.current = preset.element
+      baseImageRef.current = preset.base
 
       setTimeout(() => {
         handleContinue()
@@ -131,7 +131,7 @@ export default function ImageUploadSection({ onImagesUploaded }: ImageUploadSect
 
         <div className="w-full max-w-4xl space-y-4">
           <p className="text-center text-sm text-muted-foreground">No image? Try one of these</p>
-          <DemoImageGrid demoImages={DEMO_IMAGE_URLS} onSelect={handleTryDemo} />
+          <DemoImageGrid presets={DEMO_PRESETS} onSelect={handleTryDemo} />
         </div>
 
         <div className="grid w-full max-w-4xl gap-6 md:grid-cols-2">
@@ -184,21 +184,24 @@ export default function ImageUploadSection({ onImagesUploaded }: ImageUploadSect
 }
 
 interface DemoImageGridProps {
-  demoImages: string[]
-  onSelect: (demoUrl: string) => void
+  presets: { element: string; base: string }[]
+  onSelect: (preset: { element: string; base: string }) => void
 }
 
-function DemoImageGrid({ demoImages, onSelect }: DemoImageGridProps) {
+function DemoImageGrid({ presets, onSelect }: DemoImageGridProps) {
   return (
-    <div className="mx-auto grid w-fit grid-cols-4 justify-center gap-3">
-      {demoImages.map((demoUrl) => (
+    <div className="mx-auto grid w-fit grid-cols-5 justify-center gap-3">
+      {presets.map((preset) => (
         <button
-          key={demoUrl}
+          key={preset.element}
           type="button"
-          onClick={() => onSelect(demoUrl)}
-          className="h-20 w-20 cursor-pointer overflow-hidden rounded-lg border-2 border-transparent transition-all hover:scale-105 hover:border-primary"
+          onClick={() => onSelect(preset)}
+          className="group relative h-20 w-20 cursor-pointer overflow-hidden rounded-lg border-2 border-transparent transition-all hover:scale-105 hover:border-primary"
         >
-          <img src={demoUrl} alt="Demo avatar" className="h-full w-full object-cover" />
+          <img src={preset.element} alt="Demo element" className="h-full w-full object-cover" />
+          <div className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 transition-opacity group-hover:opacity-100">
+            <span className="text-xs text-white font-medium">Use pair</span>
+          </div>
         </button>
       ))}
     </div>
