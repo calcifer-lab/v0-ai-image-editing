@@ -14,11 +14,8 @@ interface ImageUploadSectionProps {
 type ImageType = "element" | "base"
 
 const DEMO_PRESETS = [
-  { element: "https://api.dicebear.com/7.x/lorelei/svg?seed=nezuko-face", base: "https://api.dicebear.com/7.x/lorelei/svg?seed=anime-girl-portrait" },
-  { element: "https://api.dicebear.com/7.x/lorelei/svg?seed=samurai-boy", base: "https://api.dicebear.com/7.x/lorelei/svg?seed=mystic-elf" },
-  { element: "https://api.dicebear.com/7.x/lorelei/svg?seed=demon-slayer", base: "https://api.dicebear.com/7.x/lorelei/svg?seed=nezuko-face" },
-  { element: "https://api.dicebear.com/7.x/lorelei/svg?seed=anime-girl-portrait", base: "https://api.dicebear.com/7.x/lorelei/svg?seed=samurai-boy" },
-  { element: "https://api.dicebear.com/7.x/lorelei/svg?seed=mystic-elf", base: "https://api.dicebear.com/7.x/lorelei/svg?seed=demon-slayer" },
+  { element: "/demo/nezuko-element.jpg", base: "/demo/nezuko-base.jpg" },
+  { element: "/demo/nezuko-base.jpg", base: "/demo/nezuko-element.jpg" },
 ]
 
 export default function ImageUploadSection({ onImagesUploaded }: ImageUploadSectionProps) {
