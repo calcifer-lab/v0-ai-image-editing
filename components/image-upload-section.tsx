@@ -133,23 +133,23 @@ export default function ImageUploadSection({ onImagesUploaded }: ImageUploadSect
 
         <div className="grid w-full max-w-4xl gap-6 md:grid-cols-2">
           <UploadCard
-            title="A: Element Image"
-            description="The source of elements you want to use"
-            image={elementImage}
-            onDrop={(e) => handleDrop(e, "element")}
-            onFileSelect={(e) => handleFileSelect(e, "element")}
-            onDelete={() => handleDelete("element")}
-            inputId="element-upload"
-          />
-
-          <UploadCard
-            title="B: Base Image"
+            title="A: Base Image"
             description="The image you want to edit"
             image={baseImage}
             onDrop={(e) => handleDrop(e, "base")}
             onFileSelect={(e) => handleFileSelect(e, "base")}
             onDelete={() => handleDelete("base")}
             inputId="base-upload"
+          />
+
+          <UploadCard
+            title="B: Element Image"
+            description="The source of elements you want to use"
+            image={elementImage}
+            onDrop={(e) => handleDrop(e, "element")}
+            onFileSelect={(e) => handleFileSelect(e, "element")}
+            onDelete={() => handleDelete("element")}
+            inputId="element-upload"
           />
         </div>
 
