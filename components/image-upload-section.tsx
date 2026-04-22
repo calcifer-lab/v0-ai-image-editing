@@ -4,7 +4,7 @@ import type React from "react"
 import { useState, useCallback, useRef } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Upload, CheckCircle2, X, RefreshCw, Loader2, Wand2 } from "lucide-react"
+import { Upload, CheckCircle2, X, RefreshCw, Loader2 } from "lucide-react"
 import { removeWatermark } from "@/lib/image-utils"
 
 interface ImageUploadSectionProps {
@@ -13,12 +13,19 @@ interface ImageUploadSectionProps {
 
 type ImageType = "element" | "base"
 
+const DEMO_IMAGE_URLS = [
+  "https://api.dicebear.com/7.x/lorelei/svg?seed=nezuko-face",
+  "https://api.dicebear.com/7.x/lorelei/svg?seed=anime-girl-portrait",
+  "https://api.dicebear.com/7.x/lorelei/svg?seed=samurai-boy",
+  "https://api.dicebear.com/7.x/lorelei/svg?seed=mystic-elf",
+  "https://api.dicebear.com/7.x/lorelei/svg?seed=demon-slayer",
+]
+
 export default function ImageUploadSection({ onImagesUploaded }: ImageUploadSectionProps) {
   const [elementImage, setElementImage] = useState<string | null>(null)
   const [baseImage, setBaseImage] = useState<string | null>(null)
   const [isProcessing, setIsProcessing] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
-  const [isDemoLoading, setIsDemoLoading] = useState(false)
   const elementImageRef = useRef<string | null>(null)
   const baseImageRef = useRef<string | null>(null)
 
@@ -98,21 +105,19 @@ export default function ImageUploadSection({ onImagesUploaded }: ImageUploadSect
     }
   }, [onImagesUploaded])
 
-  const handleTryDemo = useCallback(() => {
-    const demoElementImage = "https://api.dicebear.com/7.x/lorelei/svg?seed=nezuko-face"
-    const demoBaseImage = "https://api.dicebear.com/7.x/lorelei/svg?seed=anime-girl-portrait"
+  const handleTryDemo = useCallback(
+    (demoUrl: string) => {
+      setElementImage(demoUrl)
+      setBaseImage(demoUrl)
+      elementImageRef.current = demoUrl
+      baseImageRef.current = demoUrl
 
-    setIsDemoLoading(true)
-    setElementImage(demoElementImage)
-    setBaseImage(demoBaseImage)
-    elementImageRef.current = demoElementImage
-    baseImageRef.current = demoBaseImage
-
-    setTimeout(() => {
-      handleContinue()
-      setIsDemoLoading(false)
-    }, 100)
-  }, [handleContinue])
+      setTimeout(() => {
+        handleContinue()
+      }, 100)
+    },
+    [handleContinue]
+  )
 
   return (
     <div className="flex h-full w-full flex-col overflow-auto">
@@ -124,24 +129,10 @@ export default function ImageUploadSection({ onImagesUploaded }: ImageUploadSect
           </p>
         </div>
 
-        <Button
-          size="lg"
-          onClick={handleTryDemo}
-          disabled={isProcessing || isLoading || isDemoLoading}
-          className="gap-2 bg-green-600 text-white hover:bg-green-700"
-        >
-          {isDemoLoading ? (
-            <>
-              <Loader2 className="h-5 w-5 animate-spin" />
-              Loading Demo...
-            </>
-          ) : (
-            <>
-              <Wand2 className="h-5 w-5" />
-              🎬 Try Demo Now — Zero Friction
-            </>
-          )}
-        </Button>
+        <div className="w-full max-w-4xl space-y-4">
+          <p className="text-center text-sm text-muted-foreground">No image? Try one of these</p>
+          <DemoImageGrid demoImages={DEMO_IMAGE_URLS} onSelect={handleTryDemo} />
+        </div>
 
         <div className="grid w-full max-w-4xl gap-6 md:grid-cols-2">
           <UploadCard
@@ -168,7 +159,7 @@ export default function ImageUploadSection({ onImagesUploaded }: ImageUploadSect
         <div className="mb-8 flex w-full justify-center">
           <Button
             size="lg"
-            disabled={!canContinue || isProcessing || isLoading || isDemoLoading}
+            disabled={!canContinue || isProcessing || isLoading}
             onClick={handleContinue}
             className="min-w-[240px] px-12 py-6 text-lg"
           >
@@ -188,6 +179,28 @@ export default function ImageUploadSection({ onImagesUploaded }: ImageUploadSect
           </Button>
         </div>
       </div>
+    </div>
+  )
+}
+
+interface DemoImageGridProps {
+  demoImages: string[]
+  onSelect: (demoUrl: string) => void
+}
+
+function DemoImageGrid({ demoImages, onSelect }: DemoImageGridProps) {
+  return (
+    <div className="mx-auto grid w-fit grid-cols-4 justify-center gap-3">
+      {demoImages.map((demoUrl) => (
+        <button
+          key={demoUrl}
+          type="button"
+          onClick={() => onSelect(demoUrl)}
+          className="h-20 w-20 cursor-pointer overflow-hidden rounded-lg border-2 border-transparent transition-all hover:scale-105 hover:border-primary"
+        >
+          <img src={demoUrl} alt="Demo avatar" className="h-full w-full object-cover" />
+        </button>
+      ))}
     </div>
   )
 }
