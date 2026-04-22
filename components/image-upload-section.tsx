@@ -1,10 +1,10 @@
 "use client"
 
 import type React from "react"
-import { useState, useCallback } from "react"
+import { useState, useCallback, useRef } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Upload, CheckCircle2, X, RefreshCw, Loader2 } from "lucide-react"
+import { Upload, CheckCircle2, X, RefreshCw, Loader2, Wand2 } from "lucide-react"
 import { removeWatermark } from "@/lib/image-utils"
 
 interface ImageUploadSectionProps {
@@ -18,6 +18,9 @@ export default function ImageUploadSection({ onImagesUploaded }: ImageUploadSect
   const [baseImage, setBaseImage] = useState<string | null>(null)
   const [isProcessing, setIsProcessing] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  const [isDemoLoading, setIsDemoLoading] = useState(false)
+  const elementImageRef = useRef<string | null>(null)
+  const baseImageRef = useRef<string | null>(null)
 
   const handleFileUpload = useCallback(async (file: File, type: ImageType) => {
     const reader = new FileReader()
@@ -28,16 +31,20 @@ export default function ImageUploadSection({ onImagesUploaded }: ImageUploadSect
         const processedImage = await removeWatermark(result, 40)
         if (type === "element") {
           setElementImage(processedImage)
+          elementImageRef.current = processedImage
         } else {
           setBaseImage(processedImage)
+          baseImageRef.current = processedImage
         }
         console.log("[Upload] Watermark removed from", type, "image")
       } catch (err) {
         console.error("Failed to process image:", err)
         if (type === "element") {
           setElementImage(result)
+          elementImageRef.current = result
         } else {
           setBaseImage(result)
+          baseImageRef.current = result
         }
       } finally {
         setIsProcessing(false)
@@ -70,21 +77,42 @@ export default function ImageUploadSection({ onImagesUploaded }: ImageUploadSect
   const handleDelete = useCallback((type: ImageType) => {
     if (type === "element") {
       setElementImage(null)
+      elementImageRef.current = null
     } else {
       setBaseImage(null)
+      baseImageRef.current = null
     }
   }, [])
 
   const canContinue = elementImage && baseImage
 
-  const handleContinue = () => {
-    if (elementImage && baseImage) {
+  const handleContinue = useCallback(() => {
+    const nextElementImage = elementImageRef.current
+    const nextBaseImage = baseImageRef.current
+
+    if (nextElementImage && nextBaseImage) {
       setIsLoading(true)
       setTimeout(() => {
-        onImagesUploaded(elementImage, baseImage)
+        onImagesUploaded(nextElementImage, nextBaseImage)
       }, 50)
     }
-  }
+  }, [onImagesUploaded])
+
+  const handleTryDemo = useCallback(() => {
+    const demoElementImage = "https://api.dicebear.com/7.x/lorelei/svg?seed=nezuko-face"
+    const demoBaseImage = "https://api.dicebear.com/7.x/lorelei/svg?seed=anime-girl-portrait"
+
+    setIsDemoLoading(true)
+    setElementImage(demoElementImage)
+    setBaseImage(demoBaseImage)
+    elementImageRef.current = demoElementImage
+    baseImageRef.current = demoBaseImage
+
+    setTimeout(() => {
+      handleContinue()
+      setIsDemoLoading(false)
+    }, 100)
+  }, [handleContinue])
 
   return (
     <div className="flex h-full w-full flex-col overflow-auto">
@@ -95,6 +123,25 @@ export default function ImageUploadSection({ onImagesUploaded }: ImageUploadSect
             Upload the element source image and the base image you want to edit
           </p>
         </div>
+
+        <Button
+          size="lg"
+          onClick={handleTryDemo}
+          disabled={isProcessing || isLoading || isDemoLoading}
+          className="gap-2 bg-green-600 text-white hover:bg-green-700"
+        >
+          {isDemoLoading ? (
+            <>
+              <Loader2 className="h-5 w-5 animate-spin" />
+              Loading Demo...
+            </>
+          ) : (
+            <>
+              <Wand2 className="h-5 w-5" />
+              🎬 Try Demo Now — Zero Friction
+            </>
+          )}
+        </Button>
 
         <div className="grid w-full max-w-4xl gap-6 md:grid-cols-2">
           <UploadCard
@@ -121,7 +168,7 @@ export default function ImageUploadSection({ onImagesUploaded }: ImageUploadSect
         <div className="mb-8 flex w-full justify-center">
           <Button
             size="lg"
-            disabled={!canContinue || isProcessing || isLoading}
+            disabled={!canContinue || isProcessing || isLoading || isDemoLoading}
             onClick={handleContinue}
             className="min-w-[240px] px-12 py-6 text-lg"
           >
