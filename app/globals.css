@@ -337,20 +337,41 @@ html[lang="en"] .lang-zh {
   background: rgba(0, 0, 0, 0.05);
 }
 
+.lang-toggle-fixed {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 9999;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  min-width: 64px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  transition: all 240ms ease-out;
+}
+
+.lang-toggle-fixed:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  border-color: #cfd4dc;
+  background: var(--bg-card);
+}
+
 .hero-title {
   margin: 0;
   font-size: clamp(2rem, 5vw, 3.5rem);
   line-height: 1.05;
   letter-spacing: -0.04em;
   font-weight: 600;
-  flex: 1;
-}
-
-.hero-top-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
 }
 
 .hero-subtitle {

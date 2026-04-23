@@ -1,30 +1,16 @@
 "use client"
 
 import Link from "next/link"
-import { useLang } from "@/contexts/lang-context"
 
 export default function Hero() {
-  const { lang, toggleLang } = useLang()
-
   return (
     <section className="hero-section">
       <div className="site-container hero-layout">
         <div className="hero-copy">
-          <div className="hero-top-row">
-            <h1 className="hero-title">
-              <span className="lang-en">Fix any diagram without redrawing it.</span>
-              <span className="lang-zh">无需重画，修好任何图表。</span>
-            </h1>
-            <button
-              type="button"
-              className="lang-toggle"
-              onClick={toggleLang}
-              aria-label={lang === "en" ? "Switch to Chinese" : "Switch to English"}
-            >
-              <span className="lang-en">中文</span>
-              <span className="lang-zh">EN</span>
-            </button>
-          </div>
+          <h1 className="hero-title">
+            <span className="lang-en">Fix any diagram without redrawing it.</span>
+            <span className="lang-zh">无需重画，修好任何图表。</span>
+          </h1>
 
           <p className="hero-subtitle">
             <span className="lang-en">

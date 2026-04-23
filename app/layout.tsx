@@ -1,6 +1,7 @@
 import type { Metadata } from "next"
 import "./globals.css"
 import { LangProvider } from "@/contexts/lang-context"
+import LangToggleFixed from "@/components/lang-toggle-fixed"
 
 const softwareApplicationJsonLd = {
   "@context": "https://schema.org",
@@ -92,7 +93,10 @@ export default function RootLayout({
             __html: JSON.stringify(softwareApplicationJsonLd),
           }}
         />
-        <LangProvider>{children}</LangProvider>
+        <LangProvider>
+          <LangToggleFixed />
+          {children}
+        </LangProvider>
       </body>
     </html>
   )
