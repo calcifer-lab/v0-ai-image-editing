@@ -1,70 +1,77 @@
 "use client"
 
+const STEPS = [
+  {
+    number: "01",
+    titleEn: "Upload",
+    titleZh: "上传",
+    bodyEn: "Bring in the diagram you need to fix, whether it is technical, visual, or educational.",
+    bodyZh: "导入你需要修复的图表，无论是技术图、视觉稿还是教学素材。",
+    placeholderEn: "Screen recording placeholder: upload flow",
+    placeholderZh: "录屏占位：上传流程",
+  },
+  {
+    number: "02",
+    titleEn: "Select",
+    titleZh: "选择",
+    bodyEn: "Mark the region, node, connector, or label that needs attention and keep the rest intact.",
+    bodyZh: "选中需要处理的区域、节点、连线或标签，其余内容保持不变。",
+    placeholderEn: "Screen recording placeholder: selection flow",
+    placeholderZh: "录屏占位：选择流程",
+  },
+  {
+    number: "03",
+    titleEn: "Fix",
+    titleZh: "修复",
+    bodyEn: "Let Fix repair layout, spacing, labels, and visual consistency without redrawing the diagram.",
+    bodyZh: "使用 Fix 修复布局、间距、标签和视觉一致性，无需重画整张图表。",
+    placeholderEn: "Screen recording placeholder: fix flow",
+    placeholderZh: "录屏占位：修复流程",
+  },
+]
+
 export default function HowItWorks() {
   return (
-    <section id="how">
-      <div className="ba-how">
-        <div className="ba-how-card">
-          <div className="ba-how-step">
-            <div className="ba-how-num">01</div>
-            <div className="ba-how-title">
-              <span className="lang-en">Prepare two images</span>
-              <span className="lang-zh">准备两张图</span>
-            </div>
-            <div className="ba-how-desc">
-              <span className="lang-en">Base image + element image.</span>
-              <span className="lang-zh">基础图 + 元素图</span>
-            </div>
-            <span className="ba-how-tag ba-how-tag-you">
-              <span className="lang-en">You</span>
-              <span className="lang-zh">你来做</span>
+    <section id="how-it-works" className="site-section">
+      <div className="site-container">
+        <div className="section-head">
+          <span className="eyebrow">
+            <span className="lang-en">How it works</span>
+            <span className="lang-zh">工作方式</span>
+          </span>
+          <h2 className="section-title">
+            <span className="lang-en">Three steps from broken to clean.</span>
+            <span className="lang-zh">三步完成，从问题图到成品图。</span>
+          </h2>
+          <p className="section-copy">
+            <span className="lang-en">
+              The workflow is intentionally narrow: upload the file, point at the problem, and let
+              the Fix module repair it.
             </span>
-          </div>
-
-          <div className="ba-how-step">
-            <div className="ba-how-num">02</div>
-            <div className="ba-how-title">
-              <span className="lang-en">Rough-paste it</span>
-              <span className="lang-zh">粗略拼接</span>
-            </div>
-            <div className="ba-how-desc">
-              <span className="lang-en">Any tool to paste roughly in place.</span>
-              <span className="lang-zh">用任意工具粗略放到目标位置</span>
-            </div>
-            <span className="ba-how-tag ba-how-tag-you">~2 min</span>
-          </div>
-
-          <div className="ba-how-step">
-            <div className="ba-how-num">03</div>
-            <div className="ba-how-title">
-              <span className="lang-en">Instruct the AI</span>
-              <span className="lang-zh">指示 AI</span>
-            </div>
-            <div className="ba-how-desc">
-              <span className="lang-en">Mark region and tell AI what to blend.</span>
-              <span className="lang-zh">框选区域，告诉 AI 融合什么</span>
-            </div>
-            <span className="ba-how-tag ba-how-tag-ai">
-              <span className="lang-en">AI · ~30 sec</span>
-              <span className="lang-zh">AI · 约 30 秒</span>
+            <span className="lang-zh">
+              工作流刻意保持简洁：上传文件，指出问题，再由 Fix 模块完成修复。
             </span>
-          </div>
+          </p>
+        </div>
 
-          <div className="ba-how-step">
-            <div className="ba-how-num">04</div>
-            <div className="ba-how-title">
-              <span className="lang-en">Download result</span>
-              <span className="lang-zh">下载成图</span>
-            </div>
-            <div className="ba-how-desc">
-              <span className="lang-en">Structure preserved, light matched.</span>
-              <span className="lang-zh">结构保持、光照匹配</span>
-            </div>
-            <span className="ba-how-tag ba-how-tag-ai">
-              <span className="lang-en">Done</span>
-              <span className="lang-zh">完成</span>
-            </span>
-          </div>
+        <div className="how-grid">
+          {STEPS.map((step) => (
+            <article key={step.number} className="landing-card how-card">
+              <div className="how-step-number">{step.number}</div>
+              <h3 className="how-step-title">
+                <span className="lang-en">{step.titleEn}</span>
+                <span className="lang-zh">{step.titleZh}</span>
+              </h3>
+              <p className="how-step-copy">
+                <span className="lang-en">{step.bodyEn}</span>
+                <span className="lang-zh">{step.bodyZh}</span>
+              </p>
+              <div className="placeholder-box how-placeholder">
+                <span className="lang-en">{step.placeholderEn}</span>
+                <span className="lang-zh">{step.placeholderZh}</span>
+              </div>
+            </article>
+          ))}
         </div>
       </div>
     </section>

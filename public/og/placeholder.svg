@@ -1,0 +1,30 @@
+<svg width="1200" height="630" viewBox="0 0 1200 630" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1200" height="630" fill="#F6F1E8"/>
+  <rect x="38" y="38" width="1124" height="554" rx="28" fill="#FFFDF8" stroke="#D6C8AF" stroke-width="2"/>
+  <rect x="86" y="94" width="330" height="182" rx="22" fill="#0F172A"/>
+  <rect x="118" y="126" width="180" height="20" rx="10" fill="#F3C969"/>
+  <rect x="118" y="162" width="244" height="16" rx="8" fill="#CBD5E1" fill-opacity="0.9"/>
+  <rect x="118" y="190" width="208" height="16" rx="8" fill="#94A3B8" fill-opacity="0.75"/>
+  <circle cx="354" cy="208" r="26" fill="#F97316"/>
+  <path d="M338 208H370" stroke="#FFF7ED" stroke-width="6" stroke-linecap="round"/>
+  <path d="M354 192V224" stroke="#FFF7ED" stroke-width="6" stroke-linecap="round"/>
+  <path d="M456 136H1030" stroke="#D6C8AF" stroke-width="2"/>
+  <path d="M456 188H1114" stroke="#E7DDCC" stroke-width="14" stroke-linecap="round"/>
+  <path d="M456 224H1076" stroke="#E7DDCC" stroke-width="14" stroke-linecap="round"/>
+  <path d="M456 260H976" stroke="#E7DDCC" stroke-width="14" stroke-linecap="round"/>
+  <path d="M86 340C86 327.85 95.85 318 108 318H1092C1104.15 318 1114 327.85 1114 340V510C1114 522.15 1104.15 532 1092 532H108C95.85 532 86 522.15 86 510V340Z" fill="#FFF7ED"/>
+  <rect x="124" y="362" width="204" height="128" rx="20" fill="#FFE0B2"/>
+  <rect x="364" y="362" width="204" height="128" rx="20" fill="#DDEBFF"/>
+  <rect x="604" y="362" width="204" height="128" rx="20" fill="#E2F3DD"/>
+  <rect x="844" y="362" width="232" height="128" rx="20" fill="#F1E8FF"/>
+  <path d="M226 276L226 340" stroke="#0F172A" stroke-width="4" stroke-linecap="round" stroke-dasharray="8 10"/>
+  <path d="M466 276L466 340" stroke="#0F172A" stroke-width="4" stroke-linecap="round" stroke-dasharray="8 10"/>
+  <path d="M706 276L706 340" stroke="#0F172A" stroke-width="4" stroke-linecap="round" stroke-dasharray="8 10"/>
+  <path d="M960 276L960 340" stroke="#0F172A" stroke-width="4" stroke-linecap="round" stroke-dasharray="8 10"/>
+  <text x="86" y="565" fill="#0F172A" font-family="Arial, Helvetica, sans-serif" font-size="54" font-weight="700">
+    ReDiagram AI
+  </text>
+  <text x="86" y="606" fill="#475569" font-family="Arial, Helvetica, sans-serif" font-size="28" font-weight="400">
+    Fix any diagram without redrawing it.
+  </text>
+</svg>
