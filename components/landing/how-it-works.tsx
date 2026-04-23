@@ -9,7 +9,7 @@ const STEPS = [
     titleZh: "上传",
     bodyEn: "Bring in the diagram you need to fix, whether it is technical, visual, or educational.",
     bodyZh: "导入你需要修复的图表，无论是技术图、视觉稿还是教学素材。",
-    imgSrc: "/demo/step1-upload.svg",
+    imgSrc: "/demo/step1-upload.png",
     imgAlt: "Upload step",
   },
   {
@@ -18,7 +18,7 @@ const STEPS = [
     titleZh: "选择",
     bodyEn: "Mark the region, node, connector, or label that needs attention and keep the rest intact.",
     bodyZh: "选中需要处理的区域、节点、连线或标签，其余内容保持不变。",
-    imgSrc: "/demo/step2-select.svg",
+    imgSrc: "/demo/step2-select.png",
     imgAlt: "Select step",
   },
   {
