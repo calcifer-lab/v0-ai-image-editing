@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import './globals.css'
+import { LangProvider } from '@/contexts/lang-context'
 
 export const metadata: Metadata = {
   title: 'BlendAI — AI Image Blending',
@@ -39,7 +40,9 @@ export default function RootLayout({
         />
       </head>
       <body className="font-sans antialiased">
-        {children}
+        <LangProvider>
+          {children}
+        </LangProvider>
       </body>
     </html>
   )
