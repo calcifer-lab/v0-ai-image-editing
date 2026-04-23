@@ -504,6 +504,14 @@ html[lang="en"] .lang-zh {
   min-height: 140px;
 }
 
+.step-img {
+  width: 100%;
+  height: auto;
+  border-radius: 12px;
+  margin-top: 16px;
+  display: block;
+}
+
 .module-status-row {
   display: flex;
   align-items: flex-start;

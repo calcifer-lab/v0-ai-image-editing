@@ -7,8 +7,8 @@ const STEPS = [
     titleZh: "上传",
     bodyEn: "Bring in the diagram you need to fix, whether it is technical, visual, or educational.",
     bodyZh: "导入你需要修复的图表，无论是技术图、视觉稿还是教学素材。",
-    placeholderEn: "Screen recording placeholder: upload flow",
-    placeholderZh: "录屏占位：上传流程",
+    imgSrc: "/demo/step1-upload.svg",
+    imgAlt: "Upload step: drag and drop or click to upload",
   },
   {
     number: "02",
@@ -16,8 +16,8 @@ const STEPS = [
     titleZh: "选择",
     bodyEn: "Mark the region, node, connector, or label that needs attention and keep the rest intact.",
     bodyZh: "选中需要处理的区域、节点、连线或标签，其余内容保持不变。",
-    placeholderEn: "Screen recording placeholder: selection flow",
-    placeholderZh: "录屏占位：选择流程",
+    imgSrc: "/demo/step2-select.svg",
+    imgAlt: "Select step: mark the region to fix",
   },
   {
     number: "03",
@@ -25,8 +25,8 @@ const STEPS = [
     titleZh: "修复",
     bodyEn: "Let Fix repair layout, spacing, labels, and visual consistency without redrawing the diagram.",
     bodyZh: "使用 Fix 修复布局、间距、标签和视觉一致性，无需重画整张图表。",
-    placeholderEn: "Screen recording placeholder: fix flow",
-    placeholderZh: "录屏占位：修复流程",
+    imgSrc: "/demo/step3-fix.svg",
+    imgAlt: "Fix step: AI repairs the selected region",
   },
 ]
 
@@ -66,10 +66,12 @@ export default function HowItWorks() {
                 <span className="lang-en">{step.bodyEn}</span>
                 <span className="lang-zh">{step.bodyZh}</span>
               </p>
-              <div className="placeholder-box how-placeholder">
-                <span className="lang-en">{step.placeholderEn}</span>
-                <span className="lang-zh">{step.placeholderZh}</span>
-              </div>
+              <img
+                src={step.imgSrc}
+                alt={step.imgAlt}
+                className="step-img"
+                loading="lazy"
+              />
             </article>
           ))}
         </div>
