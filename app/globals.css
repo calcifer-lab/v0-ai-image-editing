@@ -343,6 +343,14 @@ html[lang="en"] .lang-zh {
   line-height: 1.05;
   letter-spacing: -0.04em;
   font-weight: 600;
+  flex: 1;
+}
+
+.hero-top-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
 }
 
 .hero-subtitle {
