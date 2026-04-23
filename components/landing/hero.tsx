@@ -1,6 +1,7 @@
 "use client"
 
 import Link from "next/link"
+import BeforeAfter from "@/components/BeforeAfter"
 
 export default function Hero() {
   return (
@@ -35,9 +36,7 @@ export default function Hero() {
         </div>
 
         <div className="hero-media">
-          <div className="hero-video-placeholder" role="img" aria-label="Hero video placeholder">
-            <span>Hero video placeholder 1280×800</span>
-          </div>
+          <BeforeAfter before="/demo/before-fix.png" after="/demo/after-fix.png" />
         </div>
       </div>
     </section>
