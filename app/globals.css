@@ -1,3 +1,4 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
 @import "tailwindcss";
 @import "tw-animate-css";
 
@@ -267,7 +268,7 @@ html[lang="en"] .lang-zh {
 }
 
 .hero-section {
-  padding: 72px 0 48px;
+  padding: 48px 0 40px;
 }
 
 .hero-layout {
@@ -280,13 +281,6 @@ html[lang="en"] .lang-zh {
 .hero-copy {
   max-width: 720px;
   padding-top: 32px;
-}
-
-.hero-meta {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
 }
 
 .lang-toggle {
@@ -313,8 +307,31 @@ html[lang="en"] .lang-zh {
   background: var(--bg-card);
 }
 
+.lang-toggle-header {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  min-width: 64px;
+  padding: 0 14px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 240ms ease-out;
+}
+
+.lang-toggle-header:hover {
+  border-color: rgba(0, 0, 0, 0.2);
+  color: var(--text);
+  background: rgba(0, 0, 0, 0.05);
+}
+
 .hero-title {
-  margin: 24px 0 0;
+  margin: 0;
   font-size: clamp(3rem, 8vw, 5.5rem);
   line-height: 0.98;
   letter-spacing: -0.06em;
@@ -727,7 +744,7 @@ html[lang="en"] .lang-zh {
   }
 
   .hero-section {
-    padding: 92px 0 64px;
+    padding: 56px 0 48px;
   }
 
   .hero-video-placeholder {
@@ -742,11 +759,6 @@ html[lang="en"] .lang-zh {
 
   .site-header-inner {
     min-height: 68px;
-  }
-
-  .hero-meta {
-    align-items: flex-start;
-    flex-direction: column;
   }
 
   .hero-subtitle {

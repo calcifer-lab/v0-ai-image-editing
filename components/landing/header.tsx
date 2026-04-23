@@ -1,6 +1,7 @@
 "use client"
 
 import Link from "next/link"
+import { useLang } from "@/contexts/lang-context"
 
 const NAV_LINKS = [
   {
@@ -26,6 +27,8 @@ const NAV_LINKS = [
 ]
 
 export default function Header() {
+  const { lang, toggleLang } = useLang()
+
   return (
     <header className="site-header">
       <div className="site-container site-header-inner">
@@ -44,6 +47,15 @@ export default function Header() {
         </nav>
 
         <div className="site-header-actions">
+          <button
+            type="button"
+            className="lang-toggle-header"
+            onClick={toggleLang}
+            aria-label={lang === "en" ? "Switch to Chinese" : "Switch to English"}
+          >
+            <span className="lang-en">中文</span>
+            <span className="lang-zh">EN</span>
+          </button>
           <Link href="/editor" className="button button-primary button-sm">
             <span className="lang-en">Try Fix</span>
             <span className="lang-zh">体验 Fix</span>
