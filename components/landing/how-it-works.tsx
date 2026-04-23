@@ -1,5 +1,7 @@
 "use client"
 
+import BeforeAfter from "@/components/BeforeAfter"
+
 const STEPS = [
   {
     number: "01",
@@ -8,7 +10,7 @@ const STEPS = [
     bodyEn: "Bring in the diagram you need to fix, whether it is technical, visual, or educational.",
     bodyZh: "导入你需要修复的图表，无论是技术图、视觉稿还是教学素材。",
     imgSrc: "/demo/step1-upload.svg",
-    imgAlt: "Upload step: drag and drop or click to upload",
+    imgAlt: "Upload step",
   },
   {
     number: "02",
@@ -17,7 +19,7 @@ const STEPS = [
     bodyEn: "Mark the region, node, connector, or label that needs attention and keep the rest intact.",
     bodyZh: "选中需要处理的区域、节点、连线或标签，其余内容保持不变。",
     imgSrc: "/demo/step2-select.svg",
-    imgAlt: "Select step: mark the region to fix",
+    imgAlt: "Select step",
   },
   {
     number: "03",
@@ -25,8 +27,6 @@ const STEPS = [
     titleZh: "修复",
     bodyEn: "Let Fix repair layout, spacing, labels, and visual consistency without redrawing the diagram.",
     bodyZh: "使用 Fix 修复布局、间距、标签和视觉一致性，无需重画整张图表。",
-    imgSrc: "/demo/step3-fix.svg",
-    imgAlt: "Fix step: AI repairs the selected region",
   },
 ]
 
@@ -66,12 +66,20 @@ export default function HowItWorks() {
                 <span className="lang-en">{step.bodyEn}</span>
                 <span className="lang-zh">{step.bodyZh}</span>
               </p>
-              <img
-                src={step.imgSrc}
-                alt={step.imgAlt}
-                className="step-img"
-                loading="lazy"
-              />
+
+              {step.number === "03" ? (
+                <BeforeAfter
+                  before="/demo/before-fix.png"
+                  after="/demo/after-fix.png"
+                />
+              ) : (
+                <img
+                  src={step.imgSrc}
+                  alt={step.imgAlt}
+                  className="step-img"
+                  loading="lazy"
+                />
+              )}
             </article>
           ))}
         </div>
