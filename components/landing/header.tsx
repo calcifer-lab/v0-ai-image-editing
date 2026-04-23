@@ -1,44 +1,48 @@
 "use client"
 
 import Link from "next/link"
-import { Button } from "@/components/ui/button"
-import { ImageIcon } from "lucide-react"
+import { useLang } from "@/contexts/lang-context"
 
 export default function Header() {
-  const navLinks = [
-    { href: "#features", label: "Features" },
-    { href: "#how-it-works", label: "Workflow" },
-    { href: "#benefits", label: "Benefits" },
-    { href: "#faq", label: "FAQ" },
-  ]
+  const { lang, toggleLang } = useLang()
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur">
-      <div className="container mx-auto flex h-14 items-center justify-between px-4">
-        <Link href="/" className="flex items-center gap-2 font-bold">
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary">
-            <ImageIcon className="h-4 w-4 text-primary-foreground" />
+    <nav className="ba-nav">
+      <div className="ba-nav-inner">
+        <Link href="/" className="ba-brand">
+          <div className="ba-brand-mark">B</div>
+          <div className="ba-brand-name">
+            BlendAI <sub>beta</sub>
           </div>
-          <span>AI Image Editor</span>
         </Link>
 
-        <nav className="hidden items-center gap-6 md:flex">
-          {navLinks.map((link) => (
-            <a
-              key={link.href}
-              href={link.href}
-              className="text-sm text-muted-foreground transition-colors hover:text-primary"
-            >
-              {link.label}
-            </a>
-          ))}
-        </nav>
+        <div className="ba-nav-links">
+          <a className="ba-nav-link" href="#showcase">
+            <span className="lang-en">Examples</span>
+            <span className="lang-zh">案例展示</span>
+          </a>
+          <a className="ba-nav-link" href="#how">
+            <span className="lang-en">How It Works</span>
+            <span className="lang-zh">使用流程</span>
+          </a>
+          <a className="ba-nav-link" href="#features">
+            <span className="lang-en">Features</span>
+            <span className="lang-zh">功能特点</span>
+          </a>
+          <a className="ba-nav-link" href="#faq">FAQ</a>
+        </div>
 
-        <Link href="/editor">
-          <Button size="sm">Get started</Button>
-        </Link>
+        <div className="ba-nav-actions">
+          <button className="ba-lang-btn" onClick={toggleLang}>
+            <span className="lang-en">中文</span>
+            <span className="lang-zh">EN</span>
+          </button>
+          <Link href="/editor?demo=true" className="ba-btn-cta">
+            <span className="lang-en">Try Free</span>
+            <span className="lang-zh">免费体验</span>
+          </Link>
+        </div>
       </div>
-    </header>
+    </nav>
   )
 }
-

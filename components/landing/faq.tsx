@@ -1,25 +1,37 @@
 "use client"
 
 import { useState } from "react"
-import { Card } from "@/components/ui/card"
-import { Plus } from "lucide-react"
 
-const faqs = [
+const FAQS = [
   {
-    q: "Which image formats are supported?",
-    a: "PNG, JPG, and JPEG are supported. Files under 10MB are recommended for best performance.",
+    qEn: "Which image formats are supported?",
+    qZh: "支持哪些图片格式？",
+    aEn: "PNG, JPG, and JPEG are supported. For best quality and largest file size, we recommend images under 10MB.",
+    aZh: "支持 PNG、JPG 和 JPEG 格式。为获得最佳质量和最大文件尺寸，建议使用 10MB 以下的图片。",
   },
   {
-    q: "What is the difference between Direct and AI modes?",
-    a: "Direct mode copies elements exactly, while AI mode blends intelligently and matches the target style.",
+    qEn: "What is the difference between Direct and AI modes?",
+    qZh: "直接模式和 AI 模式有什么区别？",
+    aEn: "Direct mode copies elements exactly without modification — useful for simple compositions. AI mode analyzes the scene and blends edges, matches lighting, and adjusts color to produce a seamless result.",
+    aZh: "直接模式原样复制元素不做修改——适合简单合成。AI 模式则分析场景，融合边缘、匹配光照并调整色彩，以产生无缝的效果。",
   },
   {
-    q: "How long does processing take?",
-    a: "Direct mode typically takes 5–10 seconds; AI mode usually takes 20–60 seconds.",
+    qEn: "How long does processing take?",
+    qZh: "处理需要多长时间？",
+    aEn: "Direct paste mode typically completes in 5–10 seconds. AI blending mode usually takes 20–60 seconds depending on image size and complexity.",
+    aZh: "直接粘贴模式通常 5–10 秒完成。AI 融合模式根据图片大小和复杂度，一般需要 20–60 秒。",
   },
   {
-    q: "Are my images stored?",
-    a: "Images are used only during the current session and are not saved after processing.",
+    qEn: "Are my images stored on your servers?",
+    qZh: "我的图片会存储在你们的服务器上吗？",
+    aEn: "No. All processing happens locally in your browser using WebGPU. Images are never uploaded to or stored on any server.",
+    aZh: "不会。所有处理都在你的浏览器中通过 WebGPU 本地完成。图片绝不会上传或存储在任何服务器上。",
+  },
+  {
+    qEn: "Can I use BlendAI on mobile?",
+    qZh: "我可以在手机上使用 BlendAI 吗？",
+    aEn: "Yes. BlendAI works in any modern browser on desktop and mobile. For the best experience, we recommend a desktop browser with a larger screen for precise region selection.",
+    aZh: "可以。BlendAI 在桌面和移动浏览器的任何现代浏览器中都能运行。为获得最佳体验，建议使用桌面浏览器，屏幕更大，选择区域更精确。",
   },
 ]
 
@@ -27,44 +39,40 @@ export default function FAQ() {
   const [openIndex, setOpenIndex] = useState<number | null>(null)
 
   return (
-    <section id="faq" className="border-b bg-muted/30 py-20">
-      <div className="container mx-auto px-4">
-        <div className="mb-16 text-center">
-          <h2 className="mb-4 text-3xl font-bold md:text-4xl">Frequently asked questions</h2>
-          <p className="text-muted-foreground">Quick answers about how the product works</p>
-        </div>
-        <div className="mx-auto max-w-3xl space-y-3">
-          {faqs.map((faq, index) => {
-            const isOpen = openIndex === index
-            return (
-              <Card key={index} className="overflow-hidden border-2">
-                <button
-                  className="flex w-full items-start justify-between gap-4 p-6 text-left transition-colors hover:bg-muted/50"
-                  onClick={() => setOpenIndex(isOpen ? null : index)}
-                >
-                  <div className="flex gap-4">
-                    <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
-                      {index + 1}
+    <section id="faq" className="ba-section">
+      <div className="ba-sec-inner">
+        <div className="ba-sec-eyebrow">FAQ</div>
+        <h2 className="ba-sec-title">
+          <span className="lang-en">Common questions</span>
+          <span className="lang-zh">常见问题</span>
+        </h2>
+
+        <div className="ba-faq-wrap">
+          <div className="ba-faq">
+            {FAQS.map((faq, i) => {
+              const isOpen = openIndex === i
+              return (
+                <div key={i} className={`ba-faq-item ${isOpen ? "open" : ""}`}>
+                  <button
+                    className="ba-faq-btn"
+                    onClick={() => setOpenIndex(isOpen ? null : i)}
+                  >
+                    <span>
+                      <span className="lang-en">{faq.qEn}</span>
+                      <span className="lang-zh">{faq.qZh}</span>
                     </span>
-                    <span className="font-semibold">{faq.q}</span>
-                  </div>
-                  <Plus
-                    className={`h-5 w-5 flex-shrink-0 transition-transform ${
-                      isOpen ? "rotate-45" : ""
-                    }`}
-                  />
-                </button>
-                <div className={`overflow-hidden transition-all ${isOpen ? "max-h-32" : "max-h-0"}`}>
-                  <div className="border-t px-6 pb-6 pt-4">
-                    <p className="ml-10 text-sm text-muted-foreground">{faq.a}</p>
+                    <span className="ba-faq-btn-icon">+</span>
+                  </button>
+                  <div className="ba-faq-answer">
+                    <span className="lang-en">{faq.aEn}</span>
+                    <span className="lang-zh">{faq.aZh}</span>
                   </div>
                 </div>
-              </Card>
-            )
-          })}
+              )
+            })}
+          </div>
         </div>
       </div>
     </section>
   )
 }
-
