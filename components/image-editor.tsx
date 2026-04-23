@@ -8,6 +8,7 @@ import ControlPanel from "@/components/control-panel"
 import ResultsView from "@/components/results-view"
 import ElementCropper from "@/components/element-cropper"
 import { Upload, Wand2, ImageIcon } from "lucide-react"
+import Link from "next/link"
 import { useImageEditor } from "@/hooks"
 
 export type { EditorStep, EditMode, ImageData, MaskData, AspectRatio, ScaleMode, OutputDimensions, EditParams, CropRegion } from "@/types"
@@ -104,7 +105,7 @@ function EditorHeader({ step, onReset }: EditorHeaderProps) {
   return (
     <header className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="flex h-16 items-center justify-between px-6">
-        <div className="flex items-center gap-3">
+        <Link href="/" className="flex items-center gap-3">
           <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary">
             <ImageIcon className="h-5 w-5 text-primary-foreground" />
           </div>
@@ -112,7 +113,7 @@ function EditorHeader({ step, onReset }: EditorHeaderProps) {
             <h1 className="text-lg font-semibold">AI Image Editor</h1>
             <p className="text-xs text-muted-foreground">Structural editing powered by AI</p>
           </div>
-        </div>
+        </Link>
 
         {/* Step Indicator */}
         <nav className="flex items-center gap-2" aria-label="Progress">
