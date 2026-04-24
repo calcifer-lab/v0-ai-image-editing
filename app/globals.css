@@ -255,6 +255,43 @@ html[lang="en"] .lang-zh {
   gap: 28px;
 }
 
+.lang-toggle-fixed {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 9999;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  min-width: 64px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 400ms ease-out, transform 240ms ease-out, box-shadow 240ms ease-out;
+  animation: lang-fadein 1s ease-out 3s forwards;
+}
+
+@keyframes lang-fadein {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); pointer-events: auto; }
+}
+
+.lang-toggle-fixed:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  border-color: #cfd4dc;
+  background: var(--bg-card);
+}
+
 .site-nav-link {
   color: var(--text-muted);
   font-size: 14px;
@@ -269,6 +306,64 @@ html[lang="en"] .lang-zh {
   display: flex;
   align-items: center;
   gap: 12px;
+}
+
+.site-nav .lang-toggle-fixed {
+  position: static;
+  opacity: 1;
+  pointer-events: auto;
+  animation: none;
+  min-height: 40px;
+  min-width: 64px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  box-shadow: none;
+  transition:
+    transform 240ms ease-out,
+    border-color 240ms ease-out,
+    background-color 240ms ease-out;
+}
+
+.site-nav .lang-toggle-fixed:hover {
+  transform: translateY(-2px);
+  border-color: #cfd4dc;
+  background: var(--bg-card);
+  box-shadow: none;
+}
+
+.site-header-actions .lang-toggle-fixed {
+  position: static;
+  opacity: 1;
+  pointer-events: auto;
+  animation: none;
+  min-height: 40px;
+  min-width: 64px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  box-shadow: none;
+  transition:
+    transform 240ms ease-out,
+    border-color 240ms ease-out,
+    background-color 240ms ease-out;
+}
+
+.site-header-actions .lang-toggle-fixed:hover {
+  transform: translateY(-2px);
+  border-color: #cfd4dc;
+  background: var(--bg-card);
+  box-shadow: none;
 }
 
 .hero-section {

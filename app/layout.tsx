@@ -94,7 +94,6 @@ export default function RootLayout({
           }}
         />
         <LangProvider>
-          <LangToggleFixed />
           {children}
         </LangProvider>
       </body>

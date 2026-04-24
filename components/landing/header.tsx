@@ -1,6 +1,7 @@
 "use client"
 
 import Link from "next/link"
+import LangToggle from "@/components/lang-toggle-fixed"
 
 const NAV_LINKS = [
   {
@@ -23,6 +24,9 @@ const NAV_LINKS = [
     en: "FAQ",
     zh: "常见问题",
   },
+  {
+    isLangToggle: true,
+  },
 ]
 
 export default function Header() {
@@ -35,12 +39,16 @@ export default function Header() {
         </Link>
 
         <nav className="site-nav" aria-label="Primary">
-          {NAV_LINKS.map((link) => (
-            <a key={link.href} href={link.href} className="site-nav-link">
-              <span className="lang-en">{link.en}</span>
-              <span className="lang-zh">{link.zh}</span>
-            </a>
-          ))}
+          {NAV_LINKS.map((link) =>
+            "isLangToggle" in link ? (
+              <LangToggle key="lang-toggle" />
+            ) : (
+              <a key={link.href} href={link.href} className="site-nav-link">
+                <span className="lang-en">{link.en}</span>
+                <span className="lang-zh">{link.zh}</span>
+              </a>
+            ),
+          )}
         </nav>
 
         <div className="site-header-actions">
