@@ -13,6 +13,14 @@ import { buildGeminiInpaintPrompt, buildFluxEnhancedPrompt } from "@/lib/api"
 export const runtime = "nodejs"
 export const maxDuration = 300 // 5 minutes for model processing
 
+/** Normalize any data URI to always use PNG MIME type, preventing .jfif saves */
+function normalizeDataUri(uri: string): string {
+  if (!uri.startsWith("data:")) return uri
+  const base64Match = uri.match(/^data:[^;]+;base64,(.+)$/i)
+  if (!base64Match) return uri
+  return `data:image/png;base64,${base64Match[1]}`
+}
+
 // ============ Gemini 图像生成 ============
 async function tryGeminiImageGeneration(
   base_image: string,
@@ -114,9 +122,9 @@ async function tryGeminiImageGeneration(
     let resultImage: string
     
     if (typeof imageData === "string") {
-      resultImage = imageData.startsWith("data:") ? imageData : `data:image/png;base64,${imageData}`
+      resultImage = imageData.startsWith("data:") ? normalizeDataUri(imageData) : `data:image/png;base64,${imageData}`
     } else if (imageData?.image_url?.url) {
-      resultImage = imageData.image_url.url
+      resultImage = normalizeDataUri(imageData.image_url.url)
     } else if (imageData?.b64_json) {
       resultImage = `data:image/png;base64,${imageData.b64_json}`
     } else {
@@ -152,7 +160,7 @@ async function tryGeminiImageGeneration(
   if (base64Match) {
     console.log("[Inpaint] Successfully extracted base64 image from Gemini content text")
     return NextResponse.json({
-      result_image: base64Match[0],
+      result_image: normalizeDataUri(base64Match[0]),
       meta: { model: "gemini-2.5-flash-image", duration_ms: Date.now() - startTime },
     })
   }

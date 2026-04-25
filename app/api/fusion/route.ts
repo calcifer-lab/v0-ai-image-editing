@@ -1,5 +1,17 @@
 import { NextRequest, NextResponse } from "next/server"
 
+/**
+ * Normalize a data URI to always use PNG format.
+ * Gemini sometimes returns data:image/jfif;base64,... which browsers
+ * may save as .jfif — convert everything to data:image/png;base64,...
+ */
+function normalizeDataUri(uri: string): string {
+  if (!uri.startsWith("data:")) return uri
+  const base64Match = uri.match(/^data:[^;]+;base64,(.+)$/i)
+  if (!base64Match) return uri
+  return `data:image/png;base64,${base64Match[1]}`
+}
+
 export const runtime = "nodejs"
 export const maxDuration = 300
 
@@ -285,9 +297,9 @@ async function fusionWithGemini(
     let resultImage: string
 
     if (typeof imageData === "string") {
-      resultImage = imageData.startsWith("data:") ? imageData : `data:image/png;base64,${imageData}`
+      resultImage = imageData.startsWith("data:") ? normalizeDataUri(imageData) : `data:image/png;base64,${imageData}`
     } else if (imageData?.image_url?.url) {
-      resultImage = imageData.image_url.url
+      resultImage = normalizeDataUri(imageData.image_url.url)
     } else if (imageData?.b64_json) {
       resultImage = `data:image/png;base64,${imageData.b64_json}`
     } else {
