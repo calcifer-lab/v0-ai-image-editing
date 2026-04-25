@@ -489,14 +489,20 @@ export function useImageEditor(): UseImageEditorReturn {
     processedBaseImage = await removeMaskedRegionFromBase(processedBaseImage, processedMaskImage)
 
     // 使用局部变量跟踪分析结果，避免闭包捕获的状态值过时问题
-    let currentAnalysis = imageAnalysis
+    // 关键：只有当 (1) 已有分析 AND (2) 没有新的 elementCrop AND (3) 没有自定义 prompt 时才复用
+    const hasNewCrop = elementCrop && elementCrop.width > 0 && elementCrop.height > 0
+    let currentAnalysis = (!hasNewCrop && !params.prompt.trim()) ? imageAnalysis : null
 
-    // Trigger image analysis if not already done - 传入 elementCrop 以聚焦分析用户选择的区域
+    // 当有新裁剪区域或无分析结果时，重新分析当前选中的区域
     if (!currentAnalysis && !params.prompt.trim()) {
       updateProgress("Analyzing selected element region...", 28, { driftTo: 36 })
       const freshAnalysis = await analyzeImage(images.elementImage, elementCrop)
-      // 立即使用新鲜的分析结果，避免依赖可能为 null 的旧状态
+      // 立即使用新鲜的分析结果
       currentAnalysis = freshAnalysis
+      // 分析完成后同步到状态（供下次使用）
+      if (freshAnalysis) {
+        setImageAnalysis(freshAnalysis)
+      }
     }
 
     // 裁剪参考图片（如果用户有选择裁剪区域）
@@ -525,8 +531,16 @@ export function useImageEditor(): UseImageEditorReturn {
       console.log("[AI Editor] Built prompt:", finalPrompt)
     } else {
       // 如果分析失败，使用通用提示词作为后备
-      finalPrompt = "COPY the EXACT elements from the reference image into the masked region. Do NOT create new objects. Do NOT invent decorations. Only reproduce what you SEE in the reference."
-      console.warn("[AI Editor] No analysis available, using fallback prompt")
+      // 当用户有裁剪区域时，明确告知 AI 只用裁剪出来的那个元素
+      if (elementCrop && elementCrop.width > 0 && elementCrop.height > 0) {
+        finalPrompt = `COPY EXACTLY the ${elementCrop.width}×${elementCrop.height} cropped region from the reference image — do not use any area outside this selection. ` +
+          `Place it precisely into the masked region. DO NOT invent new objects. ` +
+          `DO NOT create decorations. Reproduce only what you see inside the cropped reference region.`
+        console.warn("[AI Editor] No analysis — using crop-aware fallback prompt, elementCrop:", elementCrop)
+      } else {
+        finalPrompt = "COPY the EXACT elements from the reference image into the masked region. Do NOT create new objects. Do NOT invent decorations. Only reproduce what you SEE in the reference."
+        console.warn("[AI Editor] No analysis available, using fallback prompt")
+      }
     }
 
     console.log("[AI Editor] Final prompt being sent:", finalPrompt)
