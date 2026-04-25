@@ -1,6 +1,6 @@
 "use client"
 
-import { Github, Twitter } from "lucide-react"
+import { Twitter } from "lucide-react"
 
 const FOOTER_LINKS = [
   {
@@ -28,7 +28,6 @@ const FOOTER_LINKS = [
 const SOCIAL_LINKS = [
   { href: "mailto:hello@rediagram.com", labelEn: "Email", labelZh: "邮箱", icon: null },
   { href: "https://x.com/RediagramAI", labelEn: "X / Twitter", labelZh: "X / Twitter", icon: Twitter },
-  { href: "https://github.com/calcifer-lab", labelEn: "GitHub", labelZh: "GitHub", icon: Github },
 ]
 
 export default function Footer() {
@@ -69,10 +68,6 @@ export default function Footer() {
 
         {/* Connect column */}
         <div className="footer-connect">
-          <p className="footer-connect-label">
-            <span className="lang-en">Connect</span>
-            <span className="lang-zh">联系我们</span>
-          </p>
           <div className="footer-socials">
             {SOCIAL_LINKS.map((item) => {
               const Icon = item.icon
