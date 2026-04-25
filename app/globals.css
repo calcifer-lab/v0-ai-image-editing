@@ -1177,3 +1177,127 @@ html[lang="en"] .lang-zh {
 
 .ba-label-before { left: 12px; }
 .ba-label-after  { right: 12px; }
+
+/* ─── Legal pages ─── */
+.legal-shell {
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.legal-layout {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  gap: 60px;
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 56px 0 96px;
+}
+
+.legal-toc {
+  position: sticky;
+  top: 100px;
+  align-self: start;
+}
+
+.legal-toc-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin: 0 0 16px;
+}
+
+.legal-toc ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.legal-toc a {
+  font-size: 14px;
+  color: var(--text-muted);
+  text-decoration: none;
+  transition: color 200ms;
+}
+
+.legal-toc a:hover {
+  color: var(--text);
+}
+
+.legal-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.legal-updated {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin: 0 0 40px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--border);
+}
+
+.legal-content section {
+  padding: 32px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.legal-content section:last-child {
+  border-bottom: none;
+}
+
+.legal-content h2 {
+  font-size: 22px;
+  font-weight: 700;
+  margin: 0 0 16px;
+  letter-spacing: -0.02em;
+}
+
+.legal-content p {
+  font-size: 16px;
+  line-height: 1.75;
+  color: var(--text-muted);
+  margin: 0 0 14px;
+}
+
+.legal-content p:last-child {
+  margin-bottom: 0;
+}
+
+.legal-content ul {
+  padding-left: 20px;
+  margin: 0 0 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.legal-content li {
+  font-size: 16px;
+  line-height: 1.7;
+  color: var(--text-muted);
+}
+
+.legal-content a {
+  color: var(--text);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+@media (max-width: 640px) {
+  .legal-layout {
+    grid-template-columns: 1fr;
+    gap: 0;
+    padding: 32px 0 64px;
+  }
+
+  .legal-toc {
+    display: none;
+  }
+}
