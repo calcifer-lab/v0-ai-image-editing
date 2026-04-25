@@ -1,7 +1,7 @@
 import ImageEditor from "@/components/image-editor"
 
 export const metadata = {
-  title: "Editor - AI Image Editor",
+  title: "Fix ReDiagram",
   description: "AI-powered image editing workspace",
 }
 

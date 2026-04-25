@@ -110,8 +110,8 @@ function EditorHeader({ step, onReset }: EditorHeaderProps) {
             <ImageIcon className="h-5 w-5 text-primary-foreground" />
           </div>
           <div>
-            <h1 className="text-lg font-semibold">AI Image Editor</h1>
-            <p className="text-xs text-muted-foreground">Structural editing powered by AI</p>
+            <h1 className="text-lg font-semibold">Fix</h1>
+            <p className="text-xs text-muted-foreground">Compose only what needs changing.</p>
           </div>
         </Link>
 
@@ -125,14 +125,14 @@ function EditorHeader({ step, onReset }: EditorHeaderProps) {
           />
           <div className="h-px w-8 bg-border" aria-hidden="true" />
           <StepIndicator
-            label="Edit"
+            label="Select"
             icon={Wand2}
             active={step === "edit"}
             completed={step === "result"}
           />
           <div className="h-px w-8 bg-border" aria-hidden="true" />
           <StepIndicator
-            label="Result"
+            label="Fix"
             icon={ImageIcon}
             active={step === "result"}
             completed={false}

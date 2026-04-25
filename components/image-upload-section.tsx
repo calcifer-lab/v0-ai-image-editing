@@ -133,8 +133,8 @@ export default function ImageUploadSection({ onImagesUploaded }: ImageUploadSect
 
         <div className="grid w-full max-w-4xl gap-6 md:grid-cols-2">
           <UploadCard
-            title="A: Base Image"
-            description="The image you want to edit"
+            title="A: Image to Fix"
+            description="Upload the image that needs a targeted change."
             image={baseImage}
             onDrop={(e) => handleDrop(e, "base")}
             onFileSelect={(e) => handleFileSelect(e, "base")}
@@ -143,8 +143,8 @@ export default function ImageUploadSection({ onImagesUploaded }: ImageUploadSect
           />
 
           <UploadCard
-            title="B: Element Image"
-            description="The source of elements you want to use"
+            title="B: Patch Reference"
+            description="Upload the visual reference for what should be changed or inserted."
             image={elementImage}
             onDrop={(e) => handleDrop(e, "element")}
             onFileSelect={(e) => handleFileSelect(e, "element")}
@@ -163,7 +163,7 @@ export default function ImageUploadSection({ onImagesUploaded }: ImageUploadSect
             {isLoading ? (
               <>
                 <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                Loading Editor...
+                Opening Fix...
               </>
             ) : isProcessing ? (
               <>
@@ -171,7 +171,7 @@ export default function ImageUploadSection({ onImagesUploaded }: ImageUploadSect
                 Processing...
               </>
             ) : (
-              "Continue to Editor"
+              "Open Fix"
             )}
           </Button>
         </div>

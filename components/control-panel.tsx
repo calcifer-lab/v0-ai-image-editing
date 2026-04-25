@@ -161,7 +161,7 @@ function DirectPasteSettings({
             <div className="flex-1">
               <h4 className="font-semibold">Direct Patch Mode</h4>
               <p className="mt-1 text-sm text-muted-foreground">
-                The selected element will be intelligently patched into the target region with AI-powered fusion for natural integration, style consistency, and seamless blending.
+                Apply the selected reference directly to the chosen area when you already know exactly what needs changing.
               </p>
             </div>
           </div>
@@ -195,7 +195,7 @@ function AIGenerateSettings({
             <div className="flex-1">
               <h4 className="font-semibold">AI Generate Mode</h4>
               <p className="mt-1 text-sm text-muted-foreground">
-                AI will analyze the element and blend it naturally into the target region, adapting style and context.
+                Let AI reinterpret the patch reference so the fix matches the surrounding image, style, and context.
               </p>
             </div>
           </div>
