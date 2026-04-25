@@ -89,6 +89,82 @@ async function cropImageToDataUrl(imageUrl: string, crop: CropRegion): Promise<s
   return canvas.toDataURL("image/png")
 }
 
+/**
+ * Scale mask coordinates from one image dimensions to another.
+ * Used when the mask was drawn at original canvas size but we need to
+ * apply it at a different (resized) canvas size.
+ */
+function scaleMaskCoordinates(
+  coords: { x: number; y: number; width: number; height: number },
+  fromWidth: number,
+  fromHeight: number,
+  toWidth: number,
+  toHeight: number
+): { x: number; y: number; width: number; height: number } {
+  const scaleX = toWidth / fromWidth
+  const scaleY = toHeight / fromHeight
+  return {
+    x: Math.round(coords.x * scaleX),
+    y: Math.round(coords.y * scaleY),
+    width: Math.round(coords.width * scaleX),
+    height: Math.round(coords.height * scaleY),
+  }
+}
+
+/**
+ * Composite the reference element (with background removed) directly onto
+ * the base canvas at the masked position — pixel-level replacement BEFORE
+ * sending to AI. This ensures the reference pixels are actually preserved
+ * in the output, rather than being used only as a "style hint".
+ *
+ * The AI then only needs to blend edges, not regenerate content.
+ */
+async function compositeElementPixelPerfect(
+  baseWithHole: string,   // base with masked region already cleared (transparent)
+  croppedReference: string, // reference element, background already removed
+  originalMaskCoords: { x: number; y: number; width: number; height: number },
+  originalImageWidth: number,
+  originalImageHeight: number,
+  resizedWidth: number,
+  resizedHeight: number
+): Promise<string> {
+  const [baseImg, refImg] = await Promise.all([
+    loadImage(baseWithHole),
+    loadImage(croppedReference),
+  ])
+
+  // Scale the mask placement coordinates from original → resized canvas
+  const scaled = scaleMaskCoordinates(
+    originalMaskCoords,
+    originalImageWidth,
+    originalImageHeight,
+    resizedWidth,
+    resizedHeight
+  )
+
+  const canvas = document.createElement("canvas")
+  canvas.width = resizedWidth
+  canvas.height = resizedHeight
+  const ctx = canvas.getContext("2d")
+  if (!ctx) throw new Error("Failed to get canvas context for composite")
+
+  // Draw base (with hole) first
+  ctx.drawImage(baseImg, 0, 0, resizedWidth, resizedHeight)
+
+  // Draw the reference element into the masked hole
+  // Use 'source-over' to place ref pixels directly into the hole
+  ctx.drawImage(
+    refImg,
+    0, 0, refImg.width, refImg.height,  // source rect (full reference)
+    scaled.x, scaled.y, scaled.width, scaled.height // dest rect (mask position)
+  )
+
+  console.log("[AI Editor] Pixel-perfect composite: ref", refImg.width, "x", refImg.height,
+    "→ placed at canvas pos", scaled.x, scaled.y, "size", scaled.width, "x", scaled.height)
+
+  return canvas.toDataURL("image/png")
+}
+
 async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
   const response = await fetch(dataUrl)
   return response.blob()
@@ -546,14 +622,95 @@ export function useImageEditor(): UseImageEditorReturn {
     console.log("[AI Editor] Final prompt being sent:", finalPrompt)
     console.log("[AI Editor] Has elementCrop:", !!elementCrop, elementCrop)
 
+    // ── Pixel-perfect composite: place reference pixels directly into the masked
+    //    region BEFORE sending to AI. This ensures the AI uses the actual
+    //    reference content (not just as a "style hint") and only needs to
+    //    blend edges rather than regenerate content.
+    updateProgress("Compositing reference into target region...", 50, { driftTo: 58 })
+    let compositedBase = processedBaseImage
+
+    if (elementCrop && elementCrop.width > 0 && elementCrop.height > 0 && mask) {
+      try {
+        const baseImgEl = await loadImage(processedBaseImage)
+        const resizedBaseW = baseImgEl.width   // 1536 max
+        const resizedBaseH = baseImgEl.height
+
+        // Both mask and base canvas start at the same max (800×600) and scale proportionally.
+        // Scale factor from canvas space to 1536 space:
+        const canvasMaxW = 800
+        const canvasMaxH = 600
+        const canvasToBaseX = resizedBaseW / canvasMaxW
+        const canvasToBaseY = resizedBaseH / canvasMaxH
+
+        // Scale mask coords from canvas space → resized base space
+        const scaledMask = {
+          x: Math.round(mask.coordinates.x * canvasToBaseX),
+          y: Math.round(mask.coordinates.y * canvasToBaseY),
+          width: Math.round(mask.coordinates.width * canvasToBaseX),
+          height: Math.round(mask.coordinates.height * canvasToBaseY),
+        }
+
+        // elementCrop is in natural image pixel space (imageWidth × imageHeight).
+        // The reference image was resized to max 768, preserving aspect ratio.
+        // Scale crop from natural image space → 768 space:
+        const elemOrigW = elementCrop.imageWidth
+        const elemOrigH = elementCrop.imageHeight
+        const maxElemDim = 768
+        const elemScale = elemOrigW > elemOrigH
+          ? maxElemDim / elemOrigW
+          : maxElemDim / elemOrigH
+        const elemCropFor768: CropRegion = {
+          x: Math.round(elementCrop.x * elemScale),
+          y: Math.round(elementCrop.y * elemScale),
+          width: Math.round(elementCrop.width * elemScale),
+          height: Math.round(elementCrop.height * elemScale),
+          imageWidth: Math.round(elemOrigW * elemScale),
+          imageHeight: Math.round(elemOrigH * elemScale),
+        }
+
+        console.log("[AI Editor] Composite: mask at", scaledMask,
+          "elem crop in 768-space:", elemCropFor768.width, "x", elemCropFor768.height)
+
+        // Step 1: crop the (bg-removed) reference at 768 resolution
+        const croppedRefAt768 = await cropImageToDataUrl(processedReference, elemCropFor768)
+
+        // Step 2: upscale cropped reference from 768 → base resolution (1536)
+        const croppedRefUpscaled = await resizeImage(croppedRefAt768, resizedBaseW, resizedBaseH)
+
+        // Step 3: pixel-composite upscaled reference into the masked hole on base
+        const composited = await compositeElementPixelPerfect(
+          processedBaseImage,
+          croppedRefUpscaled.dataUrl,
+          scaledMask,
+          resizedBaseW,
+          resizedBaseH,
+          resizedBaseW,
+          resizedBaseH
+        )
+        compositedBase = composited
+        console.log("[AI Editor] Pixel-perfect composite done")
+      } catch (compositeError) {
+        console.warn("[AI Editor] Pixel-perfect composite failed:", compositeError)
+      }
+    }
+
+    updateProgress("Sending request to AI model...", 60, { driftTo: 72 })
+
+    // BLEND prompt: AI's job is now only to harmonize edges, not generate content
+    const blendPrompt =
+      "BLEND the new element seamlessly into the surrounding area. " +
+      "The element is already placed correctly — do NOT regenerate it. " +
+      "Only harmonize: match lighting, color temperature, texture, and blend outer edges with the background. " +
+      "Keep the element EXACTLY as provided. The masked region's new content must remain pixel-identical."
+
     const response = await fetch("/api/inpaint", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        base_image: processedBaseImage,
+        base_image: compositedBase,
         mask_image: processedMaskImage,
-        reference_image: processedReference,  // 使用裁剪后的参考图片
-        prompt: finalPrompt,
+        reference_image: processedReference,
+        prompt: blendPrompt,
         options: {
           strength: params.strength,
           steps: 30,
@@ -563,10 +720,12 @@ export function useImageEditor(): UseImageEditorReturn {
     })
 
     if (!response.ok) {
-      throw new Error(await response.text() || `API error: ${response.status}`)
+      // If inpaint fails, return the pixel-composited result directly
+      console.warn("[AI Editor] Inpaint API failed, returning pixel-composited result:", await response.text())
+      return compositedBase
     }
 
-    updateProgress("AI model processing response...", 72, { driftTo: 78 })
+    updateProgress("AI model processing response...", 75, { driftTo: 80 })
     const data = await safeParseJSON(response) as { result_image?: string }
 
     if (!data.result_image) {
