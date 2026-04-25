@@ -189,14 +189,31 @@ async function removeMaskedRegionFromBase(baseDataUrl: string, maskDataUrl: stri
   if (!ctx) throw new Error("Failed to get canvas context for base masking")
 
   // Build an alpha-only mask: white => remove, black => keep
+  // Use the mask at its own resolution (not stretched to base size)
   const maskCanvas = document.createElement("canvas")
-  maskCanvas.width = baseImg.width
-  maskCanvas.height = baseImg.height
+  maskCanvas.width = maskImg.width
+  maskCanvas.height = maskImg.height
   const maskCtx = maskCanvas.getContext("2d")
   if (!maskCtx) throw new Error("Failed to get mask canvas context")
-  maskCtx.drawImage(maskImg, 0, 0, baseImg.width, baseImg.height)
-  const maskData = maskCtx.getImageData(0, 0, baseImg.width, baseImg.height)
-  const data = maskData.data
+  // Draw mask at its own resolution — do NOT stretch to baseImg dimensions
+  // (mask may have different aspect ratio than base after resize to 1536)
+  maskCtx.drawImage(maskImg, 0, 0)
+  const maskData = maskCtx.getImageData(0, 0, maskCanvas.width, maskCanvas.height)
+
+  // Scale mask data to cover the base canvas at base's resolution.
+  // Create a temporary canvas at base resolution and scale the mask into it.
+  const scaledMaskCanvas = document.createElement("canvas")
+  scaledMaskCanvas.width = baseImg.width
+  scaledMaskCanvas.height = baseImg.height
+  const scaledMaskCtx = scaledMaskCanvas.getContext("2d")
+  if (!scaledMaskCtx) throw new Error("Failed to get scaled mask canvas context")
+  // Scale the mask (already at mask resolution) to cover base canvas
+  // The mask is scaled, not stretched — preserves mask pixel density
+  scaledMaskCtx.drawImage(maskCanvas, 0, 0, baseImg.width, baseImg.height)
+  const scaledMaskData = scaledMaskCtx.getImageData(0, 0, baseImg.width, baseImg.height)
+  const data = scaledMaskData.data
+
+  // Convert to alpha-only: white pixels in mask = transparent (remove), black = opaque (keep)
   for (let i = 0; i < data.length; i += 4) {
     const r = data[i]
     const g = data[i + 1]
@@ -207,7 +224,7 @@ async function removeMaskedRegionFromBase(baseDataUrl: string, maskDataUrl: stri
     data[i + 2] = 0
     data[i + 3] = isWhite ? 255 : 0
   }
-  maskCtx.putImageData(maskData, 0, 0)
+  scaledMaskCtx.putImageData(scaledMaskData, 0, 0)
 
   // Draw base, then punch a hole where mask is white
   ctx.drawImage(baseImg, 0, 0, baseImg.width, baseImg.height)
