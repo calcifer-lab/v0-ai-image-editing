@@ -18,6 +18,7 @@ export const maxDuration = 300
 interface FusionRequest {
   composite_image: string // 合成后的图片（base64）
   original_base: string // 原始背景图（base64）
+  reference_image?: string // 裁剪后的参考元素（可选）
   mask_region: {
     x: number
     y: number
@@ -45,10 +46,12 @@ interface FusionResponse {
  */
 export async function POST(request: NextRequest): Promise<NextResponse<FusionResponse | { error: string }>> {
   const startTime = Date.now()
+  let fallbackComposite: string | null = null
 
   try {
     const body: FusionRequest = await request.json()
-    const { composite_image, original_base, mask_region } = body
+    const { composite_image, original_base, reference_image, mask_region } = body
+    fallbackComposite = composite_image
 
     if (!composite_image) {
       return NextResponse.json({ error: "composite_image is required" }, { status: 400 })
@@ -66,7 +69,13 @@ export async function POST(request: NextRequest): Promise<NextResponse<FusionRes
     if (openRouterApiKey) {
       try {
         console.log("[Fusion] Using Gemini 2.5 Flash for fusion...")
-        const geminiResult = await fusionWithGemini(composite_image, fusionPrompt, openRouterApiKey, startTime)
+        const geminiResult = await fusionWithGemini(
+          composite_image,
+          reference_image,
+          fusionPrompt,
+          openRouterApiKey,
+          startTime
+        )
         if (geminiResult) {
           return geminiResult
         }
@@ -90,6 +99,13 @@ export async function POST(request: NextRequest): Promise<NextResponse<FusionRes
     })
   } catch (error) {
     console.error("[Fusion] Error:", error)
+    if (fallbackComposite) {
+      return NextResponse.json({
+        fused_image: fallbackComposite,
+        meta: { model: "fusion-error-fallback", duration_ms: Date.now() - startTime },
+      })
+    }
+
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Failed to process fusion request" },
       { status: 500 }
@@ -251,6 +267,7 @@ OUTPUT: A seamlessly fused image where:
  */
 async function fusionWithGemini(
   composite_image: string,
+  reference_image: string | undefined,
   prompt: string,
   apiKey: string,
   startTime: number
@@ -263,6 +280,13 @@ async function fusionWithGemini(
     { type: "text", text: "🎨 COMPOSITED IMAGE (needs fusion):" },
     { type: "text", text: "This image contains a newly composited element that needs to be seamlessly fused with the background." },
     { type: "image_url", image_url: { url: composite_image } },
+    ...(reference_image
+      ? [
+          { type: "text", text: "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" },
+          { type: "text", text: "🧩 REFERENCE ELEMENT (already cropped to the intended patch):" },
+          { type: "image_url", image_url: { url: reference_image } },
+        ]
+      : []),
     { type: "text", text: "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" },
     { type: "text", text: "🎯 FUSION TASK:" },
     { type: "text", text: prompt },

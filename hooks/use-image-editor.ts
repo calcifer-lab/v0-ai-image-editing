@@ -50,7 +50,7 @@ export interface UseImageEditorReturn {
   // 操作方法
   setStep: (step: EditorStep) => void
   setParams: (params: EditParams) => void
-  setMask: (mask: MaskData) => void
+  setMask: (mask: MaskData | null) => void
   setElementCrop: (crop: CropRegion | null) => void
   handleImagesUploaded: (elementImg: string, baseImg: string) => Promise<void>
   handleProcess: () => Promise<void>
@@ -441,7 +441,7 @@ export function useImageEditor(): UseImageEditorReturn {
   }, [])
 
   // 处理遮罩创建
-  const handleMaskCreated = useCallback((maskData: MaskData) => {
+  const handleMaskCreated = useCallback((maskData: MaskData | null) => {
     setMask(maskData)
   }, [])
 
@@ -455,8 +455,10 @@ export function useImageEditor(): UseImageEditorReturn {
 
     // 裁剪参考图片 (10%)
     updateProgress("Preparing reference image...", 10)
+    const hasExplicitCrop = !!(elementCrop && elementCrop.width > 0 && elementCrop.height > 0)
+
     let processedReference = images.elementImage
-    if (elementCrop) {
+    if (hasExplicitCrop && elementCrop) {
       try {
         processedReference = await cropImageToDataUrl(images.elementImage, elementCrop)
         console.log("[AI Editor] Applied user crop to reference image")
@@ -501,9 +503,10 @@ export function useImageEditor(): UseImageEditorReturn {
     // AI 融合后处理 (60%)
     updateProgress("AI fusion: Harmonizing lighting and style...", 60, { driftTo: 78 })
     try {
-      const [compressedComposite, compressedBase] = await Promise.all([
+      const [compressedComposite, compressedBase, compressedReference] = await Promise.all([
         compressDataUrlForUpload(compositeResult),
         compressDataUrlForUpload(images.baseImage),
+        compressDataUrlForUpload(processedReference),
       ])
 
       const fusionResponse = await fetch("/api/fusion", {
@@ -512,6 +515,7 @@ export function useImageEditor(): UseImageEditorReturn {
         body: JSON.stringify({
           composite_image: compressedComposite,
           original_base: compressedBase,
+          reference_image: compressedReference,
           mask_region: mask.coordinates,
         }),
       })
@@ -543,21 +547,20 @@ export function useImageEditor(): UseImageEditorReturn {
     updateProgress("Compressing images for upload...", 12, { driftTo: 18 })
 
     // Downscale inputs to avoid oversized payloads before calling inpaint
-    const [baseBlob, maskBlob, referenceBlob] = await Promise.all([
+    const hasExplicitCrop = !!(elementCrop && elementCrop.width > 0 && elementCrop.height > 0)
+
+    const [baseBlob, maskBlob] = await Promise.all([
       dataUrlToBlob(images.baseImage),
       dataUrlToBlob(mask.dataUrl),
-      dataUrlToBlob(images.elementImage),
     ])
 
-    const [compressedBase, compressedMask, compressedReference] = await Promise.all([
+    const [compressedBase, compressedMask] = await Promise.all([
       resizeImageBlob(baseBlob, 1536, 0.85),
       // Keep mask aligned to the same dimensions as the base to avoid misalignment
       resizeImageBlob(maskBlob, 1536, 0.95),
-      resizeImageBlob(referenceBlob, 768, 0.85),
     ])
 
     let processedBaseImage = await blobToDataUrl(compressedBase)
-    let processedReferenceImage = await blobToDataUrl(compressedReference)
     const processedMaskImage = await blobToDataUrl(compressedMask)
 
     updateProgress("Cleaning masked region...", 20, { driftTo: 28 })
@@ -583,14 +586,28 @@ export function useImageEditor(): UseImageEditorReturn {
 
     // 裁剪参考图片（如果用户有选择裁剪区域）
     updateProgress("Preparing reference image...", 38, { driftTo: 44 })
-    let processedReference = processedReferenceImage
-    if (elementCrop && elementCrop.width > 0 && elementCrop.height > 0) {
+    let processedReference: string
+    if (hasExplicitCrop && elementCrop) {
       try {
-        processedReference = await cropImageToDataUrl(processedReferenceImage, elementCrop)
-        console.log("[AI Editor] Applied user crop to reference image for AI mode:", elementCrop.width, "x", elementCrop.height)
+        const croppedReference = await cropImageToDataUrl(images.elementImage, elementCrop)
+        const resizedReference = await resizeImage(croppedReference, 768, 768)
+        processedReference = await compressImage(resizedReference.dataUrl, 0.85)
+        console.log(
+          "[AI Editor] Applied user crop to reference image for AI mode:",
+          elementCrop.width,
+          "x",
+          elementCrop.height
+        )
       } catch (cropError) {
         console.warn("[AI Editor] Failed to crop reference image, using original:", cropError)
+        const referenceBlob = await dataUrlToBlob(images.elementImage)
+        const compressedReference = await resizeImageBlob(referenceBlob, 768, 0.85)
+        processedReference = await blobToDataUrl(compressedReference)
       }
+    } else {
+      const referenceBlob = await dataUrlToBlob(images.elementImage)
+      const compressedReference = await resizeImageBlob(referenceBlob, 768, 0.85)
+      processedReference = await blobToDataUrl(compressedReference)
     }
 
     updateProgress("Sending request to AI model...", 48, { driftTo: 62 })
@@ -629,55 +646,29 @@ export function useImageEditor(): UseImageEditorReturn {
     updateProgress("Compositing reference into target region...", 50, { driftTo: 58 })
     let compositedBase = processedBaseImage
 
-    if (elementCrop && elementCrop.width > 0 && elementCrop.height > 0 && mask) {
+    if (hasExplicitCrop && mask) {
       try {
-        const baseImgEl = await loadImage(processedBaseImage)
-        const resizedBaseW = baseImgEl.width   // 1536 max
+        const [baseImgEl, maskImgEl] = await Promise.all([
+          loadImage(processedBaseImage),
+          loadImage(processedMaskImage),
+        ])
+        const resizedBaseW = baseImgEl.width
         const resizedBaseH = baseImgEl.height
 
-        // Both mask and base canvas start at the same max (800×600) and scale proportionally.
-        // Scale factor from canvas space to 1536 space:
-        const canvasMaxW = 800
-        const canvasMaxH = 600
-        const canvasToBaseX = resizedBaseW / canvasMaxW
-        const canvasToBaseY = resizedBaseH / canvasMaxH
-
-        // Scale mask coords from canvas space → resized base space
+        // Scale mask coords from mask canvas space to the resized base space.
         const scaledMask = {
-          x: Math.round(mask.coordinates.x * canvasToBaseX),
-          y: Math.round(mask.coordinates.y * canvasToBaseY),
-          width: Math.round(mask.coordinates.width * canvasToBaseX),
-          height: Math.round(mask.coordinates.height * canvasToBaseY),
+          x: Math.round(mask.coordinates.x * (resizedBaseW / maskImgEl.width)),
+          y: Math.round(mask.coordinates.y * (resizedBaseH / maskImgEl.height)),
+          width: Math.round(mask.coordinates.width * (resizedBaseW / maskImgEl.width)),
+          height: Math.round(mask.coordinates.height * (resizedBaseH / maskImgEl.height)),
         }
 
-        // elementCrop is in natural image pixel space (imageWidth × imageHeight).
-        // The reference image was resized to max 768, preserving aspect ratio.
-        // Scale crop from natural image space → 768 space:
-        const elemOrigW = elementCrop.imageWidth
-        const elemOrigH = elementCrop.imageHeight
-        const maxElemDim = 768
-        const elemScale = elemOrigW > elemOrigH
-          ? maxElemDim / elemOrigW
-          : maxElemDim / elemOrigH
-        const elemCropFor768: CropRegion = {
-          x: Math.round(elementCrop.x * elemScale),
-          y: Math.round(elementCrop.y * elemScale),
-          width: Math.round(elementCrop.width * elemScale),
-          height: Math.round(elementCrop.height * elemScale),
-          imageWidth: Math.round(elemOrigW * elemScale),
-          imageHeight: Math.round(elemOrigH * elemScale),
-        }
+        console.log("[AI Editor] Composite: mask at", scaledMask)
 
-        console.log("[AI Editor] Composite: mask at", scaledMask,
-          "elem crop in 768-space:", elemCropFor768.width, "x", elemCropFor768.height)
+        // The explicit crop is already applied before resizing, so we only need
+        // to scale the cropped reference up to the working base resolution here.
+        const croppedRefUpscaled = await resizeImage(processedReference, resizedBaseW, resizedBaseH)
 
-        // Step 1: crop the (bg-removed) reference at 768 resolution
-        const croppedRefAt768 = await cropImageToDataUrl(processedReference, elemCropFor768)
-
-        // Step 2: upscale cropped reference from 768 → base resolution (1536)
-        const croppedRefUpscaled = await resizeImage(croppedRefAt768, resizedBaseW, resizedBaseH)
-
-        // Step 3: pixel-composite upscaled reference into the masked hole on base
         const composited = await compositeElementPixelPerfect(
           processedBaseImage,
           croppedRefUpscaled.dataUrl,
@@ -710,8 +701,6 @@ export function useImageEditor(): UseImageEditorReturn {
     // path handles edge blending. AI Generate = "place the element exactly".
     // (A future iteration can wire up fusion after pixel-composite for AI Generate.)
     //
-    const hasExplicitCrop = elementCrop && elementCrop.width > 0 && elementCrop.height > 0
-
     if (hasExplicitCrop) {
       console.log("[AI Editor] AI Generate: returning pixel-composited result directly (skip inpaint)")
       return compositedBase
@@ -823,6 +812,7 @@ export function useImageEditor(): UseImageEditorReturn {
     setImageAnalysis(null)
     setIsAnalyzing(false)
     setProcessingStatus("")
+    setProcessingProgress(0)
     setElementCrop(null)
     stopProgressDrift()
   }, [stopProgressDrift])

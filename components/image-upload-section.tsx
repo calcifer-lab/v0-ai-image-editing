@@ -5,13 +5,14 @@ import { useState, useCallback, useRef } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Upload, CheckCircle2, X, RefreshCw, Loader2 } from "lucide-react"
-import { removeWatermark } from "@/lib/image-utils"
+import { fileToDataUrl, getImageDimensions, isImageFile, removeWatermark } from "@/lib/image-utils"
 
 interface ImageUploadSectionProps {
   onImagesUploaded: (elementImage: string, baseImage: string) => void
 }
 
 type ImageType = "element" | "base"
+type UploadFeedback = { type: "error" | "warning"; message: string } | null
 
 const DEMO_PRESETS = [
   { element: "/demo/nezuko-element.jpg", base: "/demo/nezuko-base.jpg" },
@@ -23,10 +24,27 @@ export default function ImageUploadSection({ onImagesUploaded }: ImageUploadSect
   const [baseImage, setBaseImage] = useState<string | null>(null)
   const [isProcessing, setIsProcessing] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  const [feedback, setFeedback] = useState<UploadFeedback>(null)
   const elementImageRef = useRef<string | null>(null)
   const baseImageRef = useRef<string | null>(null)
 
   const handleFileUpload = useCallback(async (file: File, type: ImageType) => {
+    if (!isImageFile(file)) {
+      setFeedback({ type: "error", message: "Only image files are supported." })
+      return
+    }
+
+    const sourceDataUrl = await fileToDataUrl(file)
+    const dimensions = await getImageDimensions(sourceDataUrl)
+    if (dimensions.width < 50 || dimensions.height < 50) {
+      setFeedback({
+        type: "warning",
+        message: "This image is very small (under 50px on one side) and may not edit well.",
+      })
+    } else {
+      setFeedback(null)
+    }
+
     const reader = new FileReader()
     reader.onload = async (e) => {
       const result = e.target?.result as string
@@ -61,7 +79,7 @@ export default function ImageUploadSection({ onImagesUploaded }: ImageUploadSect
     (e: React.DragEvent, type: ImageType) => {
       e.preventDefault()
       const file = e.dataTransfer.files[0]
-      if (file && file.type.startsWith("image/")) {
+      if (file) {
         handleFileUpload(file, type)
       }
     },
@@ -130,6 +148,18 @@ export default function ImageUploadSection({ onImagesUploaded }: ImageUploadSect
           <p className="text-center text-sm text-muted-foreground">No image? Try one of these</p>
           <DemoImageGrid presets={DEMO_PRESETS} onSelect={handleTryDemo} />
         </div>
+
+        {feedback ? (
+          <div
+            className={`w-full max-w-4xl rounded-lg border px-4 py-3 text-sm ${
+              feedback.type === "error"
+                ? "border-destructive/40 bg-destructive/10 text-destructive"
+                : "border-amber-500/40 bg-amber-500/10 text-amber-700"
+            }`}
+          >
+            {feedback.message}
+          </div>
+        ) : null}
 
         <div className="grid w-full max-w-4xl gap-6 md:grid-cols-2">
           <UploadCard

@@ -12,7 +12,7 @@ import type { MaskData } from "@/types"
 interface CanvasEditorProps {
   elementImage: string
   baseImage: string
-  onMaskCreated: (mask: MaskData) => void
+  onMaskCreated: (mask: MaskData | null) => void
 }
 
 type Tool = "brush" | "eraser" | "rectangle" | "circle"
@@ -175,7 +175,10 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
         })
       } else {
         console.warn("[Canvas Editor] Invalid mask dimensions:", { width, height })
+        onMaskCreated(null)
       }
+    } else {
+      onMaskCreated(null)
     }
   }, [onMaskCreated])
 

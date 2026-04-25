@@ -26,6 +26,16 @@ type Tool = "brush" | "eraser"
 
 const MASK_OVERLAY_COLOR = { r: 59, g: 130, b: 246 }
 const MASK_OVERLAY_ALPHA = 128
+const MAX_DISPLAY_HEIGHT = 400
+
+function getDisplayDimensions(width: number, height: number) {
+  const scale = Math.min(1, MAX_DISPLAY_HEIGHT / height)
+  return {
+    width: Math.round(width * scale),
+    height: Math.round(height * scale),
+  }
+}
+
 export default function ElementCropper({ image, crop, onCropChange }: ElementCropperProps) {
   const imgRef = useRef<HTMLImageElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -263,10 +273,10 @@ export default function ElementCropper({ image, crop, onCropChange }: ElementCro
       if (!canvas || !maskCanvas || !img || !img.complete || !img.naturalWidth) return
 
       // Use natural dimensions scaled to display size
-      const maxHeight = Math.min(400, window.innerHeight * 0.5)
-      const scale = Math.min(1, maxHeight / img.naturalHeight)
-      const displayWidth = img.naturalWidth * scale
-      const displayHeight = img.naturalHeight * scale
+      const { width: displayWidth, height: displayHeight } = getDisplayDimensions(
+        img.naturalWidth,
+        img.naturalHeight
+      )
 
       if (canvas.width !== displayWidth || canvas.height !== displayHeight) {
         canvas.width = displayWidth
@@ -302,10 +312,10 @@ export default function ElementCropper({ image, crop, onCropChange }: ElementCro
     // Always initialize canvas with proper dimensions based on natural image size
     if (!canvas || !maskCanvas) return
 
-    const maxHeight = Math.min(400, 360)
-    const scale = Math.min(1, maxHeight / target.naturalHeight)
-    const displayWidth = Math.round(target.naturalWidth * scale)
-    const displayHeight = Math.round(target.naturalHeight * scale)
+    const { width: displayWidth, height: displayHeight } = getDisplayDimensions(
+      target.naturalWidth,
+      target.naturalHeight
+    )
 
     if (canvas.width !== displayWidth || canvas.height !== displayHeight) {
       canvas.width = displayWidth

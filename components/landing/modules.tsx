@@ -13,7 +13,35 @@ type UseCase =
   | "Training materials"
   | "Other"
 
-const MODULES = [
+interface AvailableModule {
+  nameEn: string
+  nameZh: string
+  bodyEn: string
+  bodyZh: string
+  statusEn: string
+  statusZh: string
+  tone: string
+  ctaEn: string
+  ctaZh: string
+  href: string
+}
+
+interface PlannedModule {
+  key: ModuleKey
+  nameEn: string
+  nameZh: string
+  bodyEn: string
+  bodyZh: string
+  statusEn: string
+  statusZh: string
+  tone: string
+  ctaEn: string
+  ctaZh: string
+}
+
+type ModuleCard = AvailableModule | PlannedModule
+
+const MODULES: ModuleCard[] = [
   {
     nameEn: "Fix",
     nameZh: "Fix",

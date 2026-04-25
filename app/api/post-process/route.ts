@@ -64,10 +64,30 @@ export async function POST(request: NextRequest) {
           .extractChannel("red") // Use red channel as grayscale mask
           .toBuffer()
 
-        // Create a 4-channel version of the result with the blurred mask as alpha
-        const resultWithAlpha = await sharp(resultBuffer)
+        const { data: resultPixels, info } = await sharp(resultBuffer)
           .ensureAlpha()
-          .joinChannel(blurredMaskWithAlpha, { replaceAlpha: true })
+          .raw()
+          .toBuffer({ resolveWithObject: true })
+
+        const alphaPixels = await sharp(blurredMaskWithAlpha)
+          .resize(info.width, info.height, { fit: "fill" })
+          .raw()
+          .toBuffer()
+
+        // Replace the alpha channel directly because Sharp does not support
+        // `replaceAlpha` in joinChannel options.
+        for (let pixelIndex = 0; pixelIndex < info.width * info.height; pixelIndex += 1) {
+          resultPixels[pixelIndex * 4 + 3] = alphaPixels[pixelIndex]
+        }
+
+        const resultWithAlpha = await sharp(resultPixels, {
+          raw: {
+            width: info.width,
+            height: info.height,
+            channels: info.channels,
+          },
+        })
+          .png()
           .toBuffer()
 
         // Composite the result with the base using the blurred mask as alpha

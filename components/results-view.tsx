@@ -35,7 +35,7 @@ export default function ResultsView({ originalImage, resultImage, onEdit, onRese
   const handleDownload = () => {
     const link = document.createElement("a")
     link.href = resultImage
-    link.download = "ai-edited-image.png"
+    link.download = "rediagram-fix.png"
     link.click()
   }
 
