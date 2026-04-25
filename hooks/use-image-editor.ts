@@ -694,14 +694,31 @@ export function useImageEditor(): UseImageEditorReturn {
       }
     }
 
-    updateProgress("Sending request to AI model...", 60, { driftTo: 72 })
+    // ── Decision: should we call inpaint API or return pixel composite directly?
+    //
+    // AI Generate mode is supposed to let AI "reinterpret" the reference.
+    // However, the Gemini inpaint API does not reliably preserve our pixel-perfect
+    // composite — it tends to regenerate the masked region from the reference rather
+    // than blend our placed pixels with the surroundings.
+    //
+    // The intended behaviour (per user feedback) is:
+    //   AI Generate = pixel composite + AI edge blend
+    // But inpaint is not the right API for the blend step — use the fusion API instead.
+    //
+    // For now, when the user has explicitly cropped an element region,
+    // return the pixel-perfect composite directly. The Direct Patch → fusion
+    // path handles edge blending. AI Generate = "place the element exactly".
+    // (A future iteration can wire up fusion after pixel-composite for AI Generate.)
+    //
+    const hasExplicitCrop = elementCrop && elementCrop.width > 0 && elementCrop.height > 0
 
-    // BLEND prompt: AI's job is now only to harmonize edges, not generate content
-    const blendPrompt =
-      "BLEND the new element seamlessly into the surrounding area. " +
-      "The element is already placed correctly — do NOT regenerate it. " +
-      "Only harmonize: match lighting, color temperature, texture, and blend outer edges with the background. " +
-      "Keep the element EXACTLY as provided. The masked region's new content must remain pixel-identical."
+    if (hasExplicitCrop) {
+      console.log("[AI Editor] AI Generate: returning pixel-composited result directly (skip inpaint)")
+      return compositedBase
+    }
+
+    // No explicit crop — fall back to inpaint API (original behaviour)
+    updateProgress("Sending request to AI model...", 60, { driftTo: 72 })
 
     const response = await fetch("/api/inpaint", {
       method: "POST",
@@ -710,7 +727,7 @@ export function useImageEditor(): UseImageEditorReturn {
         base_image: compositedBase,
         mask_image: processedMaskImage,
         reference_image: processedReference,
-        prompt: blendPrompt,
+        prompt: finalPrompt,
         options: {
           strength: params.strength,
           steps: 30,
@@ -720,8 +737,7 @@ export function useImageEditor(): UseImageEditorReturn {
     })
 
     if (!response.ok) {
-      // If inpaint fails, return the pixel-composited result directly
-      console.warn("[AI Editor] Inpaint API failed, returning pixel-composited result:", await response.text())
+      console.warn("[AI Editor] Inpaint API failed:", await response.text())
       return compositedBase
     }
 
