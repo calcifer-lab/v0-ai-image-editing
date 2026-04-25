@@ -15,11 +15,6 @@ const NAV_LINKS = [
     zh: "工作方式",
   },
   {
-    href: "#modules",
-    en: "Modules",
-    zh: "产品模块",
-  },
-  {
     href: "#faq",
     en: "FAQ",
     zh: "常见问题",
@@ -33,9 +28,9 @@ export default function Header() {
   return (
     <header className="site-header">
       <div className="site-container site-header-inner">
-        <Link href="/" className="brand-lockup" aria-label="ReDiagram AI">
+        <Link href="/" className="brand-lockup" aria-label="ReDiagram">
           <span className="brand-mark">R</span>
-          <span className="brand-text">ReDiagram AI</span>
+          <span className="brand-text">ReDiagram</span>
         </Link>
 
         <nav className="site-nav" aria-label="Primary">

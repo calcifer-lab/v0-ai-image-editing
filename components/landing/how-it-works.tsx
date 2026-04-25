@@ -1,32 +1,26 @@
 "use client"
 
-import BeforeAfter from "@/components/BeforeAfter"
-
 const STEPS = [
   {
     number: "01",
-    titleEn: "Upload",
-    titleZh: "上传",
-    bodyEn: "Bring in the diagram you need to fix, whether it is technical, visual, or educational.",
-    bodyZh: "导入你需要修复的图表，无论是技术图、视觉稿还是教学素材。",
-    imgSrc: "/demo/step1-upload.png",
-    imgAlt: "Upload step",
+    titleEn: "Upload your image and the patch",
+    titleZh: "上传原图和补丁",
+    bodyEn: "Bring the image that needs a fix — and the patch that will fix it. The patch can be another AI image, a real photo, or anything you've got.",
+    bodyZh: "带来需要修复的原图，以及用来修复的补丁。补丁可以是另一张 AI 图、一张真实照片，或你手边任何一张素材。",
   },
   {
     number: "02",
-    titleEn: "Select",
-    titleZh: "选择",
-    bodyEn: "Mark the region, node, connector, or label that needs attention and keep the rest intact.",
-    bodyZh: "选中需要处理的区域、节点、连线或标签，其余内容保持不变。",
-    imgSrc: "/demo/step2-select.png",
-    imgAlt: "Select step",
+    titleEn: "Mark the patch, mark the spot",
+    titleZh: "圈出补丁和要打补丁的地方",
+    bodyEn: "Point at the exact region in the main image that needs replacing. Then point at the element in your patch you want to use.",
+    bodyZh: "在主图上标出需要替换的区域，再在补丁上标出你想取用的元素。",
   },
   {
     number: "03",
-    titleEn: "Fix",
-    titleZh: "修复",
-    bodyEn: "Let Fix repair layout, spacing, labels, and visual consistency without redrawing the diagram.",
-    bodyZh: "使用 Fix 修复布局、间距、标签和视觉一致性，无需重画整张图表。",
+    titleEn: "Fix it",
+    titleZh: "修好",
+    bodyEn: "Leave the rest to us — style, lighting, edges all align automatically.",
+    bodyZh: "剩下的交给我们，风格、光影、边缘自动对齐。",
   },
 ]
 
@@ -40,16 +34,15 @@ export default function HowItWorks() {
             <span className="lang-zh">工作方式</span>
           </span>
           <h2 className="section-title">
-            <span className="lang-en">Three steps from broken to clean.</span>
-            <span className="lang-zh">三步完成，从问题图到成品图。</span>
+            <span className="lang-en">Find a patch. Fix it in three steps.</span>
+            <span className="lang-zh">补丁在手，三步修好。</span>
           </h2>
           <p className="section-copy">
             <span className="lang-en">
-              The workflow is intentionally narrow: upload the file, point at the problem, and let
-              the Fix module repair it.
+              Your patch can be another AI image, a real photo, or anything you've got.
             </span>
             <span className="lang-zh">
-              工作流刻意保持简洁：上传文件，指出问题，再由 Fix 模块完成修复。
+              补丁可以是另一张 AI 图、一张真实照片，或你手边任何一张素材。
             </span>
           </p>
         </div>
@@ -66,20 +59,11 @@ export default function HowItWorks() {
                 <span className="lang-en">{step.bodyEn}</span>
                 <span className="lang-zh">{step.bodyZh}</span>
               </p>
-
-              {step.number === "03" ? (
-                <BeforeAfter
-                  before="/demo/before-fix.png"
-                  after="/demo/after-fix.png"
-                />
-              ) : (
-                <img
-                  src={step.imgSrc}
-                  alt={step.imgAlt}
-                  className="step-img"
-                  loading="lazy"
-                />
-              )}
+              {/* Step illustration placeholder — replace with designed visuals */}
+              <div className="step-placeholder">
+                <span className="lang-en">Step {step.number} illustration</span>
+                <span className="lang-zh">第 {step.number} 步示意</span>
+              </div>
             </article>
           ))}
         </div>

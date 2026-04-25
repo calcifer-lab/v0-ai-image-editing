@@ -6,13 +6,13 @@ import LangToggleFixed from "@/components/lang-toggle-fixed"
 const softwareApplicationJsonLd = {
   "@context": "https://schema.org",
   "@type": "SoftwareApplication",
-  name: "ReDiagram AI",
+  name: "ReDiagram",
   applicationCategory: "DesignApplication",
   operatingSystem: "Web",
   url: "https://rediagram.com",
   image: "https://rediagram.com/og/placeholder.svg",
   description:
-    "ReDiagram AI helps teams fix diagrams without redrawing them from scratch using upload, selection, and AI-guided repair flows.",
+    "ReDiagram helps teams fix diagrams without redrawing them from scratch using upload, selection, and AI-guided repair flows.",
   offers: {
     "@type": "Offer",
     price: "0",
@@ -22,11 +22,11 @@ const softwareApplicationJsonLd = {
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://rediagram.com"),
-  title: "ReDiagram AI — Fix any diagram without redrawing it",
+  title: "ReDiagram — Fix any diagram without redrawing it",
   description:
-    "ReDiagram AI helps engineers, designers, authors, and educators fix diagrams without redrawing them. Upload, select, and repair diagrams in minutes.",
+    "ReDiagram helps engineers, designers, authors, and educators fix diagrams without redrawing them. Upload, select, and repair diagrams in minutes.",
   keywords: [
-    "ReDiagram AI",
+    "ReDiagram",
     "AI diagram editor",
     "fix diagram",
     "diagram repair",
@@ -41,10 +41,10 @@ export const metadata: Metadata = {
   openGraph: {
     type: "website",
     url: "https://rediagram.com",
-    siteName: "ReDiagram AI",
-    title: "ReDiagram AI — Fix any diagram without redrawing it",
+    siteName: "ReDiagram",
+    title: "ReDiagram — Fix any diagram without redrawing it",
     description:
-      "Fix diagrams without starting over. ReDiagram AI lets you upload, select, and repair diagrams with AI-first editing.",
+      "Fix diagrams without starting over. ReDiagram lets you upload, select, and repair diagrams with AI-first editing.",
     images: [
       {
         url: "https://rediagram.com/og/placeholder.svg",
@@ -55,7 +55,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "ReDiagram AI — Fix any diagram without redrawing it",
+    title: "ReDiagram — Fix any diagram without redrawing it",
     description:
       "A clean AI diagram editor for fixing architecture diagrams, UX wireframes, picture books, and training materials.",
     images: ["https://rediagram.com/og/placeholder.svg"],

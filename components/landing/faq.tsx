@@ -5,51 +5,55 @@ import { useState } from "react"
 
 const FAQS = [
   {
-    qEn: "What does Fix handle today?",
-    qZh: "Fix 现在能处理什么？",
+    qEn: "Will the result actually look seamless? Or will people see the seams?",
+    qZh: "合成后的效果真的能做到无缝吗？会不会看出是拼的？",
     aEn:
-      "Fix focuses on targeted diagram repair: misaligned elements, broken spacing, label cleanup, and small structural corrections inside an existing diagram.",
-    aZh: "Fix 目前专注于定点修复：错位元素、间距问题、标签整理，以及现有图表中的小范围结构修正。",
+      "This is what we fight with every day. The bar isn't 'passable' — it's 'you'd submit it, ship it, or print it.' If you zoom in and spot a seam, we failed. Send us the image — it goes into the next round of training.",
+    aZh:
+      `这是我们每天都在较劲的事。判断标准不是"看得过去"，是"你敢拿去投稿、上架、印刷"。如果你拉近看发现了拼接感，就是我们失败了——请把那张图发给我们，它会进入下一轮训练。`,
   },
   {
-    qEn: "Do I need to redraw the whole diagram first?",
-    qZh: "我需要先重画整张图吗？",
+    qEn: "What if the patch and the main image look nothing alike — like a photo vs. an illustration?",
+    qZh: "如果参考图和主图风格差很远（比如真实照片 vs 插画），也能处理好吗？",
     aEn:
-      "No. The goal is the opposite: keep the diagram you already have, select the problem area, and repair only what changed.",
-    aZh: "不需要。目标正好相反：保留你已有的图表，选中问题区域，只修变化的部分。",
+      "This is exactly why Fix exists. AI can reroll within the same style all day — but when the only patch you've got is a real photo, that's our moment. The wider the style gap, the more Fix matters.",
+    aZh:
+      "这正是 Fix 存在的理由。AI 生成图能做到同风格抽卡几十次，但当你手里只有一张真实照片可以当补丁时，就是我们出场的时候。风格跨度越大，普通拼接越失败，Fix 越必要。",
   },
   {
-    qEn: "Who is ReDiagram AI built for?",
-    qZh: "ReDiagram AI 面向哪些人？",
+    qEn: "How is this different from Photoshop's Generative Fill or other AI editors?",
+    qZh: "这和 Photoshop 的 Generative Fill 或其他 AI 修图工具有什么不同？",
     aEn:
-      "The product is designed for engineers, designers, authors, and educators who regularly revise diagrams under deadline pressure.",
-    aZh: "产品面向工程师、设计师、作者和教育工作者，尤其适合经常在截止时间前修改图表的人。",
+      "Generative Fill generates a fill from a text prompt — you describe what you want. Fix pulls what you want from a specific image you choose — you're not describing, you're pointing. When you care about quality and already have the right reference, pointing beats prompting.",
+    aZh:
+      `Generative Fill 是"从文字描述生成一块填充"，你得用语言描述想要什么。Fix 是"从你指定的另一张图里取出你要的部分，合成进来"——你不是在描述，你是在指认。当你对质量有具体要求、已经有心仪素材时，指认比描述靠谱得多。`,
   },
   {
-    qEn: "Are the other modules available now?",
-    qZh: "其他模块现在能用吗？",
+    qEn: "Who owns the result? And what about copyright if I use a real photo as the patch?",
+    qZh: "合成结果的版权归谁？我用真实照片作为补丁，会不会有版权风险？",
     aEn:
-      "Only Fix is available now. Core is coming soon, while Style and Character are on the roadmap and open for early access interest.",
-    aZh: "目前只有 Fix 可用。Core 即将推出，Style 和 Character 仍在路线图中，可先登记抢先体验。",
+      "You own the result. But the patch itself is your responsibility — your own photos, licensed images, or CC0 assets are safe. Grabbing someone else's work off the internet as a patch carries real risk — that's not Fix-specific, it's true of any creative workflow.",
+    aZh:
+      "合成结果的版权归你。但补丁素材的版权由你自己负责——用你自己拍的照片、获授权的图、或明确标注 CC0 的素材是安全的，直接用网上别人的作品作为补丁可能有风险。这不是 Fix 特有的问题，任何创作工作流都一样。",
   },
   {
-    qEn: "Can I use ReDiagram AI for wireframes and teaching materials?",
-    qZh: "我可以把 ReDiagram AI 用在线框图和教学材料上吗？",
+    qEn: "When does Fix struggle?",
+    qZh: "什么时候 Fix 的效果会不好？",
     aEn:
-      "Yes. The landing page examples focus on technical and visual diagram work, but the workflow also fits classroom visuals, onboarding docs, and illustrated learning assets.",
-    aZh: "可以。虽然页面重点展示技术和视觉图表，但这套工作流同样适合课堂图示、培训文档和插图类学习材料。",
+      "When the composition between the main image and the patch is wildly mismatched — say you want to put a horizontal object into a vertical slot, or the patch's light direction is the exact opposite of the main image and the patch has little detail. We'll still improve things, but true seamlessness won't happen. If your patch roughly aligns in structure and light direction with the main image, the result usually holds up.",
+    aZh:
+      "主图和补丁之间构图匹配度极低的时候——比如你想把一个横躺的物体塞进一个竖立位置，或者补丁的光源方向和主图完全相反且补丁细节很少。这些情况下我们还能改善，但做不到真正无缝。如果你的补丁和主图在大致的结构、光线方向上能对上，结果一般经得起审视。",
   },
   {
-    qEn: "How do I hear about new modules?",
-    qZh: "如何获取新模块的消息？",
-    aEn:
-      "Use the notify actions in the Modules section. We collect your email and workflow so we can invite the right early users first.",
-    aZh: "可在模块区域点击通知按钮。我们会收集你的邮箱和使用场景，优先邀请匹配的早期用户。",
+    qEn: "Is there a subscription? Can I try it free?",
+    qZh: "要订阅吗？有免费试用吗？",
+    aEn: "Credits for now — 1 per fix, with a free batch for new users. Subscription later, if you need it.",
+    aZh: "现在是积分制——每次合成 1 积分，新用户免费送一批。量大了再聊订阅。",
   },
 ]
 
 export default function FAQ() {
-  const [openIndex, setOpenIndex] = useState<number | null>(0)
+  const [openIndex, setOpenIndex] = useState<number | null>(null)
 
   return (
     <section id="faq" className="site-section">
@@ -96,23 +100,19 @@ export default function FAQ() {
         <div className="landing-card faq-cta">
           <div>
             <p className="faq-cta-kicker">
-              <span className="lang-en">Ready to try the first module?</span>
-              <span className="lang-zh">准备体验第一个模块了吗？</span>
+              <span className="lang-en">Ready to try Fix?</span>
+              <span className="lang-zh">准备好体验 Fix 了吗？</span>
             </p>
             <h3 className="faq-cta-title">
-              <span className="lang-en">Start with Fix and repair the diagram you already have.</span>
-              <span className="lang-zh">从 Fix 开始，修好你已经拥有的那张图。</span>
+              <span className="lang-en">Keep what works. Change only what needs to.</span>
+              <span className="lang-zh">保留对的，只改要改的。</span>
             </h3>
           </div>
           <div className="faq-cta-actions">
             <Link href="/editor" className="button button-primary">
-              <span className="lang-en">Open editor</span>
-              <span className="lang-zh">打开编辑器</span>
+              <span className="lang-en">Try Fix</span>
+              <span className="lang-zh">立即体验</span>
             </Link>
-            <a href="#modules" className="button button-ghost">
-              <span className="lang-en">View modules</span>
-              <span className="lang-zh">查看模块</span>
-            </a>
           </div>
         </div>
       </div>

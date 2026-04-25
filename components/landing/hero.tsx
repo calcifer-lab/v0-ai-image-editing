@@ -1,7 +1,6 @@
 "use client"
 
 import Link from "next/link"
-import BeforeAfter from "@/components/BeforeAfter"
 
 export default function Hero() {
   return (
@@ -9,34 +8,49 @@ export default function Hero() {
       <div className="site-container hero-layout">
         <div className="hero-copy">
           <h1 className="hero-title">
-            <span className="lang-en">Fix any diagram without redrawing it.</span>
-            <span className="lang-zh">无需重画，修好任何图表。</span>
+            <span className="lang-en">
+              Keep the 90% AI got right.<br />Compose the 10% it didn't.
+            </span>
+            <span className="lang-zh">
+              把 AI 画对的部分留下，<br />画崩的部分换掉。
+            </span>
           </h1>
 
           <p className="hero-subtitle">
             <span className="lang-en">
-              Repair architecture diagrams, UX wireframes, educational visuals, and illustrated
-              layouts with a focused AI editor built for fast fixes instead of full rewrites.
+              Take what you want from one image. Compose it into another. Leave the rest untouched.
             </span>
             <span className="lang-zh">
-              用专注于"修正"而不是"重做"的 AI 编辑器，快速修复架构图、UX 线框图、教学材料和插图排版。
+              从一张图里取出好的部分，合成到另一张图。其余分毫不动。
             </span>
           </p>
 
           <div className="hero-actions">
             <Link href="/editor" className="button button-primary">
               <span className="lang-en">Try Fix</span>
-              <span className="lang-zh">立即体验 Fix</span>
+              <span className="lang-zh">体验 Fix</span>
             </Link>
             <a href="#how-it-works" className="button button-ghost">
               <span className="lang-en">See how it works</span>
-              <span className="lang-zh">查看工作方式</span>
+              <span className="lang-zh">看看怎么用</span>
             </a>
           </div>
         </div>
 
         <div className="hero-media">
-          <BeforeAfter before="/demo/before-fix.png" after="/demo/after-fix.png" />
+          {/* Hero visual: 7-8s animated demo loop — placeholder until designed */}
+          <div className="hero-demo-placeholder" aria-label="Animated demo: coffee shop scene with bicycle">
+            <div className="hero-demo-inner">
+              <span className="lang-en">7–8s animated demo</span>
+              <span className="lang-zh">7–8秒动态演示</span>
+              <p className="hero-demo-caption lang-en">
+                Coffee shop illustration + bicycle → reference photo → style-transferred result
+              </p>
+              <p className="hero-demo-caption lang-zh">
+                咖啡馆插画 + 自行车 → 参考图 → 风格转换后结果
+              </p>
+            </div>
+          </div>
         </div>
       </div>
     </section>

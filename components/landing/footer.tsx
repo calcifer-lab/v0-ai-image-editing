@@ -1,6 +1,6 @@
 "use client"
 
-import { Github, Rocket, Twitter } from "lucide-react"
+import { Github, Twitter } from "lucide-react"
 
 const FOOTER_LINKS = [
   {
@@ -14,21 +14,21 @@ const FOOTER_LINKS = [
     zh: "工作方式",
   },
   {
-    href: "#modules",
-    en: "Modules",
-    zh: "产品模块",
-  },
-  {
     href: "#faq",
     en: "FAQ",
     zh: "常见问题",
   },
+  {
+    href: "#about",
+    en: "About",
+    zh: "关于",
+  },
 ]
 
 const SOCIAL_LINKS = [
-  { href: "https://github.com", label: "GitHub", icon: Github },
-  { href: "https://x.com", label: "X", icon: Twitter },
-  { href: "https://producthunt.com", label: "Product Hunt", icon: Rocket },
+  { href: "mailto:hello@rediagram.com", labelEn: "Email", labelZh: "邮箱", icon: null },
+  { href: "https://x.com/RediagramAI", labelEn: "X / Twitter", labelZh: "X / Twitter", icon: Twitter },
+  { href: "https://github.com/calcifer-lab", labelEn: "GitHub", labelZh: "GitHub", icon: Github },
 ]
 
 export default function Footer() {
@@ -37,18 +37,28 @@ export default function Footer() {
   return (
     <footer className="footer">
       <div className="site-container footer-layout">
+        {/* Brand column */}
         <div className="footer-brand">
-          <a href="/" className="brand-lockup" aria-label="ReDiagram AI home">
+          <a href="/" className="brand-lockup" aria-label="ReDiagram home">
             <span className="brand-mark">R</span>
-            <span className="brand-text">ReDiagram AI</span>
+            <span className="brand-text">ReDiagram</span>
           </a>
           <p className="footer-slogan">
-            <span className="lang-en">Fix any diagram without redrawing it.</span>
-            <span className="lang-zh">无需重画，修好任何图表。</span>
+            <span className="lang-en">Keep what works. Change only what needs to.</span>
+            <span className="lang-zh">保留对的，只改要改的。</span>
+          </p>
+          <p className="footer-announcement">
+            <span className="lang-en">
+              ReDiagram is expanding. Vector tools for professional designers — coming soon.
+            </span>
+            <span className="lang-zh">
+              ReDiagram 还在扩展。面向专业设计师的矢量工具，即将上线。
+            </span>
           </p>
         </div>
 
-        <nav className="footer-nav" aria-label="Footer">
+        {/* Navigation column */}
+        <nav className="footer-nav" aria-label="Footer navigation">
           {FOOTER_LINKS.map((link) => (
             <a key={link.href} href={link.href} className="footer-link">
               <span className="lang-en">{link.en}</span>
@@ -57,25 +67,47 @@ export default function Footer() {
           ))}
         </nav>
 
-        <div className="footer-socials">
-          {SOCIAL_LINKS.map((item) => {
-            const Icon = item.icon
-            return (
-              <a
-                key={item.label}
-                href={item.href}
-                target="_blank"
-                rel="noreferrer"
-                className="footer-social-link"
-                aria-label={item.label}
-              >
-                <Icon size={16} />
-              </a>
-            )
-          })}
+        {/* Connect column */}
+        <div className="footer-connect">
+          <p className="footer-connect-label">
+            <span className="lang-en">Connect</span>
+            <span className="lang-zh">联系我们</span>
+          </p>
+          <div className="footer-socials">
+            {SOCIAL_LINKS.map((item) => {
+              const Icon = item.icon
+              return (
+                <a
+                  key={item.labelEn}
+                  href={item.href}
+                  target={item.href.startsWith("http") ? "_blank" : undefined}
+                  rel="noreferrer"
+                  className="footer-social-link"
+                  aria-label={item.labelEn}
+                >
+                  {Icon ? <Icon size={16} /> : <span className="footer-email-icon">@</span>}
+                  <span className="lang-en">{item.labelEn}</span>
+                  <span className="lang-zh">{item.labelZh}</span>
+                </a>
+              )
+            })}
+          </div>
         </div>
 
-        <p className="footer-copy">© {year} ReDiagram AI. All rights reserved.</p>
+        {/* Legal row */}
+        <div className="footer-legal">
+          <a href="/privacy" className="footer-legal-link">
+            <span className="lang-en">Privacy Policy</span>
+            <span className="lang-zh">隐私政策</span>
+          </a>
+          <a href="/terms" className="footer-legal-link">
+            <span className="lang-en">Terms of Service</span>
+            <span className="lang-zh">服务条款</span>
+          </a>
+        </div>
+
+        {/* Copyright */}
+        <p className="footer-copy">© {year} ReDiagram. All rights reserved.</p>
       </div>
     </footer>
   )
