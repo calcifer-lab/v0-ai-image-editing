@@ -188,48 +188,52 @@ async function removeMaskedRegionFromBase(baseDataUrl: string, maskDataUrl: stri
   const ctx = canvas.getContext("2d")
   if (!ctx) throw new Error("Failed to get canvas context for base masking")
 
-  // Build an alpha-only mask: white => remove, black => keep
-  // Use the mask at its own resolution (not stretched to base size)
-  const maskCanvas = document.createElement("canvas")
-  maskCanvas.width = maskImg.width
-  maskCanvas.height = maskImg.height
-  const maskCtx = maskCanvas.getContext("2d")
-  if (!maskCtx) throw new Error("Failed to get mask canvas context")
-  // Draw mask at its own resolution — do NOT stretch to baseImg dimensions
-  // (mask may have different aspect ratio than base after resize to 1536)
-  maskCtx.drawImage(maskImg, 0, 0)
-  const maskData = maskCtx.getImageData(0, 0, maskCanvas.width, maskCanvas.height)
-
-  // Scale mask data to cover the base canvas at base's resolution.
-  // Create a temporary canvas at base resolution and scale the mask into it.
-  const scaledMaskCanvas = document.createElement("canvas")
-  scaledMaskCanvas.width = baseImg.width
-  scaledMaskCanvas.height = baseImg.height
-  const scaledMaskCtx = scaledMaskCanvas.getContext("2d")
-  if (!scaledMaskCtx) throw new Error("Failed to get scaled mask canvas context")
-  // Scale the mask (already at mask resolution) to cover base canvas
-  // The mask is scaled, not stretched — preserves mask pixel density
-  scaledMaskCtx.drawImage(maskCanvas, 0, 0, baseImg.width, baseImg.height)
-  const scaledMaskData = scaledMaskCtx.getImageData(0, 0, baseImg.width, baseImg.height)
-  const data = scaledMaskData.data
-
-  // Convert to alpha-only: white pixels in mask = transparent (remove), black = opaque (keep)
-  for (let i = 0; i < data.length; i += 4) {
-    const r = data[i]
-    const g = data[i + 1]
-    const b = data[i + 2]
-    const isWhite = r > 200 && g > 200 && b > 200
-    data[i] = 0
-    data[i + 1] = 0
-    data[i + 2] = 0
-    data[i + 3] = isWhite ? 255 : 0
-  }
-  scaledMaskCtx.putImageData(scaledMaskData, 0, 0)
-
-  // Draw base, then punch a hole where mask is white
+  // ── Draw base at full resolution ───────────────────────────────────────
   ctx.drawImage(baseImg, 0, 0, baseImg.width, baseImg.height)
+
+  // ── Build correct mask for the base ────────────────────────────────────
+  // Problem: maskCanvas and baseCanvas have SAME aspect ratio (both match
+  // original image). For portrait images: baseCanvas=450×600, base=1536×1152.
+  // The brush was painted at canvas coords; to cut the hole at the CORRECT
+  // position in the base, we must:
+  //   1. Draw the mask (with hole) at maskCanvas's native resolution
+  //   2. Scale it proportionally to cover the base canvas
+  //   3. The scaled hole position = canvas position × (base/maskCanvas) scale
+  //
+  // Step 1: create mask WITH HOLE at mask canvas resolution
+  //   hole = "not-selected" pixels of mask, on a white ("selected") background
+  const holeMask = document.createElement("canvas")
+  holeMask.width = maskImg.width
+  holeMask.height = maskImg.height
+  const holeCtx = holeMask.getContext("2d")
+  if (!holeCtx) throw new Error("Failed to get hole mask context")
+
+  // White base = entire region is "selected" (to be made transparent)
+  holeCtx.fillStyle = "white"
+  holeCtx.fillRect(0, 0, maskImg.width, maskImg.height)
+
+  // Cut the painted region (black/not-selected = keep) out of the white base
+  holeCtx.globalCompositeOperation = "destination-out"
+  holeCtx.drawImage(maskImg, 0, 0) // maskImg has black painted pixels
+  holeCtx.globalCompositeOperation = "source-over"
+  // Now holeMask has: hole (transparent) = painted brush, white = rest
+
+  // Step 2: proportional scale of holeMask to cover base canvas
+  const scaleX = baseImg.width / maskImg.width
+  const scaleY = baseImg.height / maskImg.height
+  const scaledW = Math.round(maskImg.width * scaleX)
+  const scaledH = Math.round(maskImg.height * scaleY)
+  const scaledMask = document.createElement("canvas")
+  scaledMask.width = scaledW
+  scaledMask.height = scaledH
+  const smCtx = scaledMask.getContext("2d")
+  if (!smCtx) throw new Error("Failed to get scaled mask context")
+  smCtx.drawImage(holeMask, 0, 0, scaledW, scaledH)
+  // scaledMask: hole region correctly scaled to base resolution
+
+  // Step 3: cut the hole in base using the correctly scaled mask
   ctx.globalCompositeOperation = "destination-out"
-  ctx.drawImage(maskCanvas, 0, 0, baseImg.width, baseImg.height)
+  ctx.drawImage(scaledMask, 0, 0, baseImg.width, baseImg.height)
   ctx.globalCompositeOperation = "source-over"
 
   return canvas.toDataURL("image/png")

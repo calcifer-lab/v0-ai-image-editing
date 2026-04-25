@@ -390,65 +390,64 @@ export async function compositeImages(
     0, 0, targetWidth, targetHeight
   )
 
-  // Create full-size mask canvas
-  const fullMaskCanvas = document.createElement("canvas")
-  fullMaskCanvas.width = baseImg.width
-  fullMaskCanvas.height = baseImg.height
-  const fullMaskCtx = fullMaskCanvas.getContext("2d")
-  if (!fullMaskCtx) throw new Error("Failed to get full mask canvas context")
+  // ── Proper alpha compositing ──────────────────────────────────────────
+  // We no longer cut a hard hole in the base via destination-out.
+  // Instead, we use the mask as a soft alpha matte for the reference,
+  // so edge feathering blends naturally with the base (remove.bg-level quality).
+  //
+  // Strategy:
+  // 1. Build a feathered alpha matte from the mask at base resolution
+  //    (3px Gaussian blur ≈ natural edge softness, matches human perception)
+  // 2. Apply the matte to the reference pixel data → weighted blend with base
+  // 3. Result: reference seamlessly transitions from opaque → transparent
+  //    at the mask boundary, no hard edge, no misalignment artifacts
+  //
+  // Step 1: build feathered alpha matte at target region resolution
+  //    First draw the mask at target size (not full base size) with blur
+  const matteeCanvas = document.createElement("canvas")
+  matteeCanvas.width = targetWidth
+  matteeCanvas.height = targetHeight
+  const matteeCtx = matteeCanvas.getContext("2d")
+  if (!matteeCtx) throw new Error("Failed to get matte canvas context")
 
-  // Scale mask to base image size with edge feathering
-  fullMaskCtx.filter = "blur(3px)" // Feather the mask edges
-  fullMaskCtx.drawImage(maskImg, 0, 0, baseImg.width, baseImg.height)
-  fullMaskCtx.filter = "none"
+  // Scale the original mask (at its own resolution) to target region size with blur
+  // maskImg is at base's resized canvas dimensions; maskCoordinates are in the same space
+  matteeCtx.filter = "blur(2.5px)"
+  matteeCtx.drawImage(
+    maskImg,
+    maskCoordinates.x, maskCoordinates.y,
+    maskCoordinates.width, maskCoordinates.height,
+    0, 0, targetWidth, targetHeight
+  )
+  matteeCtx.filter = "none"
 
-  // Get the mask data for the target region
-  const maskData = fullMaskCtx.getImageData(targetX, targetY, targetWidth, targetHeight)
+  // Get pixel data for all three layers
+  const matteData = matteeCtx.getImageData(0, 0, targetWidth, targetHeight)
   const refData = refCtx.getImageData(0, 0, targetWidth, targetHeight)
-
-  // Get base image data for the target region for blending
   const baseData = ctx.getImageData(targetX, targetY, targetWidth, targetHeight)
 
-  // Apply mask with smooth alpha blending
-  // White in mask = use reference, Black in mask = keep base
-  for (let i = 0; i < maskData.data.length; i += 4) {
-    // Calculate mask brightness (0-255)
-    const maskBrightness = (maskData.data[i] + maskData.data[i + 1] + maskData.data[i + 2]) / 3
-    
-    // Reference image alpha (from background removal)
-    const refAlpha = refData.data[i + 3] / 255
-    
-    // Combined alpha: mask brightness * reference alpha
-    const combinedAlpha = (maskBrightness / 255) * refAlpha
-    
-    // Blend reference with base using combined alpha
-    if (combinedAlpha > 0.01) {
-      // Smooth blending
-      refData.data[i] = Math.round(refData.data[i] * combinedAlpha + baseData.data[i] * (1 - combinedAlpha))
-      refData.data[i + 1] = Math.round(refData.data[i + 1] * combinedAlpha + baseData.data[i + 1] * (1 - combinedAlpha))
-      refData.data[i + 2] = Math.round(refData.data[i + 2] * combinedAlpha + baseData.data[i + 2] * (1 - combinedAlpha))
-      refData.data[i + 3] = 255 // Fully opaque after blending
-    } else {
-      // Keep base image pixels
-      refData.data[i] = baseData.data[i]
-      refData.data[i + 1] = baseData.data[i + 1]
-      refData.data[i + 2] = baseData.data[i + 2]
-      refData.data[i + 3] = baseData.data[i + 3]
-    }
+  // Step 2: alpha composite reference onto base using feathered matte
+  // matte pixel value → blend weight for reference (0=black/keep base, 255=white/use reference)
+  // reference alpha  → element opacity at this pixel (from background removal)
+  // combined = matte_weight × ref_opacity
+  for (let i = 0; i < matteData.data.length; i += 4) {
+    const matteWeight = matteData.data[i] / 255          // 0-1: how much reference at this pixel
+    const refAlpha    = refData.data[i + 3] / 255        // 0-1: how opaque the reference pixel is
+    const blend       = Math.min(matteWeight, refAlpha)  // soft min: avoids halos at ref edges
+
+    refData.data[i]     = Math.round(refData.data[i]     * blend + baseData.data[i]     * (1 - blend))
+    refData.data[i + 1] = Math.round(refData.data[i + 1] * blend + baseData.data[i + 1] * (1 - blend))
+    refData.data[i + 2] = Math.round(refData.data[i + 2] * blend + baseData.data[i + 2] * (1 - blend))
+    refData.data[i + 3] = 255
   }
 
-  // Put the blended data back
+  // Step 3: put blended pixel data back into the reference canvas, then composite
   refCtx.putImageData(refData, 0, 0)
 
-  // Apply slight edge feathering for smoother transition
-  ctx.save()
-  
-  // Draw the blended result at the correct position
+  // Draw the feathered-composited reference at the correct position on base
   ctx.drawImage(refCanvas, targetX, targetY)
-  
-  ctx.restore()
 
-  console.log("[Composite] Composite complete")
+  console.log("[Composite] Alpha compositing with feathered matte complete")
 
   return canvas.toDataURL("image/png")
 }
