@@ -26,8 +26,8 @@ const FOOTER_LINKS = [
 ]
 
 const SOCIAL_LINKS = [
-  { href: "mailto:hello@rediagram.com", labelEn: "Email", labelZh: "邮箱", icon: null },
-  { href: "https://x.com/RediagramAI", labelEn: "X / Twitter", labelZh: "X / Twitter", icon: Twitter },
+  { href: "mailto:hello@rediagram.com", label: "Email", icon: null },
+  { href: "https://x.com/RediagramAI", label: "X", icon: Twitter },
 ]
 
 export default function Footer() {
@@ -73,16 +73,14 @@ export default function Footer() {
               const Icon = item.icon
               return (
                 <a
-                  key={item.labelEn}
+                  key={item.label}
                   href={item.href}
                   target={item.href.startsWith("http") ? "_blank" : undefined}
                   rel="noreferrer"
                   className="footer-social-link"
-                  aria-label={item.labelEn}
+                  aria-label={item.label}
                 >
                   {Icon ? <Icon size={16} /> : <span className="footer-email-icon">@</span>}
-                  <span className="lang-en">{item.labelEn}</span>
-                  <span className="lang-zh">{item.labelZh}</span>
                 </a>
               )
             })}
