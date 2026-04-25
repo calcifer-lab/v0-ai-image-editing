@@ -10,10 +10,9 @@ export default function LangToggleFixed() {
       type="button"
       className="lang-toggle-fixed"
       onClick={toggleLang}
-      aria-label={lang === "en" ? "Switch to Chinese" : "Switch to English"}
+      aria-label={lang === "en" ? "切换到中文" : "Switch to English"}
     >
-      <span className="lang-en">中文</span>
-      <span className="lang-zh">EN</span>
+      {lang === "en" ? "中文" : "EN"}
     </button>
   )
 }
