@@ -95,13 +95,13 @@ function ResultsHeader({
     <div className="shrink-0 border-b p-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold">Result Ready!</h2>
-          <p className="text-muted-foreground">Compare your original and AI-edited images</p>
+          <h2 className="text-2xl font-bold">Fix Complete!</h2>
+          <p className="text-muted-foreground">Compare your original and the fixed result</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={onEdit}>
             <Edit className="mr-2 h-4 w-4" />
-            Edit Again
+            Fix Again
           </Button>
           <Button variant="outline" onClick={onReset}>
             <RotateCcw className="mr-2 h-4 w-4" />
@@ -142,7 +142,7 @@ function SideBySideView({
 
       <Card className="overflow-hidden">
         <div className="border-b bg-primary/10 p-4">
-          <h3 className="font-semibold text-primary">AI Edited</h3>
+          <h3 className="font-semibold text-primary">Fixed</h3>
         </div>
         <div className="p-4">
           <img

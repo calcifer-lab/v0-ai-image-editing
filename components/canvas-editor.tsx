@@ -267,7 +267,7 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
     <Card className="flex flex-col">
       <div className="border-b p-4">
         <div className="mb-4 flex items-center justify-between">
-          <h3 className="font-semibold">Select Region to Edit</h3>
+          <h3 className="font-semibold">Select Region to Fix</h3>
           <div className="flex gap-2">
             <Button variant="outline" size="sm" onClick={undo} disabled={historyIndex <= 0}>
               <Undo className="h-4 w-4" />

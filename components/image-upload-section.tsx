@@ -122,7 +122,7 @@ export default function ImageUploadSection({ onImagesUploaded }: ImageUploadSect
         <div className="text-center">
           <h2 className="text-balance text-3xl font-bold tracking-tight">Upload Your Images</h2>
           <p className="mt-2 text-pretty text-muted-foreground">
-            Upload the element source image and the base image you want to edit
+            Upload the patch reference and the image you want to fix
           </p>
         </div>
 

@@ -40,8 +40,8 @@ export default function ControlPanel({
   return (
     <Card className="flex h-full flex-col">
       <div className="border-b p-4">
-        <h3 className="font-semibold">Edit Parameters</h3>
-        <p className="text-sm text-muted-foreground">Configure your editing workflow</p>
+        <h3 className="font-semibold">Fix Parameters</h3>
+        <p className="text-sm text-muted-foreground">Compose only what needs changing</p>
       </div>
 
       <EditModeSection params={params} onParamsChange={onParamsChange} />
@@ -85,7 +85,7 @@ function EditModeSection({
       <div className="space-y-3">
         <div className="flex items-center gap-2">
           <Layers className="h-5 w-5 text-primary" />
-          <Label className="text-base font-semibold">Edit Mode</Label>
+          <Label className="text-base font-semibold">Patch Mode</Label>
         </div>
 
         <div className="grid grid-cols-2 gap-3">
@@ -94,14 +94,14 @@ function EditModeSection({
             onClick={() => onParamsChange({ ...params, editMode: "composite" })}
             icon={Layers}
             label="Direct Patch"
-            description="AI-enhanced"
+            description="Place element as-is"
           />
           <ModeButton
             active={params.editMode === "ai"}
             onClick={() => onParamsChange({ ...params, editMode: "ai" })}
             icon={Wand2}
-            label="AIgenerate"
-            description="AI blend"
+            label="AI Generate"
+            description="AI reinterprets patch"
           />
         </div>
       </div>
