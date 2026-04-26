@@ -243,6 +243,7 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
   //   Shift+]         → increase feather by 2 (max 20)
   //   F               → toggle fill/stroke mode (shape tools)
   //   Alt+F           → toggle feather between 0 and 8
+  //   Escape          → cancel in-progress shape drawing
   //   Ctrl+Z          → undo
   //   Ctrl+Y / Ctrl+Shift+Z → redo
   useEffect(() => {
@@ -309,6 +310,25 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
               setShapeFill((v) => !v)
             }
             break
+          case "Escape":
+            // Cancel any in-progress shape drawing (restores previous state from history)
+            if (isDrawingRef.current && shapeStartRef.current) {
+              e.preventDefault()
+              isDrawingRef.current = false
+              setIsDrawing(false)
+              shapeStartRef.current = null
+              setShapePreview(null)
+              // Restore previous mask state from history
+              if (historyIndex >= 0 && history[historyIndex]) {
+                const maskCtx = maskCanvasRef.current?.getContext("2d")
+                if (maskCtx) {
+                  maskCtx.putImageData(history[historyIndex], 0, 0)
+                  redrawCanvas()
+                  updateMask()
+                }
+              }
+            }
+            break
         }
       }
 
@@ -325,7 +345,7 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
     }
     window.addEventListener("keydown", handleKeyDown)
     return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [undo, redo])
+  }, [undo, redo, history, historyIndex, redrawCanvas, updateMask])
 
   const clearMask = useCallback(() => {
     const maskCanvas = maskCanvasRef.current
