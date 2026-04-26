@@ -28,6 +28,7 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
   const [isDrawing, setIsDrawing] = useState(false)
   const [tool, setTool] = useState<Tool>("brush")
   const [brushSize, setBrushSize] = useState(80)
+  const [feather, setFeather] = useState(0) // 0 = hard edge, 20 = max softness
   const [history, setHistory] = useState<ImageData[]>([])
   const [historyIndex, setHistoryIndex] = useState(-1)
   const baseImageRef = useRef<HTMLImageElement | null>(null)
@@ -159,7 +160,7 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
     for (let y = 0; y < maskCanvas.height; y++) {
       for (let x = 0; x < maskCanvas.width; x++) {
         const i = (y * maskCanvas.width + x) * 4
-        if (data[i] === 255) {
+        if (data[i] > 0) {
           hasSelection = true
           minX = Math.min(minX, x)
           minY = Math.min(minY, y)
@@ -220,11 +221,14 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
   }, [historyIndex, history, redrawCanvas, updateMask])
 
   // Keyboard shortcuts:
-  //   B / 1       → brush tool
-  //   E / 2       → eraser tool
-  //   [           → decrease brush size by 5 (min 5)
-  //   ]           → increase brush size by 5 (max 100)
-  //   Ctrl+Z      → undo
+  //   B / 1           → brush tool
+  //   E / 2           → eraser tool
+  //   [               → decrease brush size by 5 (min 5)
+  //   ]               → increase brush size by 5 (max 100)
+  //   Shift+[         → decrease feather by 2 (min 0)
+  //   Shift+]         → increase feather by 2 (max 20)
+  //   F               → toggle feather between 0 and 8
+  //   Ctrl+Z          → undo
   //   Ctrl+Y / Ctrl+Shift+Z → redo
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -246,11 +250,23 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
             break
           case "[":
             e.preventDefault()
-            setBrushSize((s) => Math.max(5, s - 5))
+            if (e.shiftKey) {
+              setFeather((f) => Math.max(0, f - 2))
+            } else {
+              setBrushSize((s) => Math.max(5, s - 5))
+            }
             break
           case "]":
             e.preventDefault()
-            setBrushSize((s) => Math.min(100, s + 5))
+            if (e.shiftKey) {
+              setFeather((f) => Math.min(20, f + 2))
+            } else {
+              setBrushSize((s) => Math.min(100, s + 5))
+            }
+            break
+          case "f":
+            e.preventDefault()
+            setFeather((f) => (f > 0 ? 0 : 8))
             break
         }
       }
@@ -301,15 +317,33 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
       if (!maskCtx) return
 
       if (tool === "brush" || tool === "eraser") {
-        maskCtx.beginPath()
-        maskCtx.arc(x, y, brushSize / 2, 0, Math.PI * 2)
-        maskCtx.fillStyle = tool === "brush" ? "rgba(255, 255, 255, 1)" : "rgba(0, 0, 0, 1)"
-        maskCtx.fill()
+        const radius = brushSize / 2
+        if (feather > 0) {
+          // Soft-edged brush using radial gradient
+          const innerRadius = Math.max(0, radius - feather)
+          const gradient = maskCtx.createRadialGradient(x, y, innerRadius, x, y, radius)
+          if (tool === "brush") {
+            gradient.addColorStop(0, "rgba(255, 255, 255, 1)")
+            gradient.addColorStop(1, "rgba(255, 255, 255, 0)")
+          } else {
+            gradient.addColorStop(0, "rgba(0, 0, 0, 0)")
+            gradient.addColorStop(1, "rgba(0, 0, 0, 1)")
+          }
+          maskCtx.beginPath()
+          maskCtx.arc(x, y, radius, 0, Math.PI * 2)
+          maskCtx.fillStyle = gradient
+          maskCtx.fill()
+        } else {
+          maskCtx.beginPath()
+          maskCtx.arc(x, y, radius, 0, Math.PI * 2)
+          maskCtx.fillStyle = tool === "brush" ? "rgba(255, 255, 255, 1)" : "rgba(0, 0, 0, 1)"
+          maskCtx.fill()
+        }
       }
 
       redrawCanvas()
     },
-    [isDrawing, tool, brushSize, redrawCanvas]
+    [isDrawing, tool, brushSize, feather, redrawCanvas]
   )
 
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -373,6 +407,12 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
             <span className="font-medium">{brushSize}px</span>
           </div>
           <Slider value={[brushSize]} onValueChange={(v) => setBrushSize(v[0])} min={5} max={100} step={5} />
+
+          <div className="mb-2 mt-4 flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">Feather</span>
+            <span className="font-medium">{feather}px</span>
+          </div>
+          <Slider value={[feather]} onValueChange={(v) => setFeather(v[0])} min={0} max={20} step={1} />
         </div>
       </div>
 
