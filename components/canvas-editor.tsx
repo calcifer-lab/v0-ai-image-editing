@@ -931,15 +931,6 @@ const getCanvasPoint = useCallback(
         </div>
       </div>
 
-      <div className="border-t p-4">
-        <div className="flex items-center gap-2">
-          <div className="h-4 w-4 rounded bg-primary" />
-          <span className="text-sm text-muted-foreground">
-            Brush/Eraser: click &amp; drag · Rectangle/Circle: click &amp; drag to draw shape
-          </span>
-        </div>
-      </div>
-
     </Card>
   )
 }
