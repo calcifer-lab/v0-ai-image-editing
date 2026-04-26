@@ -35,6 +35,7 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
   // Shape drawing state
   const shapeStartRef = useRef<{ x: number; y: number } | null>(null)
   const [shapePreview, setShapePreview] = useState<{ x: number; y: number; w: number; h: number } | null>(null)
+  const [shapeFill, setShapeFill] = useState(true) // true = filled, false = stroke/outline
   // Ref for synchronous draw-state check (avoids React setState lag)
   const isDrawingRef = useRef(false)
 
@@ -232,7 +233,8 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
   //   ]               → increase brush size by 5 (max 100)
   //   Shift+[         → decrease feather by 2 (min 0)
   //   Shift+]         → increase feather by 2 (max 20)
-  //   F               → toggle feather between 0 and 8
+  //   F               → toggle fill/stroke mode
+  //   Alt+F           → toggle feather between 0 and 8
   //   Ctrl+Z          → undo
   //   Ctrl+Y / Ctrl+Shift+Z → redo
   useEffect(() => {
@@ -281,7 +283,11 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
             break
           case "f":
             e.preventDefault()
-            setFeather((f) => (f > 0 ? 0 : 8))
+            if (e.altKey) {
+              setFeather((f) => (f > 0 ? 0 : 8))
+            } else {
+              setShapeFill((v) => !v)
+            }
             break
         }
       }
@@ -358,6 +364,76 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
       } else {
         ctx.fillStyle = fillColor
         ctx.fillRect(x, y, w, h)
+      }
+    },
+    []
+  )
+
+  /**
+   * Draw a stroked rectangle on the mask context with optional feather (soft edge).
+   */
+  const drawRectStrokeOnMask = useCallback(
+    (
+      ctx: CanvasRenderingContext2D,
+      x: number,
+      y: number,
+      w: number,
+      h: number,
+      strokeColor: string,
+      featherPx: number
+    ) => {
+      if (featherPx > 0) {
+        // Soft-edge stroke: draw multiple concentric rectangles with decreasing alpha
+        const steps = featherPx
+        for (let i = steps; i >= 0; i--) {
+          const alpha = i === 0 ? 1 : i / steps
+          ctx.globalAlpha = alpha
+          ctx.strokeStyle = strokeColor
+          ctx.lineWidth = i * 2 // line width expands outward
+          ctx.strokeRect(x - i, y - i, w + i * 2, h + i * 2)
+        }
+        ctx.globalAlpha = 1
+      } else {
+        ctx.strokeStyle = strokeColor
+        ctx.lineWidth = 1
+        ctx.strokeRect(x, y, w, h)
+      }
+    },
+    []
+  )
+
+  /**
+   * Draw a stroked circle (ellipse) on the mask context with optional feather (soft edge).
+   */
+  const drawCircleStrokeOnMask = useCallback(
+    (
+      ctx: CanvasRenderingContext2D,
+      cx: number,
+      cy: number,
+      rx: number,
+      ry: number,
+      strokeColor: string,
+      featherPx: number
+    ) => {
+      if (featherPx > 0) {
+        // Soft-edge stroke: multiple concentric ellipses with decreasing alpha
+        const steps = featherPx
+        for (let i = steps; i >= 0; i--) {
+          const alpha = i === 0 ? 1 : i / steps
+          ctx.globalAlpha = alpha
+          ctx.strokeStyle = strokeColor
+          ctx.lineWidth = i * 2
+          ctx.beginPath()
+          ctx.ellipse(cx, cy, rx + i, ry + i, 0, 0, Math.PI * 2)
+          ctx.stroke()
+        }
+        ctx.globalAlpha = 1
+      } else {
+        ctx.strokeStyle = strokeColor
+        ctx.lineWidth = 1
+        ctx.beginPath()
+        ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2)
+        ctx.stroke()
       }
     },
     []
@@ -449,12 +525,20 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
         }
 
         if (tool === "rectangle") {
-          drawRectOnMask(maskCtx, x0, y0, w, h, "rgba(255, 255, 255, 1)", feather)
+          if (shapeFill) {
+            drawRectOnMask(maskCtx, x0, y0, w, h, "rgba(255, 255, 255, 1)", feather)
+          } else {
+            drawRectStrokeOnMask(maskCtx, x0, y0, w, h, "rgba(255, 255, 255, 1)", feather)
+          }
         } else {
           // Circle: center at midpoint, radii = half width/height
           const rx = w / 2
           const ry = h / 2
-          drawCircleOnMask(maskCtx, start.x + (cx - start.x) / 2, start.y + (cy - start.y) / 2, rx, ry, "rgba(255, 255, 255, 1)", feather)
+          if (shapeFill) {
+            drawCircleOnMask(maskCtx, start.x + (cx - start.x) / 2, start.y + (cy - start.y) / 2, rx, ry, "rgba(255, 255, 255, 1)", feather)
+          } else {
+            drawCircleStrokeOnMask(maskCtx, start.x + (cx - start.x) / 2, start.y + (cy - start.y) / 2, rx, ry, "rgba(255, 255, 255, 1)", feather)
+          }
         }
 
         // Update live preview state for potential future cursor indicator
@@ -463,7 +547,7 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
 
       redrawCanvas()
     },
-    [tool, brushSize, feather, redrawCanvas, getCanvasPoint, drawRectOnMask, drawCircleOnMask, history, historyIndex]
+    [tool, brushSize, feather, redrawCanvas, getCanvasPoint, drawRectOnMask, drawRectStrokeOnMask, drawCircleOnMask, drawCircleStrokeOnMask, shapeFill, history, historyIndex]
   )
 
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -529,6 +613,29 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
             </TabsTrigger>
           </TabsList>
         </Tabs>
+
+        {/* Fill / Stroke toggle — only shown for shape tools */}
+        {(tool === "rectangle" || tool === "circle") && (
+          <div className="mt-3 flex items-center justify-center gap-2">
+            <span className="text-xs text-muted-foreground">Mode:</span>
+            <Button
+              variant={shapeFill ? "default" : "outline"}
+              size="sm"
+              className="h-7 gap-1 text-xs"
+              onClick={() => setShapeFill(true)}
+            >
+              Fill
+            </Button>
+            <Button
+              variant={!shapeFill ? "default" : "outline"}
+              size="sm"
+              className="h-7 gap-1 text-xs"
+              onClick={() => setShapeFill(false)}
+            >
+              Stroke
+            </Button>
+          </div>
+        )}
 
         <div className="mt-4">
           <div className="mb-2 flex items-center justify-between text-sm">
