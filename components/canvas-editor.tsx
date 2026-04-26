@@ -519,17 +519,15 @@ const getCanvasPoint = useCallback(
       const canvas = canvasRef.current
       if (!canvas) return { x: 0, y: 0 }
       const rect = canvas.getBoundingClientRect()
-      // Adjust for pan offset (which is applied via CSS transform on container)
-      const adjustedX = e.clientX - rect.left - pan.x
-      const adjustedY = e.clientY - rect.top - pan.y
+      // pan is already baked into CSS transform; only apply scale
       const scaleX = canvas.width / rect.width
       const scaleY = canvas.height / rect.height
       return {
-        x: adjustedX * scaleX / zoom,
-        y: adjustedY * scaleY / zoom,
+        x: ((e.clientX - rect.left) * scaleX) / zoom,
+        y: ((e.clientY - rect.top) * scaleY) / zoom,
       }
     },
-    [zoom, pan]
+    [zoom]
   )
 
   /**
