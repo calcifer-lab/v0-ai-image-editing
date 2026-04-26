@@ -53,6 +53,7 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
   const [zoom, setZoom] = useState(1)
   const [pan, setPan] = useState({ x: 0, y: 0 })
   const [isPanning, setIsPanning] = useState(false)
+  const [isSpacePanning, setIsSpacePanning] = useState(false)
   const panStart = useRef({ x: 0, y: 0, panX: 0, panY: 0 })
 
   const redrawCanvas = useCallback(() => {
@@ -146,6 +147,30 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
     }
   }, [baseImage, initializeCanvas, onMaskCreated])
 
+  // Track spacebar for panning mode (space+drag = pan like in Figma/Photoshop)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement
+      if (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable) return
+      if (e.code === "Space" && !e.repeat) {
+        e.preventDefault()
+        setIsSpacePanning(true)
+      }
+    }
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.code === "Space") {
+        setIsSpacePanning(false)
+        setIsPanning(false)
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown)
+    window.addEventListener("keyup", handleKeyUp)
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown)
+      window.removeEventListener("keyup", handleKeyUp)
+    }
+  }, [])
+
   // Auto-hide brush/feather size toast after 800ms
   useEffect(() => {
     if (!sizeToast) return
@@ -175,14 +200,14 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
   // Pan with middle mouse or space+drag
   const handleCanvasMouseDown = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
-      // Middle mouse button or space+left click = start panning
-      if (e.button === 1) {
+      // Middle mouse button OR space+left click = start panning
+      if (e.button === 1 || (e.button === 0 && isSpacePanning)) {
         e.preventDefault()
         setIsPanning(true)
         panStart.current = { x: e.clientX, y: e.clientY, panX: pan.x, panY: pan.y }
       }
     },
-    [pan]
+    [pan, isSpacePanning]
   )
   const handleCanvasMouseMove = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
@@ -839,7 +864,7 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
           style={{
             maxWidth: "100%",
             maxHeight: "min(400px, 50vh)",
-            cursor: isPanning ? "grabbing" : undefined,
+            cursor: isPanning ? "grabbing" : isSpacePanning ? "grab" : undefined,
             transform: `scale(${zoom}) translate(${pan.x / zoom}px, ${pan.y / zoom}px)`,
             transformOrigin: "center center",
           }}
@@ -1066,13 +1091,18 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
                 <p className="mb-1 font-medium text-muted-foreground">History</p>
                 <div className="space-y-1">
                   <div className="flex items-center gap-2"><kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs font-mono font-medium">Ctrl+Z</kbd><span className="text-muted-foreground">Undo</span></div>
-                  <div className="flex items-center gap-2"><kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs font-mono font-medium">Ctrl+Y</kbd><span className="text-muted-foreground">Redo</span></div>
+                  <div className="flex items-center gap-2"><kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs font-mono font-medium">Ctrl+Y / Ctrl+Shift+Z</kbd><span className="text-muted-foreground">Redo</span></div>
                 </div>
               </div>
 
               <div>
                 <p className="mb-1 font-medium text-muted-foreground">Canvas</p>
                 <div className="space-y-1">
+                  <div className="flex items-center gap-2"><kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs font-mono font-medium">Space + Drag</kbd><span className="text-muted-foreground">Pan canvas</span></div>
+                  <div className="flex items-center gap-2"><kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs font-mono font-medium">+ / -</kbd><span className="text-muted-foreground">Zoom in / out</span></div>
+                  <div className="flex items-center gap-2"><kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs font-mono font-medium">0</kbd><span className="text-muted-foreground">Reset zoom to 100%</span></div>
+                  <div className="flex items-center gap-2"><kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs font-mono font-medium">Scroll</kbd><span className="text-muted-foreground">Pan canvas</span></div>
+                  <div className="flex items-center gap-2"><kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs font-mono font-medium">Ctrl + Scroll</kbd><span className="text-muted-foreground">Zoom canvas</span></div>
                   <div className="flex items-center gap-2"><kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs font-mono font-medium">Esc</kbd><span className="text-muted-foreground">Cancel current shape</span></div>
                 </div>
               </div>
