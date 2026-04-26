@@ -112,78 +112,11 @@ export default function ResultsView({ originalImage, resultImage, onEdit, onRese
   }
 
   const handleDownload = () => {
-    let filename = "download.png"
-    try {
-      if (resultImage.startsWith("data:")) {
-        const now = new Date()
-        const timestamp = now.toISOString().slice(0, 19).replace(/[:T]/g, "-")
-        filename = `fix-${timestamp}.png`
-      } else {
-        const urlParts = resultImage.split("/")
-        const lastPart = urlParts[urlParts.length - 1]
-        const queryIndex = lastPart.indexOf("?")
-        const name = queryIndex > 0 ? lastPart.substring(0, queryIndex) : lastPart
-        if (name && name.length > 0 && name.length < 100) {
-          const extMatch = name.match(/\.[^.]+$/)
-          if (extMatch) {
-            const ext = extMatch[0]
-            filename = `${name.substring(0, name.length - ext.length)}_fixed${ext}`
-          } else {
-            filename = `${name}_fixed.png`
-          }
-        }
-      }
-    } catch {
-      const timestamp = Date.now()
-      filename = `fix-${timestamp}.png`
-    }
     const link = document.createElement("a")
     link.href = resultImage
-    link.download = filename
+    link.download = "rediagram-fix.png"
     link.click()
   }
-
-  // Keyboard shortcuts: Ctrl+S download, V/Tab view toggle, +/-/0/F zoom
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
-
-      // Ctrl+S / Cmd+S — download
-      if ((e.ctrlKey || e.metaKey) && e.key === "s") {
-        e.preventDefault()
-        handleDownload()
-        return
-      }
-
-      // V or Tab — toggle view
-      if (e.key === "v" || e.key === "V" || e.key === "Tab") {
-        if (e.key === "Tab") e.preventDefault()
-        handleViewChange(view === "side" ? "slider" : "side")
-        return
-      }
-
-      // + or = — zoom in
-      if (e.key === "+" || e.key === "=") {
-        setZoom((z) => Math.min(z + ZOOM_STEP, MAX_ZOOM))
-        return
-      }
-
-      // - — zoom out
-      if (e.key === "-") {
-        setZoom((z) => Math.max(z - ZOOM_STEP, MIN_ZOOM))
-        return
-      }
-
-      // 0 or F — fit to screen
-      if (e.key === "0" || e.key === "f" || e.key === "F") {
-        setZoom(1)
-        setPan({ x: 0, y: 0 })
-        return
-      }
-    }
-    window.addEventListener("keydown", handleKeyDown)
-    return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [view])
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
@@ -244,7 +177,7 @@ export default function ResultsView({ originalImage, resultImage, onEdit, onRese
 
           {zoom > 1 && (
             <p className="text-xs text-muted-foreground">
-              Scroll to pan · Ctrl+Scroll to zoom · Double-click or press 0 to fit · V to switch view · Ctrl+S to download
+              Scroll to pan · Ctrl+Scroll to zoom · Double-click to reset
             </p>
           )}
         </div>
