@@ -318,7 +318,20 @@ export default function ElementCropper({ image, crop, onCropChange }: ElementCro
     saveToHistory(maskCanvas)
     redrawCanvas()
     updateCropFromMask()
-  }, [naturalSize, onCropChange, saveToHistory, redrawCanvas, updateCropFromMask])
+  }, [naturalSize, saveToHistory, redrawCanvas, updateCropFromMask])
+
+  const clearCrop = useCallback(() => {
+    if (!naturalSize.width || !naturalSize.height) return
+    const maskCanvas = maskCanvasRef.current
+    if (!maskCanvas) return
+    const maskCtx = maskCanvas.getContext("2d")
+    if (!maskCtx) return
+    maskCtx.fillStyle = "rgba(0, 0, 0, 1)"
+    maskCtx.fillRect(0, 0, maskCanvas.width, maskCanvas.height)
+    saveToHistory(maskCanvas)
+    redrawCanvas()
+    updateCropFromMask()
+  }, [naturalSize, saveToHistory, redrawCanvas, updateCropFromMask])
 
 
   // Re-initialize canvas when switching to brush/eraser mode
@@ -340,7 +353,7 @@ export default function ElementCropper({ image, crop, onCropChange }: ElementCro
     const target = e.currentTarget
     setNaturalSize({ width: target.naturalWidth, height: target.naturalHeight })
     setIsDragging(false)
-    initializeCanvas(target, crop ? "empty" : "full")
+    initializeCanvas(target, "empty")
   }
 
 
@@ -401,7 +414,7 @@ export default function ElementCropper({ image, crop, onCropChange }: ElementCro
             <Crop className="h-4 w-4 text-primary" />
             <div>
               <h3 className="font-semibold">Element Crop</h3>
-              <p className="text-xs text-muted-foreground">Select ONLY the element to patch</p>
+              <p className="text-xs text-muted-foreground">Select the element you want to use</p>
             </div>
           </div>
           <div className="flex gap-2">
@@ -411,9 +424,13 @@ export default function ElementCropper({ image, crop, onCropChange }: ElementCro
             <Button variant="outline" size="sm" onClick={redo} disabled={historyIndex >= history.length - 1}>
               <Redo className="h-4 w-4" />
             </Button>
-            <Button variant="ghost" size="sm" onClick={setFullCrop} disabled={!naturalSize.width}>
+            <Button variant="outline" size="sm" onClick={setFullCrop} disabled={!naturalSize.width} title="Select entire image">
+              <Crop className="mr-2 h-4 w-4" />
+              All
+            </Button>
+            <Button variant="ghost" size="sm" onClick={clearCrop} disabled={!naturalSize.width} title="Clear selection">
               <RefreshCcw className="mr-2 h-4 w-4" />
-              Reset
+              Clear
             </Button>
           </div>
         </div>

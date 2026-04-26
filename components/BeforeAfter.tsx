@@ -34,18 +34,25 @@ export default function BeforeAfter({ before, after }: { before: string; after: 
       ref={containerRef}
       className="ba-container"
       onMouseDown={handleMouseDown}
+      onMouseMove={(e) => {
+        // Only respond to mousemove if mouse is down
+        if (e.buttons === 1) handleMove(e.clientX)
+      }}
+      onMouseLeave={(e) => {
+        if (e.buttons === 1) handleMove(e.clientX)
+      }}
       onTouchMove={handleTouchMove}
-      style={{ cursor: "ew-resize" }}
+      style={{ cursor: "ew-resize", touchAction: "none" }}
     >
       {/* After image (full, bottom layer) */}
       <img src={after} alt="After fix" className="ba-img" draggable={false} />
 
-      {/* Before image (clipped, top layer) */}
+      {/* Before image (clipped, top layer) — clip left side, show left portion on the left */}
       <img
         src={before}
         alt="Before fix"
         className="ba-img ba-before"
-        style={{ clipPath: `inset(0 ${100 - sliderPos}% 0 0` }}
+        style={{ clipPath: `inset(0 0 0 ${100 - sliderPos}%)` }}
         draggable={false}
       />
 
