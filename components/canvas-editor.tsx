@@ -31,7 +31,6 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
   const [history, setHistory] = useState<ImageData[]>([])
   const [historyIndex, setHistoryIndex] = useState(-1)
   const baseImageRef = useRef<HTMLImageElement | null>(null)
-  const isInitialized = useRef(false)
 
   const redrawCanvas = useCallback(() => {
     const canvas = canvasRef.current
@@ -69,48 +68,60 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
     ctx.drawImage(tempCanvas, 0, 0)
   }, [])
 
-  useEffect(() => {
+  const initializeCanvas = useCallback((img: HTMLImageElement) => {
     const canvas = canvasRef.current
     const maskCanvas = maskCanvasRef.current
-    if (!canvas || !maskCanvas || isInitialized.current) return
+    if (!canvas || !maskCanvas) return
 
     const ctx = canvas.getContext("2d")
     const maskCtx = maskCanvas.getContext("2d")
     if (!ctx || !maskCtx) return
 
+    let { width, height } = img
+
+    if (width > MAX_CANVAS_WIDTH) {
+      height = (height * MAX_CANVAS_WIDTH) / width
+      width = MAX_CANVAS_WIDTH
+    }
+    if (height > MAX_CANVAS_HEIGHT) {
+      width = (width * MAX_CANVAS_HEIGHT) / height
+      height = MAX_CANVAS_HEIGHT
+    }
+
+    canvas.width = width
+    canvas.height = height
+    maskCanvas.width = width
+    maskCanvas.height = height
+
+    ctx.clearRect(0, 0, width, height)
+    ctx.drawImage(img, 0, 0, width, height)
+    baseImageRef.current = img
+
+    maskCtx.clearRect(0, 0, width, height)
+    maskCtx.fillStyle = "rgba(0, 0, 0, 1)"
+    maskCtx.fillRect(0, 0, width, height)
+
+    const initialState = maskCtx.getImageData(0, 0, width, height)
+    setHistory([initialState])
+    setHistoryIndex(0)
+  }, [])
+
+  useEffect(() => {
+    let isCancelled = false
+    setIsDrawing(false)
+    onMaskCreated(null)
     const img = new Image()
     img.crossOrigin = "anonymous"
     img.onload = () => {
-      let { width, height } = img
-
-      if (width > MAX_CANVAS_WIDTH) {
-        height = (height * MAX_CANVAS_WIDTH) / width
-        width = MAX_CANVAS_WIDTH
-      }
-      if (height > MAX_CANVAS_HEIGHT) {
-        width = (width * MAX_CANVAS_HEIGHT) / height
-        height = MAX_CANVAS_HEIGHT
-      }
-
-      canvas.width = width
-      canvas.height = height
-      maskCanvas.width = width
-      maskCanvas.height = height
-
-      ctx.drawImage(img, 0, 0, width, height)
-      baseImageRef.current = img
-
-      maskCtx.fillStyle = "rgba(0, 0, 0, 1)"
-      maskCtx.fillRect(0, 0, width, height)
-
-      const initialState = maskCtx.getImageData(0, 0, width, height)
-      setHistory([initialState])
-      setHistoryIndex(0)
-
-      isInitialized.current = true
+      if (isCancelled) return
+      initializeCanvas(img)
     }
     img.src = baseImage
-  }, [baseImage])
+
+    return () => {
+      isCancelled = true
+    }
+  }, [baseImage, initializeCanvas, onMaskCreated])
 
   const saveToHistory = useCallback(
     (canvas: HTMLCanvasElement) => {

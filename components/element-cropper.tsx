@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
@@ -13,13 +13,6 @@ interface ElementCropperProps {
   image: string
   crop: CropRegion | null
   onCropChange: (crop: CropRegion | null) => void
-}
-
-interface Selection {
-  x: number
-  y: number
-  width: number
-  height: number
 }
 
 type Tool = "brush" | "eraser"
@@ -82,6 +75,50 @@ export default function ElementCropper({ image, crop, onCropChange }: ElementCro
     overlayCtx.putImageData(overlayData, 0, 0)
     ctx.drawImage(overlayCanvas, 0, 0)
   }, [])
+
+  const initializeCanvas = useCallback(
+    (img: HTMLImageElement, initialSelection: "empty" | "full" = "empty") => {
+      const canvas = canvasRef.current
+      const maskCanvas = maskCanvasRef.current
+      if (!canvas || !maskCanvas) return
+
+      const { width: displayWidth, height: displayHeight } = getDisplayDimensions(img.naturalWidth, img.naturalHeight)
+
+      canvas.width = displayWidth
+      canvas.height = displayHeight
+      maskCanvas.width = displayWidth
+      maskCanvas.height = displayHeight
+
+      const ctx = canvas.getContext("2d")
+      const maskCtx = maskCanvas.getContext("2d")
+      if (!ctx || !maskCtx) return
+
+      ctx.clearRect(0, 0, displayWidth, displayHeight)
+      ctx.drawImage(img, 0, 0, displayWidth, displayHeight)
+
+      maskCtx.clearRect(0, 0, displayWidth, displayHeight)
+      maskCtx.fillStyle = initialSelection === "full" ? "rgba(255, 255, 255, 1)" : "rgba(0, 0, 0, 1)"
+      maskCtx.fillRect(0, 0, displayWidth, displayHeight)
+
+      const initialState = maskCtx.getImageData(0, 0, displayWidth, displayHeight)
+      setHistory([initialState])
+      setHistoryIndex(0)
+
+      if (initialSelection === "full") {
+        onCropChange({
+          x: 0,
+          y: 0,
+          width: img.naturalWidth,
+          height: img.naturalHeight,
+          imageWidth: img.naturalWidth,
+          imageHeight: img.naturalHeight,
+        })
+      } else {
+        onCropChange(null)
+      }
+    },
+    [onCropChange]
+  )
 
   // Save to history
   const saveToHistory = useCallback(
@@ -247,6 +284,8 @@ export default function ElementCropper({ image, crop, onCropChange }: ElementCro
         imageWidth: naturalSize.width,
         imageHeight: naturalSize.height,
       })
+    } else {
+      onCropChange(null)
     }
   }, [naturalSize, onCropChange])
 
@@ -267,77 +306,23 @@ export default function ElementCropper({ image, crop, onCropChange }: ElementCro
   // Re-initialize canvas when switching to brush/eraser mode
   useEffect(() => {
     if (tool === "brush" || tool === "eraser") {
-      const canvas = canvasRef.current
-      const maskCanvas = maskCanvasRef.current
       const img = imgRef.current
-      if (!canvas || !maskCanvas || !img || !img.complete || !img.naturalWidth) return
+      if (!img || !img.complete || !img.naturalWidth) return
 
-      // Use natural dimensions scaled to display size
-      const { width: displayWidth, height: displayHeight } = getDisplayDimensions(
-        img.naturalWidth,
-        img.naturalHeight
-      )
-
-      if (canvas.width !== displayWidth || canvas.height !== displayHeight) {
-        canvas.width = displayWidth
-        canvas.height = displayHeight
-        maskCanvas.width = displayWidth
-        maskCanvas.height = displayHeight
-
-        const ctx = canvas.getContext("2d")
-        const maskCtx = maskCanvas.getContext("2d")
-        if (ctx && maskCtx) {
-          ctx.drawImage(img, 0, 0, displayWidth, displayHeight)
-          maskCtx.fillStyle = "rgba(0, 0, 0, 1)"
-          maskCtx.fillRect(0, 0, displayWidth, displayHeight)
-
-          const initialState = maskCtx.getImageData(0, 0, displayWidth, displayHeight)
-          setHistory([initialState])
-          setHistoryIndex(0)
-        }
+      if (historyIndex < 0) {
+        initializeCanvas(img, crop ? "empty" : "full")
       } else {
         redrawCanvas()
       }
     }
-  }, [tool, redrawCanvas])
+  }, [tool, crop, historyIndex, initializeCanvas, redrawCanvas])
 
 
   const handleImageLoad = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
     const target = e.currentTarget
     setNaturalSize({ width: target.naturalWidth, height: target.naturalHeight })
-
-    // Initialize canvases for brush mode
-    const canvas = canvasRef.current
-    const maskCanvas = maskCanvasRef.current
-    // Always initialize canvas with proper dimensions based on natural image size
-    if (!canvas || !maskCanvas) return
-
-    const { width: displayWidth, height: displayHeight } = getDisplayDimensions(
-      target.naturalWidth,
-      target.naturalHeight
-    )
-
-    if (canvas.width !== displayWidth || canvas.height !== displayHeight) {
-      canvas.width = displayWidth
-      canvas.height = displayHeight
-      maskCanvas.width = displayWidth
-      maskCanvas.height = displayHeight
-
-      const ctx = canvas.getContext("2d")
-      const maskCtx = maskCanvas.getContext("2d")
-      if (ctx && maskCtx) {
-        ctx.drawImage(target, 0, 0, displayWidth, displayHeight)
-        maskCtx.fillStyle = "rgba(0, 0, 0, 1)"
-        maskCtx.fillRect(0, 0, displayWidth, displayHeight)
-        const initialState = maskCtx.getImageData(0, 0, displayWidth, displayHeight)
-        setHistory([initialState])
-        setHistoryIndex(0)
-      }
-    }
-
-    if (!crop) {
-      setFullCrop()
-    }
+    setIsDragging(false)
+    initializeCanvas(target, crop ? "empty" : "full")
   }
 
 
