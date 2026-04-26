@@ -38,6 +38,9 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
   const [shapeFill, setShapeFill] = useState(true) // true = filled, false = stroke/outline
   // Ref for synchronous draw-state check (avoids React setState lag)
   const isDrawingRef = useRef(false)
+  // Cursor preview state (display coordinates)
+  const [cursorPos, setCursorPos] = useState<{ x: number; y: number } | null>(null)
+  const [cursorOnCanvas, setCursorOnCanvas] = useState(false)
 
   const redrawCanvas = useCallback(() => {
     const canvas = canvasRef.current
@@ -657,13 +660,61 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
           <canvas
             ref={canvasRef}
             onMouseDown={startDrawing}
-            onMouseMove={draw}
+            onMouseMove={(e) => {
+              draw(e)
+              // Track cursor position for brush preview
+              const canvas = canvasRef.current
+              if (canvas) {
+                const rect = canvas.getBoundingClientRect()
+                setCursorPos({ x: e.clientX - rect.left, y: e.clientY - rect.top })
+              }
+            }}
             onMouseUp={stopDrawing}
-            onMouseLeave={stopDrawing}
+            onMouseLeave={() => { stopDrawing(); setCursorOnCanvas(false); setCursorPos(null) }}
+            onMouseEnter={(e) => { setCursorOnCanvas(true); const canvas = canvasRef.current; if (canvas) { const rect = canvas.getBoundingClientRect(); setCursorPos({ x: e.clientX - rect.left, y: e.clientY - rect.top }) } }}
             className="cursor-crosshair rounded-lg border shadow-lg"
             style={{ maxWidth: "100%", maxHeight: "min(400px, 50vh)", height: "auto" }}
           />
           <canvas ref={maskCanvasRef} className="hidden" />
+
+          {/* Brush cursor overlay — only shown when hovering with brush/eraser tool */}
+          {cursorOnCanvas && cursorPos && (tool === "brush" || tool === "eraser") && (
+            <svg
+              className="pointer-events-none absolute overflow-visible"
+              style={{
+                left: cursorPos.x,
+                top: cursorPos.y,
+                transform: "translate(-50%, -50%)",
+                overflow: "visible",
+              }}
+              width="0"
+              height="0"
+            >
+              {/* Feather outer ring — shows soft edge boundary */}
+              {feather > 0 && (
+                <circle
+                  cx="0"
+                  cy="0"
+                  r={brushSize / 2 + feather}
+                  fill="none"
+                  stroke="rgba(255,255,255,0.5)"
+                  strokeWidth="1"
+                  strokeDasharray="3 2"
+                />
+              )}
+              {/* Main brush circle outline */}
+              <circle
+                cx="0"
+                cy="0"
+                r={brushSize / 2}
+                fill={tool === "eraser" ? "rgba(255,0,0,0.1)" : "rgba(59,130,246,0.1)"}
+                stroke={tool === "eraser" ? "rgba(255,100,100,0.8)" : "rgba(59,130,246,0.8)"}
+                strokeWidth="1.5"
+              />
+              {/* Center crosshair dot */}
+              <circle cx="0" cy="0" r="1.5" fill={tool === "eraser" ? "rgba(255,100,100,0.9)" : "rgba(59,130,246,0.9)"} />
+            </svg>
+          )}
         </div>
       </div>
 
