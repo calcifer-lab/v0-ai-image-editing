@@ -29,6 +29,7 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
   const [tool, setTool] = useState<Tool>("brush")
   const [brushSize, setBrushSize] = useState(80)
   const [feather, setFeather] = useState(0) // 0 = hard edge, 20 = max softness
+  const [sizeToast, setSizeToast] = useState<string | null>(null)
   const [history, setHistory] = useState<ImageData[]>([])
   const [historyIndex, setHistoryIndex] = useState(-1)
   const baseImageRef = useRef<HTMLImageElement | null>(null)
@@ -136,6 +137,13 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
       isCancelled = true
     }
   }, [baseImage, initializeCanvas, onMaskCreated])
+
+  // Auto-hide brush/feather size toast after 800ms
+  useEffect(() => {
+    if (!sizeToast) return
+    const timer = setTimeout(() => setSizeToast(null), 800)
+    return () => clearTimeout(timer)
+  }, [sizeToast])
 
   const saveToHistory = useCallback(
     (canvas: HTMLCanvasElement) => {
@@ -292,24 +300,44 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
           case "{":
             e.preventDefault()
             if (e.shiftKey) {
-              setFeather((f) => Math.max(0, f - 2))
+              setFeather((f) => {
+                const next = Math.max(0, f - 2)
+                setSizeToast(`Feather: ${next}`)
+                return next
+              })
             } else {
-              setBrushSize((s) => Math.max(5, s - 5))
+              setBrushSize((s) => {
+                const next = Math.max(5, s - 5)
+                setSizeToast(`Brush: ${next}px`)
+                return next
+              })
             }
             break
           case "]":
           case "}":
             e.preventDefault()
             if (e.shiftKey) {
-              setFeather((f) => Math.min(20, f + 2))
+              setFeather((f) => {
+                const next = Math.min(20, f + 2)
+                setSizeToast(`Feather: ${next}`)
+                return next
+              })
             } else {
-              setBrushSize((s) => Math.min(100, s + 5))
+              setBrushSize((s) => {
+                const next = Math.min(100, s + 5)
+                setSizeToast(`Brush: ${next}px`)
+                return next
+              })
             }
             break
           case "f":
             e.preventDefault()
             if (e.altKey) {
-              setFeather((f) => (f > 0 ? 0 : 8))
+              setFeather((f) => {
+                const next = f > 0 ? 0 : 8
+                setSizeToast(`Feather: ${next}`)
+                return next
+              })
             } else {
               setShapeFill((v) => !v)
             }
@@ -867,6 +895,12 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
                 </svg>
               )
             })()
+          )}
+          {/* Brush/Feather size toast — shown briefly when adjusting via keyboard */}
+          {sizeToast && (
+            <div className="pointer-events-none absolute bottom-4 left-1/2 z-30 -translate-x-1/2 rounded-full bg-black/80 px-4 py-1.5 text-sm font-medium text-white shadow-lg">
+              {sizeToast}
+            </div>
           )}
         </div>
       </div>
