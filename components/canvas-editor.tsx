@@ -41,6 +41,8 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
   // Cursor preview state (display coordinates)
   const [cursorPos, setCursorPos] = useState<{ x: number; y: number } | null>(null)
   const [cursorOnCanvas, setCursorOnCanvas] = useState(false)
+  // Shape tool live preview — tracks cursor position for SVG overlay
+  const [shapeCursorPos, setShapeCursorPos] = useState<{ x: number; y: number } | null>(null)
 
   const redrawCanvas = useCallback(() => {
     const canvas = canvasRef.current
@@ -681,12 +683,39 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
               const canvas = canvasRef.current
               if (canvas) {
                 const rect = canvas.getBoundingClientRect()
-                setCursorPos({ x: e.clientX - rect.left, y: e.clientY - rect.top })
+                const screenX = e.clientX - rect.left
+                const screenY = e.clientY - rect.top
+                setCursorPos({ x: screenX, y: screenY })
+                // Track shape cursor for SVG overlay preview
+                if (tool === "rectangle" || tool === "circle") {
+                  const scaleX = canvas.width / rect.width
+                  const scaleY = canvas.height / rect.height
+                  setShapeCursorPos({
+                    x: screenX * scaleX,
+                    y: screenY * scaleY,
+                  })
+                } else {
+                  setShapeCursorPos(null)
+                }
               }
             }}
             onMouseUp={stopDrawing}
-            onMouseLeave={() => { stopDrawing(); setCursorOnCanvas(false); setCursorPos(null) }}
-            onMouseEnter={(e) => { setCursorOnCanvas(true); const canvas = canvasRef.current; if (canvas) { const rect = canvas.getBoundingClientRect(); setCursorPos({ x: e.clientX - rect.left, y: e.clientY - rect.top }) } }}
+            onMouseLeave={() => { stopDrawing(); setCursorOnCanvas(false); setCursorPos(null); setShapeCursorPos(null) }}
+            onMouseEnter={(e) => {
+              setCursorOnCanvas(true)
+              const canvas = canvasRef.current
+              if (canvas) {
+                const rect = canvas.getBoundingClientRect()
+                const screenX = e.clientX - rect.left
+                const screenY = e.clientY - rect.top
+                setCursorPos({ x: screenX, y: screenY })
+                if (tool === "rectangle" || tool === "circle") {
+                  const scaleX = canvas.width / rect.width
+                  const scaleY = canvas.height / rect.height
+                  setShapeCursorPos({ x: screenX * scaleX, y: screenY * scaleY })
+                }
+              }
+            }}
             className="cursor-crosshair rounded-lg border shadow-lg"
             style={{ maxWidth: "100%", maxHeight: "min(400px, 50vh)", height: "auto" }}
           />
@@ -729,6 +758,80 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
               {/* Center crosshair dot */}
               <circle cx="0" cy="0" r="1.5" fill={tool === "eraser" ? "rgba(255,100,100,0.9)" : "rgba(59,130,246,0.9)"} />
             </svg>
+          )}
+
+          {/* Shape tool live preview overlay — shows rectangle/circle outline while hovering or dragging */}
+          {cursorOnCanvas && shapeCursorPos && (tool === "rectangle" || tool === "circle") && (
+            (() => {
+              const canvas = canvasRef.current
+              if (!canvas) return null
+              const rect = canvas.getBoundingClientRect()
+              // Convert canvas coords back to screen coords for SVG overlay
+              const screenX = shapeCursorPos.x * (rect.width / canvas.width)
+              const screenY = shapeCursorPos.y * (rect.height / canvas.height)
+              const start = shapeStartRef.current
+              const isDragging = isDrawingRef.current && !!start
+              let shapeEl = null
+              if (isDragging) {
+                // Show live rectangle/ellipse preview during drag
+                const x0 = Math.min(start.x, shapeCursorPos.x)
+                const y0 = Math.min(start.y, shapeCursorPos.y)
+                const w = Math.abs(shapeCursorPos.x - start.x)
+                const h = Math.abs(shapeCursorPos.y - start.y)
+                // Convert shape bounds from canvas coords to screen coords
+                const sx0 = x0 * (rect.width / canvas.width)
+                const sy0 = y0 * (rect.height / canvas.height)
+                const sw = w * (rect.width / canvas.width)
+                const sh = h * (rect.height / canvas.height)
+                if (tool === "rectangle") {
+                  shapeEl = (
+                    <rect
+                      x={sx0}
+                      y={sy0}
+                      width={sw}
+                      height={sh}
+                      fill={shapeFill ? "rgba(59,130,246,0.15)" : "none"}
+                      stroke="rgba(59,130,246,0.9)"
+                      strokeWidth="1.5"
+                      strokeDasharray={shapeFill ? "4 3" : "none"}
+                    />
+                  )
+                } else {
+                  const crx = sw / 2
+                  const cry = sh / 2
+                  const ccx = sx0 + crx
+                  const ccy = sy0 + cry
+                  shapeEl = (
+                    <ellipse
+                      cx={ccx}
+                      cy={ccy}
+                      rx={crx}
+                      ry={cry}
+                      fill={shapeFill ? "rgba(59,130,246,0.15)" : "none"}
+                      stroke="rgba(59,130,246,0.9)"
+                      strokeWidth="1.5"
+                      strokeDasharray={shapeFill ? "4 3" : "none"}
+                    />
+                  )
+                }
+              } else {
+                // Hovering without dragging — show small crosshair at cursor
+                shapeEl = (
+                  <g>
+                    <line x1={screenX - 8} y1={screenY} x2={screenX + 8} y2={screenY} stroke="rgba(59,130,246,0.7)" strokeWidth="1" />
+                    <line x1={screenX} y1={screenY - 8} x2={screenX} y2={screenY + 8} stroke="rgba(59,130,246,0.7)" strokeWidth="1" />
+                  </g>
+                )
+              }
+              return (
+                <svg
+                  className="pointer-events-none absolute"
+                  style={{ left: 0, top: 0, width: "100%", height: "100%", overflow: "visible" }}
+                >
+                  {shapeEl}
+                </svg>
+              )
+            })()
           )}
         </div>
       </div>
