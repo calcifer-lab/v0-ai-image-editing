@@ -216,15 +216,50 @@ function collectSurroundingStats(
   }
 }
 
-function buildFeatheredRectMask(width: number, height: number, featherPx: number): Uint8ClampedArray {
+function buildAlphaAwareFeatherMask(
+  data: Uint8ClampedArray,
+  width: number,
+  height: number,
+  featherPx: number
+): Uint8ClampedArray {
   const mask = new Uint8ClampedArray(width * height)
   const safeFeather = Math.max(1, featherPx)
+  const edgeThreshold = 12
 
   for (let y = 0; y < height; y += 1) {
     for (let x = 0; x < width; x += 1) {
-      const edgeDistance = Math.min(x, y, width - 1 - x, height - 1 - y)
-      const edgeOpacity = lerp(0.88, 1, smoothstep(0, safeFeather, edgeDistance))
-      mask[y * width + x] = Math.round(edgeOpacity * 255)
+      const pixelIndex = (y * width + x) * 4
+      const alpha = data[pixelIndex + 3]
+      if (alpha <= edgeThreshold) {
+        mask[y * width + x] = 0
+        continue
+      }
+
+      let nearestTransparentDistance = safeFeather + 1
+
+      for (let offsetY = -safeFeather; offsetY <= safeFeather; offsetY += 1) {
+        const sampleY = y + offsetY
+        if (sampleY < 0 || sampleY >= height) continue
+
+        for (let offsetX = -safeFeather; offsetX <= safeFeather; offsetX += 1) {
+          const sampleX = x + offsetX
+          if (sampleX < 0 || sampleX >= width) continue
+
+          const distance = Math.max(Math.abs(offsetX), Math.abs(offsetY))
+          if (distance >= nearestTransparentDistance) continue
+
+          const sampleIndex = (sampleY * width + sampleX) * 4
+          if (data[sampleIndex + 3] > edgeThreshold) continue
+
+          nearestTransparentDistance = distance
+        }
+      }
+
+      const contourOpacity = nearestTransparentDistance > safeFeather
+        ? 1
+        : lerp(0.86, 1, smoothstep(0, safeFeather, nearestTransparentDistance))
+
+      mask[y * width + x] = Math.round(contourOpacity * (alpha / 255) * 255)
     }
   }
 
@@ -326,7 +361,7 @@ async function compositePatchOnBase(
     clamp(Math.round(Math.max(targetWidth, targetHeight) * 0.16), 12, 48)
   )
 
-  const mask = buildFeatheredRectMask(targetWidth, targetHeight, featherPx)
+  const mask = buildAlphaAwareFeatherMask(refData.data, targetWidth, targetHeight, featherPx)
   const scaleR = sourceStats.count > 0 && targetStats.count > 0 ? clamp(targetStats.r / Math.max(1, sourceStats.r), 0.78, 1.22) : 1
   const scaleG = sourceStats.count > 0 && targetStats.count > 0 ? clamp(targetStats.g / Math.max(1, sourceStats.g), 0.78, 1.22) : 1
   const scaleB = sourceStats.count > 0 && targetStats.count > 0 ? clamp(targetStats.b / Math.max(1, sourceStats.b), 0.78, 1.22) : 1
@@ -340,8 +375,8 @@ async function compositePatchOnBase(
       const alpha = refData.data[pixelIndex + 3] / 255
       if (alpha < 0.02) continue
 
-      const edgeDistance = Math.min(x, y, targetWidth - 1 - x, targetHeight - 1 - y)
-      const edgeFactor = 1 - smoothstep(0, featherPx, edgeDistance)
+      const contourOpacity = mask[y * targetWidth + x] / 255
+      const edgeFactor = 1 - smoothstep(0.86, 1, contourOpacity)
       const correctionStrength = toneMatchStrength * lerp(0.35, 1, edgeFactor)
 
       const baseR = baseData.data[pixelIndex]
@@ -365,7 +400,7 @@ async function compositePatchOnBase(
       fusedG = lerp(fusedG, baseG, edgeTintStrength)
       fusedB = lerp(fusedB, baseB, edgeTintStrength)
 
-      const localBlend = alpha * (mask[y * targetWidth + x] / 255)
+      const localBlend = contourOpacity
 
       refData.data[pixelIndex] = Math.round(fusedR * localBlend + baseR * (1 - localBlend))
       refData.data[pixelIndex + 1] = Math.round(fusedG * localBlend + baseG * (1 - localBlend))
