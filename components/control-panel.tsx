@@ -202,7 +202,7 @@ function AIGenerateSettings({
         </div>
       </Card>
 
-      <AnalysisStatus isAnalyzing={isAnalyzing} imageAnalysis={imageAnalysis} />
+      {/* AnalysisStatus removed per user request */}
 
       <PromptInput
         value={params.prompt}
@@ -378,40 +378,6 @@ function OutputDimensionsSection({
       </div>
     </Card>
   )
-}
-
-function AnalysisStatus({
-  isAnalyzing,
-  imageAnalysis,
-}: {
-  isAnalyzing: boolean
-  imageAnalysis: string | null
-}) {
-  if (isAnalyzing) {
-    return (
-      <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 dark:border-blue-800 dark:bg-blue-950">
-        <div className="flex items-center gap-2">
-          <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-          <p className="text-sm text-blue-900 dark:text-blue-100">
-            Analyzing element image with AI...
-          </p>
-        </div>
-      </div>
-    )
-  }
-
-  if (imageAnalysis) {
-    return (
-      <div className="rounded-lg border border-green-200 bg-green-50 p-3 dark:border-green-800 dark:bg-green-950">
-        <h4 className="mb-1 text-sm font-semibold text-green-900 dark:text-green-100">
-          AI Analysis:
-        </h4>
-        <p className="text-xs text-green-800 dark:text-green-200">{imageAnalysis}</p>
-      </div>
-    )
-  }
-
-  return null
 }
 
 function ErrorDisplay({ error }: { error: string }) {

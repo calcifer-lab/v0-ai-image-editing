@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Slider } from "@/components/ui/slider"
-import { Pencil, Eraser, Square, Circle, Undo, Redo, Trash2, HelpCircle, X, ZoomIn, ZoomOut, Maximize2 } from "lucide-react"
+import { Pencil, Eraser, Square, Circle, ZoomIn, ZoomOut, Maximize2 } from "lucide-react"
 // Added Help overlay UI components
 
 import type { MaskData } from "@/types"
@@ -50,7 +50,7 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
   // Shape tool live preview — tracks cursor position for SVG overlay
   const [shapeCursorPos, setShapeCursorPos] = useState<{ x: number; y: number } | null>(null)
   // Keyboard shortcut help overlay
-  const [showHelp, setShowHelp] = useState(false)
+  const [showHelp] = useState(false)
   // Zoom and pan state for canvas navigation
   const [zoom, setZoom] = useState(1)
   const [pan, setPan] = useState({ x: 0, y: 0 })
@@ -770,19 +770,52 @@ const getCanvasPoint = useCallback(
   return (
     <Card className="flex flex-col">
       <div className="border-b p-4">
-        <div className="mb-4 flex items-center justify-between">
-          <h3 className="font-semibold">Select Region to Fix</h3>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={undo} disabled={historyIndex <= 0}>
-              <Undo className="h-4 w-4" />
-            </Button>
-            <Button variant="outline" size="sm" onClick={redo} disabled={historyIndex >= history.length - 1}>
-              <Redo className="h-4 w-4" />
-            </Button>
-            <Button variant="outline" size="sm" onClick={clearMask}>
-              <Trash2 className="h-4 w-4" />
-            </Button>
-            <div className="mx-1 h-6 w-px bg-border" />
+        <div className="flex items-center gap-6">
+          <Tabs value={tool} onValueChange={(v) => setTool(v as Tool)} className="flex-1">
+            <TabsList className="grid w-full grid-cols-4">
+              <TabsTrigger value="brush" className="gap-1 text-xs">
+                <Pencil className="h-3 w-3" />
+                Brush
+              </TabsTrigger>
+              <TabsTrigger value="eraser" className="gap-1 text-xs">
+                <Eraser className="h-3 w-3" />
+                Eraser
+              </TabsTrigger>
+              <TabsTrigger value="rectangle" className="gap-1 text-xs">
+                <Square className="h-3 w-3" />
+              </TabsTrigger>
+              <TabsTrigger value="circle" className="gap-1 text-xs">
+                <Circle className="h-3 w-3" />
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+
+          {/* Fill / Stroke toggle — only shown for shape tools */}
+          {(tool === "rectangle" || tool === "circle") && (
+            <div className="flex items-center gap-1">
+              <span className="text-xs text-muted-foreground">Mode:</span>
+              <Button variant={shapeFill ? "default" : "outline"} size="sm" className="h-7 gap-1 text-xs" onClick={() => setShapeFill(true)}>
+                Fill
+              </Button>
+              <Button variant={!shapeFill ? "default" : "outline"} size="sm" className="h-7 gap-1 text-xs" onClick={() => setShapeFill(false)}>
+                Stroke
+              </Button>
+            </div>
+          )}
+
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground whitespace-nowrap">Brush</span>
+            <Slider value={[brushSize]} onValueChange={(v) => setBrushSize(v[0])} min={5} max={100} step={5} className="w-24" />
+            <span className="text-xs font-medium w-8">{brushSize}</span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground whitespace-nowrap">Feather</span>
+            <Slider value={[feather]} onValueChange={(v) => setFeather(v[0])} min={0} max={20} step={1} className="w-20" />
+            <span className="text-xs font-medium w-6">{feather}</span>
+          </div>
+
+          <div className="flex gap-1">
             <Button variant="outline" size="sm" onClick={handleZoomOut} disabled={zoom <= MIN_ZOOM} title="Zoom out (-)">
               <ZoomOut className="h-4 w-4" />
             </Button>
@@ -795,69 +828,7 @@ const getCanvasPoint = useCallback(
             <Button variant="outline" size="sm" onClick={handleFitZoom} title="Fit to view (0)">
               <Maximize2 className="h-4 w-4" />
             </Button>
-            <div className="mx-1 h-6 w-px bg-border" />
-            <Button variant="outline" size="sm" onClick={() => setShowHelp(true)}>
-              <HelpCircle className="h-4 w-4" />
-            </Button>
           </div>
-        </div>
-
-        <Tabs value={tool} onValueChange={(v) => setTool(v as Tool)}>
-          <TabsList className="grid w-full grid-cols-4">
-            <TabsTrigger value="brush" className="gap-2">
-              <Pencil className="h-4 w-4" />
-              Brush
-            </TabsTrigger>
-            <TabsTrigger value="eraser" className="gap-2">
-              <Eraser className="h-4 w-4" />
-              Eraser
-            </TabsTrigger>
-            <TabsTrigger value="rectangle" className="gap-2">
-              <Square className="h-4 w-4" />
-              Rectangle
-            </TabsTrigger>
-            <TabsTrigger value="circle" className="gap-2">
-              <Circle className="h-4 w-4" />
-              Circle
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
-
-        {/* Fill / Stroke toggle — only shown for shape tools */}
-        {(tool === "rectangle" || tool === "circle") && (
-          <div className="mt-3 flex items-center justify-center gap-2">
-            <span className="text-xs text-muted-foreground">Mode:</span>
-            <Button
-              variant={shapeFill ? "default" : "outline"}
-              size="sm"
-              className="h-7 gap-1 text-xs"
-              onClick={() => setShapeFill(true)}
-            >
-              Fill
-            </Button>
-            <Button
-              variant={!shapeFill ? "default" : "outline"}
-              size="sm"
-              className="h-7 gap-1 text-xs"
-              onClick={() => setShapeFill(false)}
-            >
-              Stroke
-            </Button>
-          </div>
-        )}
-
-        <div className="mt-4">
-          <div className="mb-2 flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">Brush Size</span>
-            <span className="font-medium">{brushSize}px</span>
-          </div>
-          <Slider value={[brushSize]} onValueChange={(v) => setBrushSize(v[0])} min={5} max={100} step={5} />
-
-          <div className="mb-2 mt-4 flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">Feather</span>
-            <span className="font-medium">{feather}px</span>
-          </div>
-          <Slider value={[feather]} onValueChange={(v) => setFeather(v[0])} min={0} max={20} step={1} />
         </div>
       </div>
 
@@ -882,20 +853,19 @@ const getCanvasPoint = useCallback(
             onMouseDown={startDrawing}
             onMouseMove={(e) => {
               draw(e)
-              // Track cursor position for brush preview
               const canvas = canvasRef.current
               if (canvas) {
                 const rect = canvas.getBoundingClientRect()
                 const screenX = e.clientX - rect.left
                 const screenY = e.clientY - rect.top
-                setCursorPos({ x: screenX, y: screenY })
-                // Track shape cursor for SVG overlay preview
+                const scaleX = canvas.width / rect.width
+                const scaleY = canvas.height / rect.height
+                // Store in canvas pixel coords (same system getCanvasPoint uses)
+                setCursorPos({ x: (screenX * scaleX) / zoom, y: (screenY * scaleY) / zoom })
                 if (tool === "rectangle" || tool === "circle") {
-                  const scaleX = canvas.width / rect.width
-                  const scaleY = canvas.height / rect.height
                   setShapeCursorPos({
-                    x: screenX * scaleX,
-                    y: screenY * scaleY,
+                    x: (screenX * scaleX) / zoom,
+                    y: (screenY * scaleY) / zoom,
                   })
                 } else {
                   setShapeCursorPos(null)
@@ -911,11 +881,11 @@ const getCanvasPoint = useCallback(
                 const rect = canvas.getBoundingClientRect()
                 const screenX = e.clientX - rect.left
                 const screenY = e.clientY - rect.top
-                setCursorPos({ x: screenX, y: screenY })
+                const scaleX = canvas.width / rect.width
+                const scaleY = canvas.height / rect.height
+                setCursorPos({ x: (screenX * scaleX) / zoom, y: (screenY * scaleY) / zoom })
                 if (tool === "rectangle" || tool === "circle") {
-                  const scaleX = canvas.width / rect.width
-                  const scaleY = canvas.height / rect.height
-                  setShapeCursorPos({ x: screenX * scaleX, y: screenY * scaleY })
+                  setShapeCursorPos({ x: (screenX * scaleX) / zoom, y: (screenY * scaleY) / zoom })
                 }
               }
             }}
