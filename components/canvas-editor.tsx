@@ -5,6 +5,7 @@ import { useRef, useEffect, useState, useCallback } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Slider } from "@/components/ui/slider"
 import { Pencil, Eraser, Square, Circle, Undo, Redo, Trash2 } from "lucide-react"
 // Added Help overlay UI components
 
@@ -746,6 +747,12 @@ const getCanvasPoint = useCallback(
             </TabsTrigger>
           </TabsList>
         </Tabs>
+      </div>
+
+      <div className="flex items-center gap-2 px-4 pb-4">
+        <span className="text-xs text-muted-foreground whitespace-nowrap">Brush</span>
+        <Slider value={[brushSize]} onValueChange={(v) => setBrushSize(v[0])} min={5} max={100} step={5} className="w-24" />
+        <span className="text-xs font-medium w-8">{brushSize}</span>
       </div>
 
       <div className="flex items-center justify-center p-6">

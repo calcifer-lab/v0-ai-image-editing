@@ -165,8 +165,6 @@ function DirectPasteSettings({
           </div>
         </div>
       </Card>
-
-      <OutputDimensionsSection params={params} onParamsChange={onParamsChange} />
     </div>
   )
 }
