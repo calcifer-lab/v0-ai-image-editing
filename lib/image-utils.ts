@@ -7,6 +7,301 @@ export interface ImageDimensions {
   height: number
 }
 
+interface RegionStats {
+  r: number
+  g: number
+  b: number
+  luma: number
+  count: number
+}
+
+export interface PatchPlacement {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+export interface LocalFusionOptions {
+  featherPx?: number
+  toneMatchStrength?: number
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value))
+}
+
+function lerp(start: number, end: number, amount: number): number {
+  return start + (end - start) * amount
+}
+
+function smoothstep(edge0: number, edge1: number, x: number): number {
+  if (edge0 === edge1) return x < edge0 ? 0 : 1
+  const t = clamp((x - edge0) / (edge1 - edge0), 0, 1)
+  return t * t * (3 - 2 * t)
+}
+
+function computeLuma(r: number, g: number, b: number): number {
+  return r * 0.299 + g * 0.587 + b * 0.114
+}
+
+function fitReferenceToPlacement(
+  refWidth: number,
+  refHeight: number,
+  targetWidth: number,
+  targetHeight: number
+) {
+  const refAspect = refWidth / refHeight
+  const targetAspect = targetWidth / targetHeight
+
+  let srcX = 0
+  let srcY = 0
+  let srcWidth = refWidth
+  let srcHeight = refHeight
+
+  if (refAspect > targetAspect) {
+    srcWidth = refHeight * targetAspect
+    srcX = (refWidth - srcWidth) / 2
+  } else {
+    srcHeight = refWidth / targetAspect
+    srcY = (refHeight - srcHeight) / 2
+  }
+
+  return { srcX, srcY, srcWidth, srcHeight }
+}
+
+function collectReferenceStats(data: Uint8ClampedArray): RegionStats {
+  let r = 0
+  let g = 0
+  let b = 0
+  let luma = 0
+  let count = 0
+
+  for (let i = 0; i < data.length; i += 4) {
+    const alpha = data[i + 3] / 255
+    if (alpha < 0.08) continue
+
+    const weight = alpha
+    const red = data[i]
+    const green = data[i + 1]
+    const blue = data[i + 2]
+
+    r += red * weight
+    g += green * weight
+    b += blue * weight
+    luma += computeLuma(red, green, blue) * weight
+    count += weight
+  }
+
+  if (count === 0) {
+    return { r: 0, g: 0, b: 0, luma: 0, count: 0 }
+  }
+
+  return {
+    r: r / count,
+    g: g / count,
+    b: b / count,
+    luma: luma / count,
+    count,
+  }
+}
+
+function collectSurroundingStats(
+  data: Uint8ClampedArray,
+  width: number,
+  height: number,
+  placement: PatchPlacement,
+  margin: number
+): RegionStats {
+  let r = 0
+  let g = 0
+  let b = 0
+  let luma = 0
+  let count = 0
+
+  const outerLeft = Math.max(0, placement.x - margin)
+  const outerTop = Math.max(0, placement.y - margin)
+  const outerRight = Math.min(width, placement.x + placement.width + margin)
+  const outerBottom = Math.min(height, placement.y + placement.height + margin)
+
+  for (let y = outerTop; y < outerBottom; y += 1) {
+    for (let x = outerLeft; x < outerRight; x += 1) {
+      const insidePatch =
+        x >= placement.x &&
+        x < placement.x + placement.width &&
+        y >= placement.y &&
+        y < placement.y + placement.height
+
+      if (insidePatch) continue
+
+      const dx = x < placement.x ? placement.x - x : x >= placement.x + placement.width ? x - (placement.x + placement.width - 1) : 0
+      const dy = y < placement.y ? placement.y - y : y >= placement.y + placement.height ? y - (placement.y + placement.height - 1) : 0
+      const distance = Math.max(dx, dy)
+      if (distance > margin) continue
+
+      const weight = 1 - distance / Math.max(1, margin)
+      if (weight <= 0) continue
+
+      const index = (y * width + x) * 4
+      const red = data[index]
+      const green = data[index + 1]
+      const blue = data[index + 2]
+
+      r += red * weight
+      g += green * weight
+      b += blue * weight
+      luma += computeLuma(red, green, blue) * weight
+      count += weight
+    }
+  }
+
+  if (count === 0) {
+    return { r: 0, g: 0, b: 0, luma: 0, count: 0 }
+  }
+
+  return {
+    r: r / count,
+    g: g / count,
+    b: b / count,
+    luma: luma / count,
+    count,
+  }
+}
+
+function buildFeatheredRectMask(width: number, height: number, featherPx: number): Uint8ClampedArray {
+  const mask = new Uint8ClampedArray(width * height)
+  const safeFeather = Math.max(1, featherPx)
+
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const edgeDistance = Math.min(x, y, width - 1 - x, height - 1 - y)
+      const edgeOpacity = lerp(0.88, 1, smoothstep(0, safeFeather, edgeDistance))
+      mask[y * width + x] = Math.round(edgeOpacity * 255)
+    }
+  }
+
+  return mask
+}
+
+async function compositePatchOnBase(
+  baseImageUrl: string,
+  referenceImageUrl: string,
+  placement: PatchPlacement,
+  options: LocalFusionOptions = {}
+): Promise<string> {
+  const [baseImg, refImg] = await Promise.all([
+    loadImage(baseImageUrl),
+    loadImage(referenceImageUrl),
+  ])
+
+  const canvas = document.createElement("canvas")
+  canvas.width = baseImg.width
+  canvas.height = baseImg.height
+  const ctx = canvas.getContext("2d")
+  if (!ctx) throw new Error("Failed to get canvas context")
+
+  ctx.drawImage(baseImg, 0, 0)
+
+  const targetX = clamp(Math.round(placement.x), 0, baseImg.width)
+  const targetY = clamp(Math.round(placement.y), 0, baseImg.height)
+  const targetWidth = clamp(Math.round(placement.width), 1, baseImg.width - targetX)
+  const targetHeight = clamp(Math.round(placement.height), 1, baseImg.height - targetY)
+
+  const refCanvas = document.createElement("canvas")
+  refCanvas.width = targetWidth
+  refCanvas.height = targetHeight
+  const refCtx = refCanvas.getContext("2d")
+  if (!refCtx) throw new Error("Failed to get ref canvas context")
+
+  const { srcX, srcY, srcWidth, srcHeight } = fitReferenceToPlacement(
+    refImg.width,
+    refImg.height,
+    targetWidth,
+    targetHeight
+  )
+
+  refCtx.drawImage(
+    refImg,
+    srcX,
+    srcY,
+    srcWidth,
+    srcHeight,
+    0,
+    0,
+    targetWidth,
+    targetHeight
+  )
+
+  const refData = refCtx.getImageData(0, 0, targetWidth, targetHeight)
+  const baseData = ctx.getImageData(targetX, targetY, targetWidth, targetHeight)
+  const fullBaseData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+
+  const featherPx = options.featherPx ?? clamp(Math.round(Math.min(targetWidth, targetHeight) * 0.08), 6, 20)
+  const toneMatchStrength = clamp(options.toneMatchStrength ?? 0.72, 0, 1)
+
+  const sourceStats = collectReferenceStats(refData.data)
+  const targetStats = collectSurroundingStats(
+    fullBaseData.data,
+    canvas.width,
+    canvas.height,
+    { x: targetX, y: targetY, width: targetWidth, height: targetHeight },
+    clamp(Math.round(Math.max(targetWidth, targetHeight) * 0.16), 12, 48)
+  )
+
+  const mask = buildFeatheredRectMask(targetWidth, targetHeight, featherPx)
+  const scaleR = sourceStats.count > 0 && targetStats.count > 0 ? clamp(targetStats.r / Math.max(1, sourceStats.r), 0.78, 1.22) : 1
+  const scaleG = sourceStats.count > 0 && targetStats.count > 0 ? clamp(targetStats.g / Math.max(1, sourceStats.g), 0.78, 1.22) : 1
+  const scaleB = sourceStats.count > 0 && targetStats.count > 0 ? clamp(targetStats.b / Math.max(1, sourceStats.b), 0.78, 1.22) : 1
+  const lumaShift = sourceStats.count > 0 && targetStats.count > 0
+    ? clamp(targetStats.luma - sourceStats.luma, -18, 18)
+    : 0
+
+  for (let y = 0; y < targetHeight; y += 1) {
+    for (let x = 0; x < targetWidth; x += 1) {
+      const pixelIndex = (y * targetWidth + x) * 4
+      const alpha = refData.data[pixelIndex + 3] / 255
+      if (alpha < 0.02) continue
+
+      const edgeDistance = Math.min(x, y, targetWidth - 1 - x, targetHeight - 1 - y)
+      const edgeFactor = 1 - smoothstep(0, featherPx, edgeDistance)
+      const correctionStrength = toneMatchStrength * lerp(0.35, 1, edgeFactor)
+
+      const baseR = baseData.data[pixelIndex]
+      const baseG = baseData.data[pixelIndex + 1]
+      const baseB = baseData.data[pixelIndex + 2]
+
+      const originalR = refData.data[pixelIndex]
+      const originalG = refData.data[pixelIndex + 1]
+      const originalB = refData.data[pixelIndex + 2]
+
+      const scaledR = clamp(originalR * scaleR + lumaShift, 0, 255)
+      const scaledG = clamp(originalG * scaleG + lumaShift, 0, 255)
+      const scaledB = clamp(originalB * scaleB + lumaShift, 0, 255)
+
+      let fusedR = lerp(originalR, scaledR, correctionStrength)
+      let fusedG = lerp(originalG, scaledG, correctionStrength)
+      let fusedB = lerp(originalB, scaledB, correctionStrength)
+
+      const edgeTintStrength = edgeFactor * 0.12
+      fusedR = lerp(fusedR, baseR, edgeTintStrength)
+      fusedG = lerp(fusedG, baseG, edgeTintStrength)
+      fusedB = lerp(fusedB, baseB, edgeTintStrength)
+
+      const localBlend = alpha * (mask[y * targetWidth + x] / 255)
+
+      refData.data[pixelIndex] = Math.round(fusedR * localBlend + baseR * (1 - localBlend))
+      refData.data[pixelIndex + 1] = Math.round(fusedG * localBlend + baseG * (1 - localBlend))
+      refData.data[pixelIndex + 2] = Math.round(fusedB * localBlend + baseB * (1 - localBlend))
+      refData.data[pixelIndex + 3] = 255
+    }
+  }
+
+  refCtx.putImageData(refData, 0, 0)
+  ctx.drawImage(refCanvas, targetX, targetY)
+
+  return canvas.toDataURL("image/png")
+}
+
 /**
  * Load an image from a data URL or blob URL
  */
@@ -359,97 +654,23 @@ export async function compositeImages(
   const targetHeight = Math.round(maskCoordinates.height * scaleY)
 
   console.log("[Composite] Target area:", targetX, targetY, targetWidth, targetHeight)
+  console.log("[Composite] Running local fusion blend")
 
-  // Calculate how to fit reference image into target area (maintain aspect ratio)
-  const refAspect = refImg.width / refImg.height
-  const targetAspect = targetWidth / targetHeight
-  
-  let srcX = 0, srcY = 0, srcWidth = refImg.width, srcHeight = refImg.height
-  
-  if (refAspect > targetAspect) {
-    // Reference is wider - crop sides
-    srcWidth = refImg.height * targetAspect
-    srcX = (refImg.width - srcWidth) / 2
-  } else {
-    // Reference is taller - crop top/bottom
-    srcHeight = refImg.width / targetAspect
-    srcY = (refImg.height - srcHeight) / 2
-  }
+  return compositePatchOnBase(baseImageUrl, referenceImageUrl, {
+    x: targetX,
+    y: targetY,
+    width: targetWidth,
+    height: targetHeight,
+  })
+}
 
-  // Create a temporary canvas for the reference image at target size
-  const refCanvas = document.createElement("canvas")
-  refCanvas.width = targetWidth
-  refCanvas.height = targetHeight
-  const refCtx = refCanvas.getContext("2d")
-  if (!refCtx) throw new Error("Failed to get ref canvas context")
-
-  // Draw reference image scaled and cropped to fit target area
-  refCtx.drawImage(
-    refImg,
-    srcX, srcY, srcWidth, srcHeight,
-    0, 0, targetWidth, targetHeight
-  )
-
-  // ── Proper alpha compositing ──────────────────────────────────────────
-  // We no longer cut a hard hole in the base via destination-out.
-  // Instead, we use the mask as a soft alpha matte for the reference,
-  // so edge feathering blends naturally with the base (remove.bg-level quality).
-  //
-  // Strategy:
-  // 1. Build a feathered alpha matte from the mask at base resolution
-  //    (3px Gaussian blur ≈ natural edge softness, matches human perception)
-  // 2. Apply the matte to the reference pixel data → weighted blend with base
-  // 3. Result: reference seamlessly transitions from opaque → transparent
-  //    at the mask boundary, no hard edge, no misalignment artifacts
-  //
-  // Step 1: build feathered alpha matte at target region resolution
-  //    First draw the mask at target size (not full base size) with blur
-  const matteeCanvas = document.createElement("canvas")
-  matteeCanvas.width = targetWidth
-  matteeCanvas.height = targetHeight
-  const matteeCtx = matteeCanvas.getContext("2d")
-  if (!matteeCtx) throw new Error("Failed to get matte canvas context")
-
-  // Scale the original mask (at its own resolution) to target region size with blur
-  // maskImg is at base's resized canvas dimensions; maskCoordinates are in the same space
-  matteeCtx.filter = "blur(2.5px)"
-  matteeCtx.drawImage(
-    maskImg,
-    maskCoordinates.x, maskCoordinates.y,
-    maskCoordinates.width, maskCoordinates.height,
-    0, 0, targetWidth, targetHeight
-  )
-  matteeCtx.filter = "none"
-
-  // Get pixel data for all three layers
-  const matteData = matteeCtx.getImageData(0, 0, targetWidth, targetHeight)
-  const refData = refCtx.getImageData(0, 0, targetWidth, targetHeight)
-  const baseData = ctx.getImageData(targetX, targetY, targetWidth, targetHeight)
-
-  // Step 2: alpha composite reference onto base using feathered matte
-  // matte pixel value → blend weight for reference (0=black/keep base, 255=white/use reference)
-  // reference alpha  → element opacity at this pixel (from background removal)
-  // combined = matte_weight × ref_opacity
-  for (let i = 0; i < matteData.data.length; i += 4) {
-    const matteWeight = matteData.data[i] / 255          // 0-1: how much reference at this pixel
-    const refAlpha    = refData.data[i + 3] / 255        // 0-1: how opaque the reference pixel is
-    const blend       = Math.min(matteWeight, refAlpha)  // soft min: avoids halos at ref edges
-
-    refData.data[i]     = Math.round(refData.data[i]     * blend + baseData.data[i]     * (1 - blend))
-    refData.data[i + 1] = Math.round(refData.data[i + 1] * blend + baseData.data[i + 1] * (1 - blend))
-    refData.data[i + 2] = Math.round(refData.data[i + 2] * blend + baseData.data[i + 2] * (1 - blend))
-    refData.data[i + 3] = 255
-  }
-
-  // Step 3: put blended pixel data back into the reference canvas, then composite
-  refCtx.putImageData(refData, 0, 0)
-
-  // Draw the feathered-composited reference at the correct position on base
-  ctx.drawImage(refCanvas, targetX, targetY)
-
-  console.log("[Composite] Alpha compositing with feathered matte complete")
-
-  return canvas.toDataURL("image/png")
+export async function compositePatchWithLocalFusion(
+  baseImageUrl: string,
+  referenceImageUrl: string,
+  placement: PatchPlacement,
+  options?: LocalFusionOptions
+): Promise<string> {
+  return compositePatchOnBase(baseImageUrl, referenceImageUrl, placement, options)
 }
 
 export async function resizeToAspectRatio(

@@ -9,7 +9,14 @@ import type {
   CropRegion,
   DEFAULT_EDIT_PARAMS,
 } from "@/types"
-import { resizeToAspectRatio, compositeImages, loadImage, resizeImage, compressImage } from "@/lib/image-utils"
+import {
+  resizeToAspectRatio,
+  compositeImages,
+  compositePatchWithLocalFusion,
+  loadImage,
+  resizeImage,
+  compressImage,
+} from "@/lib/image-utils"
 import { resizeImage as resizeImageBlob } from "@/utils/imageResize"
 import { safeParseJSON } from "@/utils/safeParse"
 
@@ -85,82 +92,6 @@ async function cropImageToDataUrl(imageUrl: string, crop: CropRegion): Promise<s
     safeWidth,
     safeHeight
   )
-
-  return canvas.toDataURL("image/png")
-}
-
-/**
- * Scale mask coordinates from one image dimensions to another.
- * Used when the mask was drawn at original canvas size but we need to
- * apply it at a different (resized) canvas size.
- */
-function scaleMaskCoordinates(
-  coords: { x: number; y: number; width: number; height: number },
-  fromWidth: number,
-  fromHeight: number,
-  toWidth: number,
-  toHeight: number
-): { x: number; y: number; width: number; height: number } {
-  const scaleX = toWidth / fromWidth
-  const scaleY = toHeight / fromHeight
-  return {
-    x: Math.round(coords.x * scaleX),
-    y: Math.round(coords.y * scaleY),
-    width: Math.round(coords.width * scaleX),
-    height: Math.round(coords.height * scaleY),
-  }
-}
-
-/**
- * Composite the reference element (with background removed) directly onto
- * the base canvas at the masked position — pixel-level replacement BEFORE
- * sending to AI. This ensures the reference pixels are actually preserved
- * in the output, rather than being used only as a "style hint".
- *
- * The AI then only needs to blend edges, not regenerate content.
- */
-async function compositeElementPixelPerfect(
-  baseWithHole: string,   // base with masked region already cleared (transparent)
-  croppedReference: string, // reference element, background already removed
-  originalMaskCoords: { x: number; y: number; width: number; height: number },
-  originalImageWidth: number,
-  originalImageHeight: number,
-  resizedWidth: number,
-  resizedHeight: number
-): Promise<string> {
-  const [baseImg, refImg] = await Promise.all([
-    loadImage(baseWithHole),
-    loadImage(croppedReference),
-  ])
-
-  // Scale the mask placement coordinates from original → resized canvas
-  const scaled = scaleMaskCoordinates(
-    originalMaskCoords,
-    originalImageWidth,
-    originalImageHeight,
-    resizedWidth,
-    resizedHeight
-  )
-
-  const canvas = document.createElement("canvas")
-  canvas.width = resizedWidth
-  canvas.height = resizedHeight
-  const ctx = canvas.getContext("2d")
-  if (!ctx) throw new Error("Failed to get canvas context for composite")
-
-  // Draw base (with hole) first
-  ctx.drawImage(baseImg, 0, 0, resizedWidth, resizedHeight)
-
-  // Draw the reference element into the masked hole
-  // Use 'source-over' to place ref pixels directly into the hole
-  ctx.drawImage(
-    refImg,
-    0, 0, refImg.width, refImg.height,  // source rect (full reference)
-    scaled.x, scaled.y, scaled.width, scaled.height // dest rect (mask position)
-  )
-
-  console.log("[AI Editor] Pixel-perfect composite: ref", refImg.width, "x", refImg.height,
-    "→ placed at canvas pos", scaled.x, scaled.y, "size", scaled.width, "x", scaled.height)
 
   return canvas.toDataURL("image/png")
 }
@@ -646,12 +577,17 @@ export function useImageEditor(): UseImageEditorReturn {
       resizeImageBlob(maskBlob, 1536, 0.95),
     ])
 
-    let processedBaseImage = await blobToDataUrl(compressedBase)
+    const originalProcessedBaseImage = await blobToDataUrl(compressedBase)
+    let processedBaseImage = originalProcessedBaseImage
     const processedMaskImage = await blobToDataUrl(compressedMask)
 
-    updateProgress("Cleaning masked region...", 20, { driftTo: 28 })
-    // Remove masked region from the base so the model is forced to replace it
-    processedBaseImage = await removeMaskedRegionFromBase(processedBaseImage, processedMaskImage)
+    if (!hasExplicitCrop) {
+      updateProgress("Cleaning masked region...", 20, { driftTo: 28 })
+      // For true inpaint mode, remove the masked region so the model is forced to replace it.
+      processedBaseImage = await removeMaskedRegionFromBase(processedBaseImage, processedMaskImage)
+    } else {
+      updateProgress("Preparing targeted transplant...", 20, { driftTo: 28 })
+    }
 
     // 使用局部变量跟踪分析结果，避免闭包捕获的状态值过时问题
     // 关键：只有当 (1) 已有分析 AND (2) 没有新的 elementCrop AND (3) 没有自定义 prompt 时才复用
@@ -735,7 +671,7 @@ export function useImageEditor(): UseImageEditorReturn {
     if (hasExplicitCrop && mask) {
       try {
         const [baseImgEl, maskImgEl] = await Promise.all([
-          loadImage(processedBaseImage),
+          loadImage(originalProcessedBaseImage),
           loadImage(processedMaskImage),
         ])
         const resizedBaseW = baseImgEl.width
@@ -751,23 +687,15 @@ export function useImageEditor(): UseImageEditorReturn {
 
         console.log("[AI Editor] Composite: mask at", scaledMask)
 
-        // The explicit crop is already applied before resizing, so we only need
-        // to scale the cropped reference up to the working base resolution here.
-        const croppedRefUpscaled = await resizeImage(processedReference, resizedBaseW, resizedBaseH)
-
-        const composited = await compositeElementPixelPerfect(
-          processedBaseImage,
-          croppedRefUpscaled.dataUrl,
-          scaledMask,
-          resizedBaseW,
-          resizedBaseH,
-          resizedBaseW,
-          resizedBaseH
+        const composited = await compositePatchWithLocalFusion(
+          originalProcessedBaseImage,
+          processedReference,
+          scaledMask
         )
         compositedBase = composited
-        console.log("[AI Editor] Pixel-perfect composite done")
+        console.log("[AI Editor] Local fusion composite done")
       } catch (compositeError) {
-        console.warn("[AI Editor] Pixel-perfect composite failed:", compositeError)
+        console.warn("[AI Editor] Local fusion composite failed:", compositeError)
       }
     }
 
