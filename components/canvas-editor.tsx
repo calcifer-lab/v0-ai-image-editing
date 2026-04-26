@@ -5,8 +5,7 @@ import { useRef, useEffect, useState, useCallback } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Slider } from "@/components/ui/slider"
-import { Pencil, Eraser, Square, Circle, Undo, Redo, Trash2, HelpCircle, X, ZoomIn, ZoomOut, Maximize2 } from "lucide-react"
+import { Pencil, Eraser, Square, Circle, Undo, Redo, Trash2 } from "lucide-react"
 // Added Help overlay UI components
 
 import type { MaskData } from "@/types"
@@ -49,8 +48,6 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
   const [cursorOnCanvas, setCursorOnCanvas] = useState(false)
   // Shape tool live preview — tracks cursor position for SVG overlay
   const [shapeCursorPos, setShapeCursorPos] = useState<{ x: number; y: number } | null>(null)
-  // Keyboard shortcut help overlay
-  const [showHelp, setShowHelp] = useState(false)
   // Zoom and pan state for canvas navigation
   const [zoom, setZoom] = useState(1)
   const [pan, setPan] = useState({ x: 0, y: 0 })
@@ -103,7 +100,8 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
     const maskCtx = maskCanvas.getContext("2d")
     if (!ctx || !maskCtx) return
 
-    let { width, height } = img
+    let width = img.naturalWidth
+    let height = img.naturalHeight
 
     if (width > MAX_CANVAS_WIDTH) {
       height = (height * MAX_CANVAS_WIDTH) / width
@@ -179,25 +177,6 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
     const timer = setTimeout(() => setSizeToast(null), 800)
     return () => clearTimeout(timer)
   }, [sizeToast])
-
-  // Mouse wheel zoom/pan on the canvas container (scroll=zoom, Shift+scroll=pan)
-  useEffect(() => {
-    const container = document.getElementById("canvas-editor-container")
-    if (!container) return
-    const handleWheel = (e: WheelEvent) => {
-      // Natural zoom with scroll (like Figma/design tools); Shift+scroll pans
-      if (e.shiftKey) {
-        // Pan with Shift+scroll
-        setPan((p) => ({ x: p.x - e.deltaX, y: p.y - e.deltaY }))
-      } else {
-        e.preventDefault()
-        const delta = e.deltaY > 0 ? -ZOOM_STEP : ZOOM_STEP
-        setZoom((z) => Math.max(MIN_ZOOM, Math.min(z + delta, MAX_ZOOM)))
-      }
-    }
-    container.addEventListener("wheel", handleWheel, { passive: false })
-    return () => container.removeEventListener("wheel", handleWheel)
-  }, [])
 
   // Pan with middle mouse or space+drag
   const handleCanvasMouseDown = useCallback(
@@ -421,44 +400,20 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
               setShapeFill((v) => !v)
             }
             break
-          case "+":
-          case "=":
-            e.preventDefault()
-            setZoom((z) => Math.min(z + ZOOM_STEP, MAX_ZOOM))
-            break
-          case "-":
-          case "_":
-            e.preventDefault()
-            setZoom((z) => Math.max(z - ZOOM_STEP, MIN_ZOOM))
-            break
-          case "0":
-            e.preventDefault()
-            setZoom(1)
-            setPan({ x: 0, y: 0 })
-            break
-          case "?":
           case "Escape":
-            // ? opens/toggles help overlay; Escape closes it or cancels in-progress shape
-            if (e.key === "?") {
+            if (isDrawingRef.current && shapeStartRef.current) {
               e.preventDefault()
-              setShowHelp((v) => !v)
-            } else {
-              if (showHelp) {
-                setShowHelp(false)
-              } else if (isDrawingRef.current && shapeStartRef.current) {
-                e.preventDefault()
-                isDrawingRef.current = false
-                setIsDrawing(false)
-                shapeStartRef.current = null
-                setShapePreview(null)
-                // Restore previous mask state from history
-                if (historyIndex >= 0 && history[historyIndex]) {
-                  const maskCtx = maskCanvasRef.current?.getContext("2d")
-                  if (maskCtx) {
-                    maskCtx.putImageData(history[historyIndex], 0, 0)
-                    redrawCanvas()
-                    updateMask()
-                  }
+              isDrawingRef.current = false
+              setIsDrawing(false)
+              shapeStartRef.current = null
+              setShapePreview(null)
+              // Restore previous mask state from history
+              if (historyIndex >= 0 && history[historyIndex]) {
+                const maskCtx = maskCanvasRef.current?.getContext("2d")
+                if (maskCtx) {
+                  maskCtx.putImageData(history[historyIndex], 0, 0)
+                  redrawCanvas()
+                  updateMask()
                 }
               }
             }
@@ -480,22 +435,6 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
     window.addEventListener("keydown", handleKeyDown)
     return () => window.removeEventListener("keydown", handleKeyDown)
   }, [undo, redo, history, historyIndex, redrawCanvas, updateMask])
-
-  // Zoom controls
-  const handleZoomIn = useCallback(() => {
-    setZoom((z) => Math.min(z + ZOOM_STEP, MAX_ZOOM))
-  }, [])
-  const handleZoomOut = useCallback(() => {
-    setZoom((z) => Math.max(z - ZOOM_STEP, MIN_ZOOM))
-  }, [])
-  const handleZoomReset = useCallback(() => {
-    setZoom(1)
-    setPan({ x: 0, y: 0 })
-  }, [])
-  const handleFitZoom = useCallback(() => {
-    setZoom(1)
-    setPan({ x: 0, y: 0 })
-  }, [])
 
   const clearMask = useCallback(() => {
     const maskCanvas = maskCanvasRef.current
@@ -784,23 +723,6 @@ const getCanvasPoint = useCallback(
             <Button variant="outline" size="sm" onClick={clearMask}>
               <Trash2 className="h-4 w-4" />
             </Button>
-            <div className="mx-1 h-6 w-px bg-border" />
-            <Button variant="outline" size="sm" onClick={handleZoomOut} disabled={zoom <= MIN_ZOOM} title="Zoom out (-)">
-              <ZoomOut className="h-4 w-4" />
-            </Button>
-            <Button variant="outline" size="sm" onClick={handleZoomReset} className="min-w-[3.5rem] text-xs" title="Reset zoom (0)">
-              {Math.round(zoom * 100)}%
-            </Button>
-            <Button variant="outline" size="sm" onClick={handleZoomIn} disabled={zoom >= MAX_ZOOM} title="Zoom in (+)">
-              <ZoomIn className="h-4 w-4" />
-            </Button>
-            <Button variant="outline" size="sm" onClick={handleFitZoom} title="Fit to view (0)">
-              <Maximize2 className="h-4 w-4" />
-            </Button>
-            <div className="mx-1 h-6 w-px bg-border" />
-            <Button variant="outline" size="sm" onClick={() => setShowHelp(true)}>
-              <HelpCircle className="h-4 w-4" />
-            </Button>
           </div>
         </div>
 
@@ -824,43 +746,6 @@ const getCanvasPoint = useCallback(
             </TabsTrigger>
           </TabsList>
         </Tabs>
-
-        {/* Fill / Stroke toggle — only shown for shape tools */}
-        {(tool === "rectangle" || tool === "circle") && (
-          <div className="mt-3 flex items-center justify-center gap-2">
-            <span className="text-xs text-muted-foreground">Mode:</span>
-            <Button
-              variant={shapeFill ? "default" : "outline"}
-              size="sm"
-              className="h-7 gap-1 text-xs"
-              onClick={() => setShapeFill(true)}
-            >
-              Fill
-            </Button>
-            <Button
-              variant={!shapeFill ? "default" : "outline"}
-              size="sm"
-              className="h-7 gap-1 text-xs"
-              onClick={() => setShapeFill(false)}
-            >
-              Stroke
-            </Button>
-          </div>
-        )}
-
-        <div className="mt-4">
-          <div className="mb-2 flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">Brush Size</span>
-            <span className="font-medium">{brushSize}px</span>
-          </div>
-          <Slider value={[brushSize]} onValueChange={(v) => setBrushSize(v[0])} min={5} max={100} step={5} />
-
-          <div className="mb-2 mt-4 flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">Feather</span>
-            <span className="font-medium">{feather}px</span>
-          </div>
-          <Slider value={[feather]} onValueChange={(v) => setFeather(v[0])} min={0} max={20} step={1} />
-        </div>
       </div>
 
       <div className="flex items-center justify-center p-6">
@@ -890,11 +775,11 @@ const getCanvasPoint = useCallback(
                 const rect = canvas.getBoundingClientRect()
                 const screenX = e.clientX - rect.left
                 const screenY = e.clientY - rect.top
-                setCursorPos({ x: screenX, y: screenY })
+                const scaleX = canvas.width / rect.width
+                const scaleY = canvas.height / rect.height
+                setCursorPos({ x: (screenX * scaleX) / zoom, y: (screenY * scaleY) / zoom })
                 // Track shape cursor for SVG overlay preview
                 if (tool === "rectangle" || tool === "circle") {
-                  const scaleX = canvas.width / rect.width
-                  const scaleY = canvas.height / rect.height
                   setShapeCursorPos({
                     x: screenX * scaleX,
                     y: screenY * scaleY,
@@ -913,10 +798,10 @@ const getCanvasPoint = useCallback(
                 const rect = canvas.getBoundingClientRect()
                 const screenX = e.clientX - rect.left
                 const screenY = e.clientY - rect.top
-                setCursorPos({ x: screenX, y: screenY })
+                const scaleX = canvas.width / rect.width
+                const scaleY = canvas.height / rect.height
+                setCursorPos({ x: (screenX * scaleX) / zoom, y: (screenY * scaleY) / zoom })
                 if (tool === "rectangle" || tool === "circle") {
-                  const scaleX = canvas.width / rect.width
-                  const scaleY = canvas.height / rect.height
                   setShapeCursorPos({ x: screenX * scaleX, y: screenY * scaleY })
                 }
               }
@@ -1055,69 +940,6 @@ const getCanvasPoint = useCallback(
         </div>
       </div>
 
-      {/* Keyboard shortcut help overlay */}
-      {showHelp && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowHelp(false)}>
-          <div
-            className="relative max-h-[80%] w-[90%] max-w-sm space-y-4 overflow-auto rounded-xl border bg-background p-6 shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between">
-              <h4 className="font-semibold">Keyboard Shortcuts</h4>
-              <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => setShowHelp(false)}>
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-
-            <div className="space-y-3 text-sm">
-              <div>
-                <p className="mb-1 font-medium text-muted-foreground">Tools</p>
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2"><kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs font-mono font-medium">Tab</kbd><span className="text-muted-foreground">Cycle tools (Brush → Eraser → Rectangle → Circle)</span></div>
-                  <div className="flex items-center gap-2"><kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs font-mono font-medium">B / 1</kbd><span className="text-muted-foreground">Brush tool</span></div>
-                  <div className="flex items-center gap-2"><kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs font-mono font-medium">E / 2</kbd><span className="text-muted-foreground">Eraser tool</span></div>
-                  <div className="flex items-center gap-2"><kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs font-mono font-medium">R</kbd><span className="text-muted-foreground">Rectangle tool</span></div>
-                  <div className="flex items-center gap-2"><kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs font-mono font-medium">C</kbd><span className="text-muted-foreground">Circle tool</span></div>
-                </div>
-              </div>
-
-              <div>
-                <p className="mb-1 font-medium text-muted-foreground">Brush Settings</p>
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2"><kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs font-mono font-medium">[</kbd><span className="text-muted-foreground">Decrease brush size by 5px</span></div>
-                  <div className="flex items-center gap-2"><kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs font-mono font-medium">]</kbd><span className="text-muted-foreground">Increase brush size by 5px</span></div>
-                  <div className="flex items-center gap-2"><kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs font-mono font-medium">Shift+[</kbd><span className="text-muted-foreground">Decrease feather by 2px</span></div>
-                  <div className="flex items-center gap-2"><kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs font-mono font-medium">Shift+]</kbd><span className="text-muted-foreground">Increase feather by 2px</span></div>
-                  <div className="flex items-center gap-2"><kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs font-mono font-medium">F</kbd><span className="text-muted-foreground">Toggle Fill / Stroke mode</span></div>
-                  <div className="flex items-center gap-2"><kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs font-mono font-medium">Alt+F</kbd><span className="text-muted-foreground">Toggle feather on/off (0 ↔ 8)</span></div>
-                </div>
-              </div>
-
-              <div>
-                <p className="mb-1 font-medium text-muted-foreground">History</p>
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2"><kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs font-mono font-medium">Ctrl+Z</kbd><span className="text-muted-foreground">Undo</span></div>
-                  <div className="flex items-center gap-2"><kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs font-mono font-medium">Ctrl+Y / Ctrl+Shift+Z</kbd><span className="text-muted-foreground">Redo</span></div>
-                </div>
-              </div>
-
-              <div>
-                <p className="mb-1 font-medium text-muted-foreground">Canvas</p>
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2"><kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs font-mono font-medium">Space + Drag</kbd><span className="text-muted-foreground">Pan canvas</span></div>
-                  <div className="flex items-center gap-2"><kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs font-mono font-medium">+ / -</kbd><span className="text-muted-foreground">Zoom in / out</span></div>
-                  <div className="flex items-center gap-2"><kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs font-mono font-medium">0</kbd><span className="text-muted-foreground">Reset zoom to 100%</span></div>
-                  <div className="flex items-center gap-2"><kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs font-mono font-medium">Scroll</kbd><span className="text-muted-foreground">Zoom canvas</span></div>
-                  <div className="flex items-center gap-2"><kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs font-mono font-medium">Shift + Scroll</kbd><span className="text-muted-foreground">Pan canvas</span></div>
-                  <div className="flex items-center gap-2"><kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs font-mono font-medium">Esc</kbd><span className="text-muted-foreground">Cancel current shape</span></div>
-                </div>
-              </div>
-            </div>
-
-            <p className="text-center text-xs text-muted-foreground">Click outside or press Esc to close</p>
-          </div>
-        </div>
-      )}
     </Card>
   )
 }
