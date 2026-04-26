@@ -840,7 +840,7 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
             maxWidth: "100%",
             maxHeight: "min(400px, 50vh)",
             cursor: isPanning ? "grabbing" : undefined,
-            transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+            transform: `scale(${zoom}) translate(${pan.x / zoom}px, ${pan.y / zoom}px)`,
             transformOrigin: "center center",
           }}
           onMouseDown={handleCanvasMouseDown}
