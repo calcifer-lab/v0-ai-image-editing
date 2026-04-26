@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Slider } from "@/components/ui/slider"
 import { Pencil, Eraser, Square, Circle, Undo, Redo, Trash2, HelpCircle, X, ZoomIn, ZoomOut, Maximize2 } from "lucide-react"
+// Added Help overlay UI components
+
 import type { MaskData } from "@/types"
 
 interface CanvasEditorProps {
@@ -511,19 +513,23 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
   /**
    * Get canvas-relative coordinates from a mouse event.
    */
-  const getCanvasPoint = useCallback(
+  // Convert mouse event to canvas coordinates, taking current zoom and pan into account
+const getCanvasPoint = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
       const canvas = canvasRef.current
       if (!canvas) return { x: 0, y: 0 }
       const rect = canvas.getBoundingClientRect()
+      // Adjust for pan offset (which is applied via CSS transform on container)
+      const adjustedX = e.clientX - rect.left - pan.x
+      const adjustedY = e.clientY - rect.top - pan.y
       const scaleX = canvas.width / rect.width
       const scaleY = canvas.height / rect.height
       return {
-        x: (e.clientX - rect.left) * scaleX,
-        y: (e.clientY - rect.top) * scaleY,
+        x: adjustedX * scaleX / zoom,
+        y: adjustedY * scaleY / zoom,
       }
     },
-    []
+    [zoom, pan]
   )
 
   /**
