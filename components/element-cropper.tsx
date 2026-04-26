@@ -414,7 +414,6 @@ export default function ElementCropper({ image, crop, onCropChange }: ElementCro
             <Crop className="h-4 w-4 text-primary" />
             <div>
               <h3 className="font-semibold">Element Crop</h3>
-              <p className="text-xs text-muted-foreground">Select the element you want to use</p>
             </div>
           </div>
           <div className="flex gap-2">
