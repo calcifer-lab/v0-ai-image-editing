@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
 import type { RemoveBackgroundRequest, RemoveBackgroundResponse, ApiErrorResponse } from "@/types"
-import { pollReplicatePrediction, urlToBase64, extractOutputUrl } from "@/lib/api"
+import { pollReplicatePrediction, urlToBase64, extractOutputUrl, validateImageDataUrl } from "@/lib/api"
 
 export const runtime = "nodejs"
 export const maxDuration = 120
+const MAX_REMOVE_BACKGROUND_BYTES = 12 * 1024 * 1024
 
 export async function POST(
   request: NextRequest
@@ -14,8 +15,12 @@ export async function POST(
     const body: RemoveBackgroundRequest = await request.json()
     const { image } = body
 
-    if (!image) {
-      return NextResponse.json({ error: "Image is required" }, { status: 400 })
+    const validatedImage = validateImageDataUrl(image, {
+      fieldName: "image",
+      maxBytes: MAX_REMOVE_BACKGROUND_BYTES,
+    })
+    if (!validatedImage.ok) {
+      return NextResponse.json({ error: validatedImage.error }, { status: validatedImage.status })
     }
 
     const replicateApiKey = process.env.REPLICATE_API_KEY
@@ -33,7 +38,7 @@ export async function POST(
         Prefer: "wait",
       },
       body: JSON.stringify({
-        input: { image },
+        input: { image: validatedImage.image.dataUrl },
       }),
     })
 

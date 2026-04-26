@@ -7,11 +7,14 @@ import {
   getImageDimensions,
   resizeMaskToMatchImage,
   extractOutputUrl,
+  validateImageDataUrl,
 } from "@/lib/api"
 import { buildGeminiInpaintPrompt, buildFluxEnhancedPrompt } from "@/lib/api"
 
 export const runtime = "nodejs"
 export const maxDuration = 300 // 5 minutes for model processing
+const MAX_INPAINT_IMAGE_BYTES = 12 * 1024 * 1024
+const MAX_INPAINT_REFERENCE_BYTES = 8 * 1024 * 1024
 
 /** Normalize any data URI to always use PNG MIME type, preventing .jfif saves */
 function normalizeDataUri(uri: string): string {
@@ -360,27 +363,48 @@ export async function POST(request: NextRequest): Promise<NextResponse<InpaintRe
       )
     }
 
-    if (!isValidImage(base_image) || !isValidImage(mask_image)) {
-      return NextResponse.json(
-        { error: "Invalid image format. Must be base64 encoded image." },
-        { status: 400 }
-      )
+    const validatedBase = validateImageDataUrl(base_image, {
+      fieldName: "base_image",
+      maxBytes: MAX_INPAINT_IMAGE_BYTES,
+    })
+    if (!validatedBase.ok) {
+      return NextResponse.json({ error: validatedBase.error }, { status: validatedBase.status })
     }
 
-    console.log("[Inpaint] Has reference image:", !!reference_image)
-    console.log("[Inpaint] Reference image preview:", reference_image ? reference_image.substring(0, 50) + "..." : "null")
+    const validatedMask = validateImageDataUrl(mask_image, {
+      fieldName: "mask_image",
+      maxBytes: MAX_INPAINT_IMAGE_BYTES,
+    })
+    if (!validatedMask.ok) {
+      return NextResponse.json({ error: validatedMask.error }, { status: validatedMask.status })
+    }
+
+    let validatedReference: string | undefined
+    if (reference_image) {
+      const referenceCheck = validateImageDataUrl(reference_image, {
+        fieldName: "reference_image",
+        maxBytes: MAX_INPAINT_REFERENCE_BYTES,
+      })
+      if (!referenceCheck.ok) {
+        return NextResponse.json({ error: referenceCheck.error }, { status: referenceCheck.status })
+      }
+      validatedReference = referenceCheck.image.dataUrl
+    }
+
+    console.log("[Inpaint] Has reference image:", !!validatedReference)
+    console.log("[Inpaint] Reference image preview:", validatedReference ? validatedReference.substring(0, 50) + "..." : "null")
     console.log("[Inpaint] Prompt:", prompt)
     console.log("[Inpaint] Options:", JSON.stringify(options))
 
     // 优先使用 Gemini（如果有参考图片且配置了 OpenRouter API key）
     const openRouterApiKey = process.env.OPENROUTER_API_KEY
-    if (reference_image && openRouterApiKey) {
+    if (validatedReference && openRouterApiKey) {
       console.log("[Inpaint] Trying Gemini for reference-guided inpainting...")
       try {
         const geminiResult = await tryGeminiImageGeneration(
-          base_image,
-          mask_image,
-          reference_image,
+          validatedBase.image.dataUrl,
+          validatedMask.image.dataUrl,
+          validatedReference,
           prompt,
           openRouterApiKey,
           startTime
@@ -398,10 +422,18 @@ export async function POST(request: NextRequest): Promise<NextResponse<InpaintRe
     const replicateApiKey = process.env.REPLICATE_API_KEY
     if (!replicateApiKey) {
       console.warn("[Inpaint] REPLICATE_API_KEY not configured. Returning mock result.")
-      return mockInpaintResult(base_image, startTime)
+      return mockInpaintResult(validatedBase.image.dataUrl, startTime)
     }
 
-    return tryFluxFillPro(base_image, mask_image, prompt, options, replicateApiKey, startTime, reference_image)
+    return tryFluxFillPro(
+      validatedBase.image.dataUrl,
+      validatedMask.image.dataUrl,
+      prompt,
+      options,
+      replicateApiKey,
+      startTime,
+      validatedReference
+    )
   } catch (error) {
     console.error("[Inpaint] Error:", error)
     return NextResponse.json(

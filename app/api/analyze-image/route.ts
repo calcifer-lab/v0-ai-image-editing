@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server"
 import type { AnalyzeImageRequest, AnalyzeImageResponse, ApiErrorResponse } from "@/types"
 import { IMAGE_ANALYSIS_PROMPT } from "@/lib/api"
+import { validateImageDataUrl } from "@/lib/api"
 
 export const runtime = "nodejs"
 export const maxDuration = 60
+const MAX_ANALYZE_IMAGE_BYTES = 10 * 1024 * 1024
 
 export async function POST(
   request: NextRequest
@@ -12,17 +14,22 @@ export async function POST(
     const body: AnalyzeImageRequest = await request.json()
     const { image, prompt } = body
 
-    if (!image) {
-      return NextResponse.json({ error: "Image is required" }, { status: 400 })
+    const imageInput =
+      typeof image === "string" && image.startsWith("data:")
+        ? image
+        : `data:image/png;base64,${image ?? ""}`
+    const validatedImage = validateImageDataUrl(imageInput, {
+      fieldName: "image",
+      maxBytes: MAX_ANALYZE_IMAGE_BYTES,
+    })
+    if (!validatedImage.ok) {
+      return NextResponse.json({ error: validatedImage.error }, { status: validatedImage.status })
     }
 
     const apiKey = process.env.OPENROUTER_API_KEY
     if (!apiKey) {
       return NextResponse.json({ error: "OpenRouter API key not configured" }, { status: 500 })
     }
-
-    // 确保是 data URL 格式
-    const imageUrl = image.startsWith("data:") ? image : `data:image/png;base64,${image}`
 
     const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
@@ -37,7 +44,7 @@ export async function POST(
             role: "user",
             content: [
               { type: "text", text: prompt || IMAGE_ANALYSIS_PROMPT },
-              { type: "image_url", image_url: { url: imageUrl } },
+              { type: "image_url", image_url: { url: validatedImage.image.dataUrl } },
             ],
           },
         ],
