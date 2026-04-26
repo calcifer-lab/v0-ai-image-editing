@@ -711,8 +711,8 @@ const getCanvasPoint = useCallback(
 
   return (
     <Card className="flex flex-col">
-      <div className="border-b p-4">
-        <div className="mb-4 flex items-center justify-between">
+      <div className="border-b p-3">
+        <div className="mb-3 flex items-center justify-between">
           <h3 className="font-semibold">Select Region to Fix</h3>
           <div className="flex gap-2">
             <Button variant="outline" size="sm" onClick={undo} disabled={historyIndex <= 0}>
@@ -755,13 +755,13 @@ const getCanvasPoint = useCallback(
         <span className="text-xs font-medium w-8">{brushSize}</span>
       </div>
 
-      <div className="flex items-center justify-center p-6">
+      <div className="flex items-center justify-center p-4">
         <div
           id="canvas-editor-container"
           className="relative overflow-hidden rounded-lg border shadow-lg"
           style={{
-            maxWidth: "100%",
-            maxHeight: "min(400px, 50vh)",
+            width: canvasSize.width,
+            height: canvasSize.height,
             cursor: isPanning ? "grabbing" : isSpacePanning ? "grab" : undefined,
             transform: `scale(${zoom}) translate(${pan.x / zoom}px, ${pan.y / zoom}px)`,
             transformOrigin: "center center",

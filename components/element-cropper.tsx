@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
@@ -8,6 +8,10 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Slider } from "@/components/ui/slider"
 import { Crop, RefreshCcw, Pencil, Eraser, Undo, Redo } from "lucide-react"
 import type { CropRegion } from "@/types"
+
+export interface ElementCropperRef {
+  maskCanvas: HTMLCanvasElement | null
+}
 
 interface ElementCropperProps {
   image: string
@@ -29,7 +33,7 @@ function getDisplayDimensions(width: number, height: number) {
   }
 }
 
-export default function ElementCropper({ image, crop, onCropChange }: ElementCropperProps) {
+export default forwardRef(function ElementCropper({ image, crop, onCropChange }: ElementCropperProps, ref) {
   const imgRef = useRef<HTMLImageElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const maskCanvasRef = useRef<HTMLCanvasElement>(null)
@@ -39,6 +43,11 @@ export default function ElementCropper({ image, crop, onCropChange }: ElementCro
   const [brushSize, setBrushSize] = useState(80)
   const [history, setHistory] = useState<ImageData[]>([])
   const [historyIndex, setHistoryIndex] = useState(-1)
+
+  // Expose maskCanvas to parent for shape-preserving crop
+  useImperativeHandle(ref, () => ({
+    maskCanvas: maskCanvasRef.current,
+  }))
 
   // Redraw canvas with mask overlay
   const redrawCanvas = useCallback(() => {
@@ -492,4 +501,4 @@ export default function ElementCropper({ image, crop, onCropChange }: ElementCro
       </div>
     </Card>
   )
-}
+})

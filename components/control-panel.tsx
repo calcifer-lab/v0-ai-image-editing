@@ -39,14 +39,14 @@ export default function ControlPanel({
 }: ControlPanelProps) {
   return (
     <Card className="flex h-full flex-col">
-      <div className="border-b p-4">
-        <h3 className="font-semibold">Fix Parameters</h3>
-        <p className="text-sm text-muted-foreground">Compose only what needs changing</p>
+      <div className="border-b p-3">
+        <h3 className="font-semibold text-sm">Fix Parameters</h3>
+        <p className="text-xs text-muted-foreground">Compose only what needs changing</p>
       </div>
 
       <EditModeSection params={params} onParamsChange={onParamsChange} />
 
-      <div className="flex-1 space-y-6 overflow-auto p-4">
+      <div className="flex-1 space-y-6 overflow-auto p-3">
         {error && <ErrorDisplay error={error} />}
 
         {params.editMode === "composite" ? (
@@ -79,14 +79,14 @@ function EditModeSection({
   onParamsChange: (params: EditParams) => void
 }) {
   return (
-    <div className="shrink-0 border-b p-4">
-      <div className="space-y-3">
+    <div className="shrink-0 border-b p-3">
+      <div className="space-y-2">
         <div className="flex items-center gap-2">
-          <Layers className="h-5 w-5 text-primary" />
-          <Label className="text-base font-semibold">Patch Mode</Label>
+          <Layers className="h-4 w-4 text-primary" />
+          <Label className="text-sm font-semibold">Patch Mode</Label>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-2">
           <ModeButton
             active={params.editMode === "composite"}
             onClick={() => onParamsChange({ ...params, editMode: "composite" })}
@@ -124,18 +124,18 @@ function ModeButton({
     <button
       type="button"
       onClick={onClick}
-      className={`flex flex-col items-center gap-2 rounded-lg border-2 p-4 transition-all ${
+      className={`flex flex-col items-center gap-1 rounded-lg border-2 p-2 transition-all text-xs ${
         active
           ? "border-primary bg-primary/10 shadow-sm"
           : "border-border hover:border-primary/50 hover:bg-accent"
       }`}
     >
-      <Icon className={`h-5 w-5 ${active ? "text-primary" : "text-muted-foreground"}`} />
+      <Icon className={`h-4 w-4 ${active ? "text-primary" : "text-muted-foreground"}`} />
       <div className="text-center">
-        <div className={`text-sm font-semibold ${active ? "text-foreground" : "text-muted-foreground"}`}>
+        <div className={`text-xs font-semibold ${active ? "text-foreground" : "text-muted-foreground"}`}>
           {label}
         </div>
-        <div className="text-xs text-muted-foreground">{description}</div>
+        <div className="text-[10px] text-muted-foreground">{description}</div>
       </div>
     </button>
   )
@@ -179,59 +179,18 @@ function AIGenerateSettings({
   return (
     <div className="space-y-4">
       <Card className="border-2 bg-card p-4">
-        <div className="space-y-3">
-          <div className="flex items-start gap-3">
-            <div className="rounded-full bg-primary/10 p-2">
-              <Wand2 className="h-5 w-5 text-primary" />
-            </div>
-            <div className="flex-1">
-              <h4 className="font-semibold">AI Generate Mode</h4>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Let AI reinterpret the patch reference so the fix matches the surrounding image, style, and context.
-              </p>
-            </div>
+        <div className="flex items-start gap-3">
+          <div className="rounded-full bg-primary/10 p-2">
+            <Wand2 className="h-5 w-5 text-primary" />
+          </div>
+          <div className="flex-1">
+            <h4 className="font-semibold">AI Generate Mode</h4>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Let AI reinterpret the patch reference so the fix matches the surrounding image, style, and context.
+            </p>
           </div>
         </div>
       </Card>
-
-      <PromptInput
-        value={params.prompt}
-        onChange={(prompt) => onParamsChange({ ...params, prompt })}
-      />
-
-      <SliderControl
-        label="Generation Strength"
-        value={params.strength}
-        onChange={(strength) => onParamsChange({ ...params, strength })}
-        min={0.1}
-        max={1.0}
-        step={0.1}
-        description="Higher values generate more creative content"
-      />
-
-      <SliderControl
-        label="Guidance Scale"
-        value={params.guidance}
-        onChange={(guidance) => onParamsChange({ ...params, guidance })}
-        min={1}
-        max={20}
-        step={0.5}
-        description="How closely to follow the reference image"
-      />
-
-      <div className="flex items-center justify-between rounded-lg border p-4">
-        <div className="space-y-0.5">
-          <Label htmlFor="preserve-structure">Preserve Structure</Label>
-          <p className="text-xs text-muted-foreground">Maintain the original composition</p>
-        </div>
-        <Switch
-          id="preserve-structure"
-          checked={params.preserveStructure}
-          onCheckedChange={(checked) => onParamsChange({ ...params, preserveStructure: checked })}
-        />
-      </div>
-
-      <OutputDimensionsSection params={params} onParamsChange={onParamsChange} />
     </div>
   )
 }

@@ -9,6 +9,7 @@ import type {
   CropRegion,
   DEFAULT_EDIT_PARAMS,
 } from "@/types"
+import type { ElementCropperRef } from "@/components/element-cropper"
 import {
   resizeToAspectRatio,
   compositeImages,
@@ -59,13 +60,14 @@ export interface UseImageEditorReturn {
   setParams: (params: EditParams) => void
   setMask: (mask: MaskData | null) => void
   setElementCrop: (crop: CropRegion | null) => void
+  getElementCropperRef: () => ElementCropperRef | null
   handleImagesUploaded: (elementImg: string, baseImg: string) => Promise<void>
   handleProcess: () => Promise<void>
   handleReset: () => void
 }
 
 // ============ 辅助函数 ============
-async function cropImageToDataUrl(imageUrl: string, crop: CropRegion): Promise<string> {
+async function cropImageToDataUrl(imageUrl: string, crop: CropRegion, maskCanvas?: HTMLCanvasElement): Promise<string> {
   const img = await loadImage(imageUrl)
 
   // Guard against stale crops that do not match the current image
@@ -92,6 +94,40 @@ async function cropImageToDataUrl(imageUrl: string, crop: CropRegion): Promise<s
     safeWidth,
     safeHeight
   )
+
+  // If a mask is provided, apply it to preserve the actual drawn shape (circle, freeform, etc.)
+  if (maskCanvas) {
+    const maskCtx = maskCanvas.getContext("2d")
+    if (maskCtx) {
+      const maskImageData = maskCtx.getImageData(0, 0, maskCanvas.width, maskCanvas.height)
+      const maskScaleX = safeWidth / maskCanvas.width
+      const maskScaleY = safeHeight / maskCanvas.height
+
+      // Create output canvas with extracted crop
+      const outputCanvas = document.createElement("canvas")
+      outputCanvas.width = safeWidth
+      outputCanvas.height = safeHeight
+      const outputCtx = outputCanvas.getContext("2d")
+      if (outputCtx) {
+        outputCtx.drawImage(canvas, 0, 0)
+
+        // Apply mask: for each pixel in the mask, if black (not selected), make transparent
+        for (let y = 0; y < safeHeight; y++) {
+          for (let x = 0; x < safeWidth; x++) {
+            const maskX = Math.floor(x / maskScaleX)
+            const maskY = Math.floor(y / maskScaleY)
+            const maskI = (maskY * maskCanvas.width + maskX) * 4
+            // Black pixels in mask = not selected = transparent output
+            if (maskImageData.data[maskI] === 0) {
+              outputCtx.clearRect(x, y, 1, 1)
+            }
+          }
+        }
+
+        return outputCanvas.toDataURL("image/png")
+      }
+    }
+  }
 
   return canvas.toDataURL("image/png")
 }
@@ -321,6 +357,7 @@ export function useImageEditor(): UseImageEditorReturn {
   const [imageAnalysis, setImageAnalysis] = useState<string | null>(null)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [elementCrop, setElementCrop] = useState<CropRegion | null>(null)
+  const elementCropperRef = useRef<ElementCropperRef | null>(null)
 
   // Background removal result — populated after user previews cutout in Element Cropper
   // Stores the post-RMBG cutout so user can review and refine before compositing
@@ -378,7 +415,7 @@ export function useImageEditor(): UseImageEditorReturn {
       
       if (crop && crop.width > 0 && crop.height > 0) {
         try {
-          imageToAnalyze = await cropImageToDataUrl(elementImg, crop)
+          imageToAnalyze = await cropImageToDataUrl(elementImg, crop, elementCropperRef.current?.maskCanvas ?? undefined)
           useCroppedPrompt = true
           console.log("[AI Editor] Analyzing cropped region:", crop.width, "x", crop.height)
         } catch (cropError) {
@@ -502,7 +539,7 @@ export function useImageEditor(): UseImageEditorReturn {
     let processedReference = images.elementImage
     if (hasExplicitCrop && elementCrop) {
       try {
-        processedReference = await cropImageToDataUrl(images.elementImage, elementCrop)
+        processedReference = await cropImageToDataUrl(images.elementImage, elementCrop, maskCanvasForCrop)
         console.log("[AI Editor] Applied user crop to reference image")
       } catch (cropError) {
         console.warn("[AI Editor] Failed to crop reference image, using original", cropError)
@@ -609,9 +646,11 @@ export function useImageEditor(): UseImageEditorReturn {
     // 裁剪参考图片（如果用户有选择裁剪区域）
     updateProgress("Preparing reference image...", 38, { driftTo: 44 })
     let processedReference: string
+    const cropperRef = elementCropperRef.current
+    const maskCanvasForCrop = cropperRef?.maskCanvas ?? undefined
     if (hasExplicitCrop && elementCrop) {
       try {
-        const croppedReference = await cropImageToDataUrl(images.elementImage, elementCrop)
+        const croppedReference = await cropImageToDataUrl(images.elementImage, elementCrop, maskCanvasForCrop)
         const resizedReference = await resizeImage(croppedReference, 768, 768)
         processedReference = await compressImage(resizedReference.dataUrl, 0.85)
         console.log(
