@@ -20,7 +20,7 @@ interface CanvasEditorProps {
 type Tool = "brush" | "eraser" | "rectangle" | "circle"
 
 const MAX_CANVAS_WIDTH = 800
-const MAX_CANVAS_HEIGHT = 600
+const MAX_CANVAS_HEIGHT = 999
 const MASK_OVERLAY_COLOR = { r: 59, g: 130, b: 246 } // Primary blue
 const MASK_OVERLAY_ALPHA = 128
 const MIN_ZOOM = 0.5
@@ -751,7 +751,7 @@ const getCanvasPoint = useCallback(
 
       <div className="flex items-center gap-2 px-4 pb-4">
         <span className="text-xs text-muted-foreground whitespace-nowrap">Brush</span>
-        <Slider value={[brushSize]} onValueChange={(v) => setBrushSize(v[0])} min={5} max={100} step={5} className="w-24" />
+        <Slider value={[brushSize]} onValueChange={(v) => setBrushSize(v[0])} min={5} max={100} step={5} />
         <span className="text-xs font-medium w-8">{brushSize}</span>
       </div>
 
