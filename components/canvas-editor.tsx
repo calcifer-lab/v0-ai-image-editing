@@ -178,19 +178,19 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
     return () => clearTimeout(timer)
   }, [sizeToast])
 
-  // Mouse wheel zoom on the canvas container (Ctrl+Wheel)
+  // Mouse wheel zoom/pan on the canvas container (scroll=zoom, Shift+scroll=pan)
   useEffect(() => {
     const container = document.getElementById("canvas-editor-container")
     if (!container) return
     const handleWheel = (e: WheelEvent) => {
-      // Only handle when Ctrl is held (Ctrl+Wheel = zoom)
-      if (e.ctrlKey || e.metaKey) {
+      // Natural zoom with scroll (like Figma/design tools); Shift+scroll pans
+      if (e.shiftKey) {
+        // Pan with Shift+scroll
+        setPan((p) => ({ x: p.x - e.deltaX, y: p.y - e.deltaY }))
+      } else {
         e.preventDefault()
         const delta = e.deltaY > 0 ? -ZOOM_STEP : ZOOM_STEP
         setZoom((z) => Math.max(MIN_ZOOM, Math.min(z + delta, MAX_ZOOM)))
-      } else {
-        // Pan with regular scroll
-        setPan((p) => ({ x: p.x - e.deltaX, y: p.y - e.deltaY }))
       }
     }
     container.addEventListener("wheel", handleWheel, { passive: false })
@@ -1101,8 +1101,8 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
                   <div className="flex items-center gap-2"><kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs font-mono font-medium">Space + Drag</kbd><span className="text-muted-foreground">Pan canvas</span></div>
                   <div className="flex items-center gap-2"><kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs font-mono font-medium">+ / -</kbd><span className="text-muted-foreground">Zoom in / out</span></div>
                   <div className="flex items-center gap-2"><kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs font-mono font-medium">0</kbd><span className="text-muted-foreground">Reset zoom to 100%</span></div>
-                  <div className="flex items-center gap-2"><kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs font-mono font-medium">Scroll</kbd><span className="text-muted-foreground">Pan canvas</span></div>
-                  <div className="flex items-center gap-2"><kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs font-mono font-medium">Ctrl + Scroll</kbd><span className="text-muted-foreground">Zoom canvas</span></div>
+                  <div className="flex items-center gap-2"><kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs font-mono font-medium">Scroll</kbd><span className="text-muted-foreground">Zoom canvas</span></div>
+                  <div className="flex items-center gap-2"><kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs font-mono font-medium">Shift + Scroll</kbd><span className="text-muted-foreground">Pan canvas</span></div>
                   <div className="flex items-center gap-2"><kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs font-mono font-medium">Esc</kbd><span className="text-muted-foreground">Cancel current shape</span></div>
                 </div>
               </div>
