@@ -179,6 +179,28 @@ function blobToDataUrl(blob: Blob): Promise<string> {
   })
 }
 
+/**
+ * Call the background removal API on a single image data URL.
+ * Returns { image: cutout PNG, mask: alpha mask PNG }.
+ * Shows real-time progress via the hook's updateProgress callback.
+ */
+async function callRemoveBackground(
+  imageUrl: string,
+  onProgress: (msg: string) => void
+): Promise<{ image: string; mask: string }> {
+  onProgress("Analyzing image...")
+  const response = await fetch("/api/remove-background", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ image: imageUrl }),
+  })
+  if (!response.ok) {
+    throw new Error(await response.text() || `remove-background failed: ${response.status}`)
+  }
+  onProgress("Background removed")
+  return response.json()
+}
+
 async function removeMaskedRegionFromBase(baseDataUrl: string, maskDataUrl: string): Promise<string> {
   const [baseImg, maskImg] = await Promise.all([loadImage(baseDataUrl), loadImage(maskDataUrl)])
 
@@ -337,9 +359,16 @@ function buildPromptFromAnalysis(imageAnalysis: string): string {
 }
 
 // Compress large data URLs before network upload to stay under server limits
-async function compressDataUrlForUpload(imageDataUrl: string): Promise<string> {
+async function compressDataUrlForUpload(
+  imageDataUrl: string,
+  options?: { preserveTransparency?: boolean }
+): Promise<string> {
   try {
     const { dataUrl } = await resizeImage(imageDataUrl, 1536, 1536)
+    if (options?.preserveTransparency) {
+      return dataUrl
+    }
+
     return await compressImage(dataUrl, 0.85)
   } catch (error) {
     console.warn("[AI Editor] Image compression failed, using original", error)
@@ -361,6 +390,13 @@ export function useImageEditor(): UseImageEditorReturn {
   const [imageAnalysis, setImageAnalysis] = useState<string | null>(null)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [elementCrop, setElementCrop] = useState<CropRegion | null>(null)
+
+  // Background removal result — populated after user previews cutout in Element Cropper
+  // Stores the post-RMBG cutout so user can review and refine before compositing
+  const [processedElement, setProcessedElement] = useState<{
+    image: string   // Cutout PNG (transparent background)
+    mask: string    // Alpha mask PNG (white = subject, black = background)
+  } | null>(null)
   const progressDriftTimer = useRef<number | null>(null)
 
   const stopProgressDrift = useCallback(() => {
@@ -466,6 +502,60 @@ export function useImageEditor(): UseImageEditorReturn {
     setMask(maskData)
   }, [])
 
+  const runFusionPass = useCallback(async (
+    compositeImage: string,
+    referenceImage?: string,
+    progress?: { status: string; value: number; driftTo?: number }
+  ): Promise<string> => {
+    if (!images.baseImage || !mask) {
+      throw new Error("Missing base image or mask for fusion")
+    }
+
+    if (progress) {
+      updateProgress(progress.status, progress.value, progress.driftTo ? { driftTo: progress.driftTo } : undefined)
+    }
+
+    try {
+      const [compressedComposite, compressedBase, compressedReference] = await Promise.all([
+        compressDataUrlForUpload(compositeImage),
+        compressDataUrlForUpload(images.baseImage),
+        referenceImage
+          ? compressDataUrlForUpload(referenceImage, { preserveTransparency: true })
+          : Promise.resolve(undefined),
+      ])
+
+      const fusionResponse = await fetch("/api/fusion", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          composite_image: compressedComposite,
+          original_base: compressedBase,
+          reference_image: compressedReference,
+          mask_region: mask.coordinates,
+        }),
+      })
+
+      if (!fusionResponse.ok) {
+        console.warn("[AI Editor] AI fusion failed, using unfused composite")
+        return compositeImage
+      }
+
+      const fusionData = await safeParseJSON(fusionResponse) as {
+        fused_image?: string
+        meta?: { model?: string }
+      }
+
+      if (fusionData.fused_image) {
+        console.log("[AI Editor] AI fusion complete:", fusionData.meta?.model)
+        return fusionData.fused_image
+      }
+    } catch (fusionError) {
+      console.warn("[AI Editor] AI fusion error:", fusionError)
+    }
+
+    return compositeImage
+  }, [images.baseImage, mask, updateProgress])
+
   // 处理直接合成模式（带 AI 融合）
   const processCompositeMode = useCallback(async (): Promise<string> => {
     if (!images.baseImage || !images.elementImage || !mask) {
@@ -521,43 +611,18 @@ export function useImageEditor(): UseImageEditorReturn {
 
     console.log("[AI Editor] Composite complete, starting AI fusion...")
 
-    // AI 融合后处理 (60%)
-    updateProgress("AI fusion: Harmonizing lighting and style...", 60, { driftTo: 78 })
-    try {
-      const [compressedComposite, compressedBase, compressedReference] = await Promise.all([
-        compressDataUrlForUpload(compositeResult),
-        compressDataUrlForUpload(images.baseImage),
-        compressDataUrlForUpload(processedReference),
-      ])
+    const fusedResult = await runFusionPass(compositeResult, processedReference, {
+      status: "AI fusion: Harmonizing lighting and style...",
+      value: 60,
+      driftTo: 78,
+    })
 
-      const fusionResponse = await fetch("/api/fusion", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          composite_image: compressedComposite,
-          original_base: compressedBase,
-          reference_image: compressedReference,
-          mask_region: mask.coordinates,
-        }),
-      })
-
-      if (fusionResponse.ok) {
-        const fusionData = await fusionResponse.json()
-        if (fusionData.fused_image) {
-          console.log("[AI Editor] AI fusion complete:", fusionData.meta.model)
-          return fusionData.fused_image
-        }
-      } else {
-        console.warn("[AI Editor] AI fusion failed, using composite result")
-      }
-    } catch (fusionError) {
-      console.warn("[AI Editor] AI fusion error:", fusionError)
+    if (fusedResult === compositeResult) {
+      console.log("[AI Editor] Direct Patch complete (no fusion)")
     }
 
-    // 如果融合失败，返回合成结果
-    console.log("[AI Editor] Direct Patch complete (no fusion)")
-    return compositeResult
-  }, [images, mask, elementCrop])
+    return fusedResult
+  }, [images, mask, elementCrop, runFusionPass, updateProgress])
 
   // 处理 AI 生成模式
   const processAIMode = useCallback(async (): Promise<string> => {
@@ -706,25 +771,13 @@ export function useImageEditor(): UseImageEditorReturn {
       }
     }
 
-    // ── Decision: should we call inpaint API or return pixel composite directly?
-    //
-    // AI Generate mode is supposed to let AI "reinterpret" the reference.
-    // However, the Gemini inpaint API does not reliably preserve our pixel-perfect
-    // composite — it tends to regenerate the masked region from the reference rather
-    // than blend our placed pixels with the surroundings.
-    //
-    // The intended behaviour (per user feedback) is:
-    //   AI Generate = pixel composite + AI edge blend
-    // But inpaint is not the right API for the blend step — use the fusion API instead.
-    //
-    // For now, when the user has explicitly cropped an element region,
-    // return the pixel-perfect composite directly. The Direct Patch → fusion
-    // path handles edge blending. AI Generate = "place the element exactly".
-    // (A future iteration can wire up fusion after pixel-composite for AI Generate.)
-    //
     if (hasExplicitCrop) {
-      console.log("[AI Editor] AI Generate: returning pixel-composited result directly (skip inpaint)")
-      return compositedBase
+      console.log("[AI Editor] AI Generate: running fusion after pixel composite")
+      return runFusionPass(compositedBase, processedReference, {
+        status: "AI fusion: Matching patch to the scene...",
+        value: 60,
+        driftTo: 76,
+      })
     }
 
     // No explicit crop — fall back to inpaint API (original behaviour)
@@ -759,7 +812,7 @@ export function useImageEditor(): UseImageEditorReturn {
     }
 
     return data.result_image
-  }, [images, mask, params, imageAnalysis, analyzeImage, elementCrop, updateProgress])
+  }, [images, mask, params, imageAnalysis, analyzeImage, elementCrop, updateProgress, runFusionPass])
 
   // 处理主流程
   const handleProcess = useCallback(async () => {

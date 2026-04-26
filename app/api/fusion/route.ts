@@ -53,8 +53,8 @@ export async function POST(request: NextRequest): Promise<NextResponse<FusionRes
     const { composite_image, original_base, reference_image, mask_region } = body
     fallbackComposite = composite_image
 
-    if (!composite_image) {
-      return NextResponse.json({ error: "composite_image is required" }, { status: 400 })
+    if (!composite_image || !original_base) {
+      return NextResponse.json({ error: "composite_image and original_base are required" }, { status: 400 })
     }
 
     console.log("[Fusion] Starting AI fusion post-processing...")
@@ -71,6 +71,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<FusionRes
         console.log("[Fusion] Using Gemini 2.5 Flash for fusion...")
         const geminiResult = await fusionWithGemini(
           composite_image,
+          original_base,
           reference_image,
           fusionPrompt,
           openRouterApiKey,
@@ -267,6 +268,7 @@ OUTPUT: A seamlessly fused image where:
  */
 async function fusionWithGemini(
   composite_image: string,
+  original_base: string,
   reference_image: string | undefined,
   prompt: string,
   apiKey: string,
@@ -276,6 +278,10 @@ async function fusionWithGemini(
 
   const content = [
     { type: "text", text: systemPrompt },
+    { type: "text", text: "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" },
+    { type: "text", text: "🧱 ORIGINAL BASE IMAGE (must remain unchanged outside the patched area):" },
+    { type: "text", text: "Use this as the fidelity anchor for the surrounding scene. Preserve its composition, characters, and environment everywhere except the patched region." },
+    { type: "image_url", image_url: { url: original_base } },
     { type: "text", text: "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" },
     { type: "text", text: "🎨 COMPOSITED IMAGE (needs fusion):" },
     { type: "text", text: "This image contains a newly composited element that needs to be seamlessly fused with the background." },
