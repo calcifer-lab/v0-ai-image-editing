@@ -219,19 +219,51 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
     updateMask()
   }, [historyIndex, history, redrawCanvas, updateMask])
 
-  // Keyboard shortcuts: Ctrl+Z = undo, Ctrl+Shift+Z / Ctrl+Y = redo
+  // Keyboard shortcuts:
+  //   B / 1       → brush tool
+  //   E / 2       → eraser tool
+  //   [           → decrease brush size by 5 (min 5)
+  //   ]           → increase brush size by 5 (max 100)
+  //   Ctrl+Z      → undo
+  //   Ctrl+Y / Ctrl+Shift+Z → redo
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Only fire when no input element is focused
       const target = e.target as HTMLElement
       if (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable) return
 
-      if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) {
-        e.preventDefault()
-        undo()
-      } else if ((e.ctrlKey || e.metaKey) && (e.key === "y" || (e.key === "z" && e.shiftKey))) {
-        e.preventDefault()
-        redo()
+      // Tool shortcuts (no modifier)
+      if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+        switch (e.key.toLowerCase()) {
+          case "b":
+          case "1":
+            e.preventDefault()
+            setTool("brush")
+            break
+          case "e":
+          case "2":
+            e.preventDefault()
+            setTool("eraser")
+            break
+          case "[":
+            e.preventDefault()
+            setBrushSize((s) => Math.max(5, s - 5))
+            break
+          case "]":
+            e.preventDefault()
+            setBrushSize((s) => Math.min(100, s + 5))
+            break
+        }
+      }
+
+      // Undo / redo with Ctrl / Cmd
+      if (e.ctrlKey || e.metaKey) {
+        if (e.key === "z" && !e.shiftKey) {
+          e.preventDefault()
+          undo()
+        } else if (e.key === "y" || (e.key === "z" && e.shiftKey)) {
+          e.preventDefault()
+          redo()
+        }
       }
     }
     window.addEventListener("keydown", handleKeyDown)
