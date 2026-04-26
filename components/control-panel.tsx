@@ -55,8 +55,6 @@ export default function ControlPanel({
           <AIGenerateSettings
             params={params}
             onParamsChange={onParamsChange}
-            imageAnalysis={imageAnalysis}
-            isAnalyzing={isAnalyzing}
           />
         )}
       </div>
@@ -176,13 +174,9 @@ function DirectPasteSettings({
 function AIGenerateSettings({
   params,
   onParamsChange,
-  imageAnalysis,
-  isAnalyzing,
 }: {
   params: EditParams
   onParamsChange: (params: EditParams) => void
-  imageAnalysis: string | null
-  isAnalyzing: boolean
 }) {
   return (
     <div className="space-y-4">
@@ -202,12 +196,9 @@ function AIGenerateSettings({
         </div>
       </Card>
 
-      <AnalysisStatus isAnalyzing={isAnalyzing} imageAnalysis={imageAnalysis} />
-
       <PromptInput
         value={params.prompt}
         onChange={(prompt) => onParamsChange({ ...params, prompt })}
-        hasAnalysis={!!imageAnalysis}
       />
 
       <SliderControl
@@ -380,40 +371,6 @@ function OutputDimensionsSection({
   )
 }
 
-function AnalysisStatus({
-  isAnalyzing,
-  imageAnalysis,
-}: {
-  isAnalyzing: boolean
-  imageAnalysis: string | null
-}) {
-  if (isAnalyzing) {
-    return (
-      <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 dark:border-blue-800 dark:bg-blue-950">
-        <div className="flex items-center gap-2">
-          <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-          <p className="text-sm text-blue-900 dark:text-blue-100">
-            Analyzing element image with AI...
-          </p>
-        </div>
-      </div>
-    )
-  }
-
-  if (imageAnalysis) {
-    return (
-      <div className="rounded-lg border border-green-200 bg-green-50 p-3 dark:border-green-800 dark:bg-green-950">
-        <h4 className="mb-1 text-sm font-semibold text-green-900 dark:text-green-100">
-          AI Analysis:
-        </h4>
-        <p className="text-xs text-green-800 dark:text-green-200">{imageAnalysis}</p>
-      </div>
-    )
-  }
-
-  return null
-}
-
 function ErrorDisplay({ error }: { error: string }) {
   return (
     <div className="rounded-lg border border-red-200 bg-red-50 p-3 dark:border-red-800 dark:bg-red-950">
@@ -426,30 +383,22 @@ function ErrorDisplay({ error }: { error: string }) {
 function PromptInput({
   value,
   onChange,
-  hasAnalysis,
 }: {
   value: string
   onChange: (value: string) => void
-  hasAnalysis: boolean
 }) {
   return (
     <div className="space-y-2">
       <Label htmlFor="prompt">Description (Optional)</Label>
       <Textarea
         id="prompt"
-        placeholder={
-          hasAnalysis
-            ? "Leave empty to use AI analysis, or add custom instructions..."
-            : "Describe what you want to create in the selected region..."
-        }
+        placeholder="Describe what you want to create in the selected region..."
         value={value}
         onChange={(e) => onChange(e.target.value)}
         rows={3}
       />
       <p className="text-xs text-muted-foreground">
-        {hasAnalysis
-          ? "AI has analyzed the element image. Custom prompt will override."
-          : "Add a description to guide the AI generation"}
+        Add a description to guide the AI generation
       </p>
     </div>
   )
@@ -499,7 +448,7 @@ function ProcessButton({
   processingProgress: number
   editMode: "ai" | "composite"
 }) {
-  const buttonText = editMode === "composite" ? "Patch" : "Generate"
+  const buttonText = "FIX"
   const Icon = editMode === "composite" ? Layers : Sparkles
 
   return (
