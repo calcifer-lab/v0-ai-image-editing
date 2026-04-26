@@ -32,6 +32,11 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
   const [history, setHistory] = useState<ImageData[]>([])
   const [historyIndex, setHistoryIndex] = useState(-1)
   const baseImageRef = useRef<HTMLImageElement | null>(null)
+  // Shape drawing state
+  const shapeStartRef = useRef<{ x: number; y: number } | null>(null)
+  const [shapePreview, setShapePreview] = useState<{ x: number; y: number; w: number; h: number } | null>(null)
+  // Ref for synchronous draw-state check (avoids React setState lag)
+  const isDrawingRef = useRef(false)
 
   const redrawCanvas = useCallback(() => {
     const canvas = canvasRef.current
@@ -248,6 +253,16 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
             e.preventDefault()
             setTool("eraser")
             break
+          case "r":
+          case "3":
+            e.preventDefault()
+            setTool("rectangle")
+            break
+          case "c":
+          case "4":
+            e.preventDefault()
+            setTool("circle")
+            break
           case "[":
             e.preventDefault()
             if (e.shiftKey) {
@@ -299,29 +314,109 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
     updateMask()
   }, [saveToHistory, redrawCanvas, updateMask])
 
-  const draw = useCallback(
+  /**
+   * Get canvas-relative coordinates from a mouse event.
+   */
+  const getCanvasPoint = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
-      if (!isDrawing && e.type !== "mousedown") return
-
       const canvas = canvasRef.current
-      const maskCanvas = maskCanvasRef.current
-      if (!canvas || !maskCanvas) return
-
+      if (!canvas) return { x: 0, y: 0 }
       const rect = canvas.getBoundingClientRect()
       const scaleX = canvas.width / rect.width
       const scaleY = canvas.height / rect.height
-      const x = (e.clientX - rect.left) * scaleX
-      const y = (e.clientY - rect.top) * scaleY
+      return {
+        x: (e.clientX - rect.left) * scaleX,
+        y: (e.clientY - rect.top) * scaleY,
+      }
+    },
+    []
+  )
+
+  /**
+   * Draw a filled rectangle on the mask context with optional feather (soft edge).
+   */
+  const drawRectOnMask = useCallback(
+    (
+      ctx: CanvasRenderingContext2D,
+      x: number,
+      y: number,
+      w: number,
+      h: number,
+      fillColor: string,
+      featherPx: number
+    ) => {
+      if (featherPx > 0) {
+        // Soft-edge rectangle: draw multiple nested rects with decreasing alpha
+        const steps = featherPx
+        for (let i = steps; i >= 0; i--) {
+          const alpha = i === 0 ? 1 : i / steps
+          ctx.globalAlpha = alpha
+          ctx.fillStyle = fillColor
+          ctx.fillRect(x - i, y - i, w + i * 2, h + i * 2)
+        }
+        ctx.globalAlpha = 1
+      } else {
+        ctx.fillStyle = fillColor
+        ctx.fillRect(x, y, w, h)
+      }
+    },
+    []
+  )
+
+  /**
+   * Draw a filled circle (ellipse) on the mask context with optional feather.
+   */
+  const drawCircleOnMask = useCallback(
+    (
+      ctx: CanvasRenderingContext2D,
+      cx: number,
+      cy: number,
+      rx: number,
+      ry: number,
+      fillColor: string,
+      featherPx: number
+    ) => {
+      if (featherPx > 0) {
+        // Soft-edge circle using radial gradient
+        const innerRx = Math.max(0, rx - featherPx)
+        const innerRy = Math.max(0, ry - featherPx)
+        const gradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, rx)
+        const [r, g, b] = fillColor.match(/\d+/g)!.map(Number)
+        gradient.addColorStop(0, `rgba(${r},${g},${b},1)`)
+        gradient.addColorStop(innerRx / rx, `rgba(${r},${g},${b},1)`)
+        gradient.addColorStop(1, `rgba(${r},${g},${b},0)`)
+        ctx.beginPath()
+        ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2)
+        ctx.fillStyle = gradient
+        ctx.fill()
+      } else {
+        ctx.beginPath()
+        ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2)
+        ctx.fillStyle = fillColor
+        ctx.fill()
+      }
+    },
+    []
+  )
+
+  const draw = useCallback(
+    (e: React.MouseEvent<HTMLCanvasElement>) => {
+      // Use ref for synchronous check; state is only for re-renders
+      if (!isDrawingRef.current && e.type !== "mousedown") return
+
+      const maskCanvas = maskCanvasRef.current
+      if (!maskCanvas) return
 
       const maskCtx = maskCanvas.getContext("2d")
       if (!maskCtx) return
 
+      const { x: cx, y: cy } = getCanvasPoint(e)
+
       if (tool === "brush" || tool === "eraser") {
         const radius = brushSize / 2
         if (feather > 0) {
-          // Soft-edged brush using radial gradient
           const innerRadius = Math.max(0, radius - feather)
-          const gradient = maskCtx.createRadialGradient(x, y, innerRadius, x, y, radius)
+          const gradient = maskCtx.createRadialGradient(cx, cy, innerRadius, cx, cy, radius)
           if (tool === "brush") {
             gradient.addColorStop(0, "rgba(255, 255, 255, 1)")
             gradient.addColorStop(1, "rgba(255, 255, 255, 0)")
@@ -330,29 +425,61 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
             gradient.addColorStop(1, "rgba(0, 0, 0, 1)")
           }
           maskCtx.beginPath()
-          maskCtx.arc(x, y, radius, 0, Math.PI * 2)
+          maskCtx.arc(cx, cy, radius, 0, Math.PI * 2)
           maskCtx.fillStyle = gradient
           maskCtx.fill()
         } else {
           maskCtx.beginPath()
-          maskCtx.arc(x, y, radius, 0, Math.PI * 2)
+          maskCtx.arc(cx, cy, radius, 0, Math.PI * 2)
           maskCtx.fillStyle = tool === "brush" ? "rgba(255, 255, 255, 1)" : "rgba(0, 0, 0, 1)"
           maskCtx.fill()
         }
+      } else if ((tool === "rectangle" || tool === "circle") && shapeStartRef.current) {
+        // Shape tools: restore mask from history to get clean slate, then draw live preview
+        const start = shapeStartRef.current
+        const x0 = Math.min(start.x, cx)
+        const y0 = Math.min(start.y, cy)
+        const w = Math.abs(cx - start.x)
+        const h = Math.abs(cy - start.y)
+
+        // Restore mask from last history state for clean redraw
+        const historyState = history[historyIndex]
+        if (historyState) {
+          maskCtx.putImageData(historyState, 0, 0)
+        }
+
+        if (tool === "rectangle") {
+          drawRectOnMask(maskCtx, x0, y0, w, h, "rgba(255, 255, 255, 1)", feather)
+        } else {
+          // Circle: center at midpoint, radii = half width/height
+          const rx = w / 2
+          const ry = h / 2
+          drawCircleOnMask(maskCtx, start.x + (cx - start.x) / 2, start.y + (cy - start.y) / 2, rx, ry, "rgba(255, 255, 255, 1)", feather)
+        }
+
+        // Update live preview state for potential future cursor indicator
+        setShapePreview({ x: x0, y: y0, w, h })
       }
 
       redrawCanvas()
     },
-    [isDrawing, tool, brushSize, feather, redrawCanvas]
+    [tool, brushSize, feather, redrawCanvas, getCanvasPoint, drawRectOnMask, drawCircleOnMask, history, historyIndex]
   )
 
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    isDrawingRef.current = true
     setIsDrawing(true)
+    const { x, y } = getCanvasPoint(e)
+    // Record shape start for rectangle/circle tools
+    if (tool === "rectangle" || tool === "circle") {
+      shapeStartRef.current = { x, y }
+    }
     draw(e)
   }
 
   const stopDrawing = () => {
-    if (isDrawing) {
+    if (isDrawingRef.current) {
+      isDrawingRef.current = false
       const maskCanvas = maskCanvasRef.current
       if (maskCanvas) {
         saveToHistory(maskCanvas)
@@ -360,6 +487,8 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
       }
     }
     setIsDrawing(false)
+    shapeStartRef.current = null
+    setShapePreview(null)
   }
 
   return (
@@ -390,11 +519,11 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
               <Eraser className="h-4 w-4" />
               Eraser
             </TabsTrigger>
-            <TabsTrigger value="rectangle" className="gap-2" disabled>
+            <TabsTrigger value="rectangle" className="gap-2">
               <Square className="h-4 w-4" />
               Rectangle
             </TabsTrigger>
-            <TabsTrigger value="circle" className="gap-2" disabled>
+            <TabsTrigger value="circle" className="gap-2">
               <Circle className="h-4 w-4" />
               Circle
             </TabsTrigger>
@@ -435,7 +564,7 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
         <div className="flex items-center gap-2">
           <div className="h-4 w-4 rounded bg-primary" />
           <span className="text-sm text-muted-foreground">
-            Selected region (will be replaced with AI-generated content)
+            Brush/Eraser: click &amp; drag · Rectangle/Circle: click &amp; drag to draw shape
           </span>
         </div>
       </div>
