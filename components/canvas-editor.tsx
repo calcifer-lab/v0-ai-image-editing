@@ -230,13 +230,16 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
   }, [historyIndex, history, redrawCanvas, updateMask])
 
   // Keyboard shortcuts:
+  //   Tab               → cycle tools (brush → eraser → rect → circle → brush)
   //   B / 1           → brush tool
   //   E / 2           → eraser tool
+  //   R               → rectangle tool
+  //   C               → circle tool
   //   [               → decrease brush size by 5 (min 5)
   //   ]               → increase brush size by 5 (max 100)
   //   Shift+[         → decrease feather by 2 (min 0)
   //   Shift+]         → increase feather by 2 (max 20)
-  //   F               → toggle fill/stroke mode
+  //   F               → toggle fill/stroke mode (shape tools)
   //   Alt+F           → toggle feather between 0 and 8
   //   Ctrl+Z          → undo
   //   Ctrl+Y / Ctrl+Shift+Z → redo
@@ -247,23 +250,35 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
 
       // Tool shortcuts (no modifier)
       if (!e.ctrlKey && !e.metaKey && !e.altKey) {
-        switch (e.key.toLowerCase()) {
+        switch (e.key) {
+          case "Tab":
+            e.preventDefault()
+            setTool((current) => {
+              const tools: Tool[] = ["brush", "eraser", "rectangle", "circle"]
+              const idx = tools.indexOf(current)
+              return tools[(idx + 1) % tools.length]
+            })
+            break
           case "b":
+          case "B":
           case "1":
             e.preventDefault()
             setTool("brush")
             break
           case "e":
+          case "E":
           case "2":
             e.preventDefault()
             setTool("eraser")
             break
           case "r":
+          case "R":
           case "3":
             e.preventDefault()
             setTool("rectangle")
             break
           case "c":
+          case "C":
           case "4":
             e.preventDefault()
             setTool("circle")
