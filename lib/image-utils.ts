@@ -45,12 +45,19 @@ function computeLuma(r: number, g: number, b: number): number {
   return r * 0.299 + g * 0.587 + b * 0.114
 }
 
+interface SourceRect {
+  srcX: number
+  srcY: number
+  srcWidth: number
+  srcHeight: number
+}
+
 function fitReferenceToPlacement(
   refWidth: number,
   refHeight: number,
   targetWidth: number,
   targetHeight: number
-) {
+): SourceRect {
   const refAspect = refWidth / refHeight
   const targetAspect = targetWidth / targetHeight
 
@@ -68,6 +75,47 @@ function fitReferenceToPlacement(
   }
 
   return { srcX, srcY, srcWidth, srcHeight }
+}
+
+function findOpaqueBounds(
+  data: Uint8ClampedArray,
+  width: number,
+  height: number,
+  alphaThreshold = 12
+): SourceRect | null {
+  let minX = width
+  let minY = height
+  let maxX = -1
+  let maxY = -1
+
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const index = (y * width + x) * 4
+      if (data[index + 3] < alphaThreshold) continue
+
+      minX = Math.min(minX, x)
+      minY = Math.min(minY, y)
+      maxX = Math.max(maxX, x)
+      maxY = Math.max(maxY, y)
+    }
+  }
+
+  if (maxX < minX || maxY < minY) {
+    return null
+  }
+
+  return {
+    srcX: minX,
+    srcY: minY,
+    srcWidth: maxX - minX + 1,
+    srcHeight: maxY - minY + 1,
+  }
+}
+
+function shouldPreserveTransparentCutout(bounds: SourceRect, refWidth: number, refHeight: number): boolean {
+  const coversAlmostAllWidth = bounds.srcWidth >= refWidth - 2
+  const coversAlmostAllHeight = bounds.srcHeight >= refHeight - 2
+  return !(coversAlmostAllWidth && coversAlmostAllHeight)
 }
 
 function collectReferenceStats(data: Uint8ClampedArray): RegionStats {
@@ -213,24 +261,54 @@ async function compositePatchOnBase(
   const refCtx = refCanvas.getContext("2d")
   if (!refCtx) throw new Error("Failed to get ref canvas context")
 
-  const { srcX, srcY, srcWidth, srcHeight } = fitReferenceToPlacement(
-    refImg.width,
-    refImg.height,
-    targetWidth,
-    targetHeight
-  )
+  const sourceCanvas = document.createElement("canvas")
+  sourceCanvas.width = refImg.width
+  sourceCanvas.height = refImg.height
+  const sourceCtx = sourceCanvas.getContext("2d")
+  if (!sourceCtx) throw new Error("Failed to get source canvas context")
+  sourceCtx.drawImage(refImg, 0, 0)
 
-  refCtx.drawImage(
-    refImg,
-    srcX,
-    srcY,
-    srcWidth,
-    srcHeight,
-    0,
-    0,
-    targetWidth,
-    targetHeight
-  )
+  const sourceImageData = sourceCtx.getImageData(0, 0, refImg.width, refImg.height)
+  const opaqueBounds = findOpaqueBounds(sourceImageData.data, refImg.width, refImg.height)
+
+  if (opaqueBounds && shouldPreserveTransparentCutout(opaqueBounds, refImg.width, refImg.height)) {
+    const containScale = Math.min(targetWidth / opaqueBounds.srcWidth, targetHeight / opaqueBounds.srcHeight)
+    const drawWidth = opaqueBounds.srcWidth * containScale
+    const drawHeight = opaqueBounds.srcHeight * containScale
+    const drawX = (targetWidth - drawWidth) / 2
+    const drawY = (targetHeight - drawHeight) / 2
+
+    refCtx.drawImage(
+      refImg,
+      opaqueBounds.srcX,
+      opaqueBounds.srcY,
+      opaqueBounds.srcWidth,
+      opaqueBounds.srcHeight,
+      drawX,
+      drawY,
+      drawWidth,
+      drawHeight
+    )
+  } else {
+    const { srcX, srcY, srcWidth, srcHeight } = fitReferenceToPlacement(
+      refImg.width,
+      refImg.height,
+      targetWidth,
+      targetHeight
+    )
+
+    refCtx.drawImage(
+      refImg,
+      srcX,
+      srcY,
+      srcWidth,
+      srcHeight,
+      0,
+      0,
+      targetWidth,
+      targetHeight
+    )
+  }
 
   const refData = refCtx.getImageData(0, 0, targetWidth, targetHeight)
   const baseData = ctx.getImageData(targetX, targetY, targetWidth, targetHeight)
