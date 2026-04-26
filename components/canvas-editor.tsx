@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Slider } from "@/components/ui/slider"
-import { Pencil, Eraser, Square, Circle, Undo, Redo, Trash2 } from "lucide-react"
+import { Pencil, Eraser, Square, Circle, Undo, Redo, Trash2, HelpCircle, X } from "lucide-react"
 import type { MaskData } from "@/types"
 
 interface CanvasEditorProps {
@@ -43,6 +43,8 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
   const [cursorOnCanvas, setCursorOnCanvas] = useState(false)
   // Shape tool live preview — tracks cursor position for SVG overlay
   const [shapeCursorPos, setShapeCursorPos] = useState<{ x: number; y: number } | null>(null)
+  // Keyboard shortcut help overlay
+  const [showHelp, setShowHelp] = useState(false)
 
   const redrawCanvas = useCallback(() => {
     const canvas = canvasRef.current
@@ -312,21 +314,29 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
               setShapeFill((v) => !v)
             }
             break
+          case "?":
           case "Escape":
-            // Cancel any in-progress shape drawing (restores previous state from history)
-            if (isDrawingRef.current && shapeStartRef.current) {
+            // ? opens/toggles help overlay; Escape closes it or cancels in-progress shape
+            if (e.key === "?") {
               e.preventDefault()
-              isDrawingRef.current = false
-              setIsDrawing(false)
-              shapeStartRef.current = null
-              setShapePreview(null)
-              // Restore previous mask state from history
-              if (historyIndex >= 0 && history[historyIndex]) {
-                const maskCtx = maskCanvasRef.current?.getContext("2d")
-                if (maskCtx) {
-                  maskCtx.putImageData(history[historyIndex], 0, 0)
-                  redrawCanvas()
-                  updateMask()
+              setShowHelp((v) => !v)
+            } else {
+              if (showHelp) {
+                setShowHelp(false)
+              } else if (isDrawingRef.current && shapeStartRef.current) {
+                e.preventDefault()
+                isDrawingRef.current = false
+                setIsDrawing(false)
+                shapeStartRef.current = null
+                setShapePreview(null)
+                // Restore previous mask state from history
+                if (historyIndex >= 0 && history[historyIndex]) {
+                  const maskCtx = maskCanvasRef.current?.getContext("2d")
+                  if (maskCtx) {
+                    maskCtx.putImageData(history[historyIndex], 0, 0)
+                    redrawCanvas()
+                    updateMask()
+                  }
                 }
               }
             }
@@ -632,6 +642,9 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
             <Button variant="outline" size="sm" onClick={clearMask}>
               <Trash2 className="h-4 w-4" />
             </Button>
+            <Button variant="outline" size="sm" onClick={() => setShowHelp(true)}>
+              <HelpCircle className="h-4 w-4" />
+            </Button>
           </div>
         </div>
 
@@ -866,6 +879,65 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
           </span>
         </div>
       </div>
+
+      {/* Keyboard shortcut help overlay */}
+      {showHelp && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowHelp(false)}>
+          <div
+            className="relative max-h-[80%] w-[90%] max-w-sm space-y-4 overflow-auto rounded-xl border bg-background p-6 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <h4 className="font-semibold">Keyboard Shortcuts</h4>
+              <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => setShowHelp(false)}>
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+
+            <div className="space-y-3 text-sm">
+              <div>
+                <p className="mb-1 font-medium text-muted-foreground">Tools</p>
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2"><kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs font-mono font-medium">Tab</kbd><span className="text-muted-foreground">Cycle tools (Brush → Eraser → Rectangle → Circle)</span></div>
+                  <div className="flex items-center gap-2"><kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs font-mono font-medium">B / 1</kbd><span className="text-muted-foreground">Brush tool</span></div>
+                  <div className="flex items-center gap-2"><kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs font-mono font-medium">E / 2</kbd><span className="text-muted-foreground">Eraser tool</span></div>
+                  <div className="flex items-center gap-2"><kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs font-mono font-medium">R</kbd><span className="text-muted-foreground">Rectangle tool</span></div>
+                  <div className="flex items-center gap-2"><kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs font-mono font-medium">C</kbd><span className="text-muted-foreground">Circle tool</span></div>
+                </div>
+              </div>
+
+              <div>
+                <p className="mb-1 font-medium text-muted-foreground">Brush Settings</p>
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2"><kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs font-mono font-medium">[</kbd><span className="text-muted-foreground">Decrease brush size by 5px</span></div>
+                  <div className="flex items-center gap-2"><kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs font-mono font-medium">]</kbd><span className="text-muted-foreground">Increase brush size by 5px</span></div>
+                  <div className="flex items-center gap-2"><kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs font-mono font-medium">Shift+[</kbd><span className="text-muted-foreground">Decrease feather by 2px</span></div>
+                  <div className="flex items-center gap-2"><kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs font-mono font-medium">Shift+]</kbd><span className="text-muted-foreground">Increase feather by 2px</span></div>
+                  <div className="flex items-center gap-2"><kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs font-mono font-medium">F</kbd><span className="text-muted-foreground">Toggle Fill / Stroke mode</span></div>
+                  <div className="flex items-center gap-2"><kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs font-mono font-medium">Alt+F</kbd><span className="text-muted-foreground">Toggle feather on/off (0 ↔ 8)</span></div>
+                </div>
+              </div>
+
+              <div>
+                <p className="mb-1 font-medium text-muted-foreground">History</p>
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2"><kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs font-mono font-medium">Ctrl+Z</kbd><span className="text-muted-foreground">Undo</span></div>
+                  <div className="flex items-center gap-2"><kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs font-mono font-medium">Ctrl+Y</kbd><span className="text-muted-foreground">Redo</span></div>
+                </div>
+              </div>
+
+              <div>
+                <p className="mb-1 font-medium text-muted-foreground">Canvas</p>
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2"><kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs font-mono font-medium">Esc</kbd><span className="text-muted-foreground">Cancel current shape</span></div>
+                </div>
+              </div>
+            </div>
+
+            <p className="text-center text-xs text-muted-foreground">Click outside or press Esc to close</p>
+          </div>
+        </div>
+      )}
     </Card>
   )
 }
