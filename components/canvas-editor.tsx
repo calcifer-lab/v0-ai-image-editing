@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Slider } from "@/components/ui/slider"
-import { Pencil, Eraser, Square, Circle, Undo, Redo, Trash2, HelpCircle, X } from "lucide-react"
+import { Pencil, Eraser, Square, Circle, Undo, Redo, Trash2, HelpCircle, X, ZoomIn, ZoomOut, Maximize2 } from "lucide-react"
 import type { MaskData } from "@/types"
 
 interface CanvasEditorProps {
@@ -21,6 +21,9 @@ const MAX_CANVAS_WIDTH = 800
 const MAX_CANVAS_HEIGHT = 600
 const MASK_OVERLAY_COLOR = { r: 59, g: 130, b: 246 } // Primary blue
 const MASK_OVERLAY_ALPHA = 128
+const MIN_ZOOM = 0.5
+const MAX_ZOOM = 4
+const ZOOM_STEP = 0.25
 
 export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }: CanvasEditorProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -46,6 +49,11 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
   const [shapeCursorPos, setShapeCursorPos] = useState<{ x: number; y: number } | null>(null)
   // Keyboard shortcut help overlay
   const [showHelp, setShowHelp] = useState(false)
+  // Zoom and pan state for canvas navigation
+  const [zoom, setZoom] = useState(1)
+  const [pan, setPan] = useState({ x: 0, y: 0 })
+  const [isPanning, setIsPanning] = useState(false)
+  const panStart = useRef({ x: 0, y: 0, panX: 0, panY: 0 })
 
   const redrawCanvas = useCallback(() => {
     const canvas = canvasRef.current
@@ -144,6 +152,50 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
     const timer = setTimeout(() => setSizeToast(null), 800)
     return () => clearTimeout(timer)
   }, [sizeToast])
+
+  // Mouse wheel zoom on the canvas container (Ctrl+Wheel)
+  useEffect(() => {
+    const container = document.getElementById("canvas-editor-container")
+    if (!container) return
+    const handleWheel = (e: WheelEvent) => {
+      // Only handle when Ctrl is held (Ctrl+Wheel = zoom)
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault()
+        const delta = e.deltaY > 0 ? -ZOOM_STEP : ZOOM_STEP
+        setZoom((z) => Math.max(MIN_ZOOM, Math.min(z + delta, MAX_ZOOM)))
+      } else {
+        // Pan with regular scroll
+        setPan((p) => ({ x: p.x - e.deltaX, y: p.y - e.deltaY }))
+      }
+    }
+    container.addEventListener("wheel", handleWheel, { passive: false })
+    return () => container.removeEventListener("wheel", handleWheel)
+  }, [])
+
+  // Pan with middle mouse or space+drag
+  const handleCanvasMouseDown = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      // Middle mouse button or space+left click = start panning
+      if (e.button === 1) {
+        e.preventDefault()
+        setIsPanning(true)
+        panStart.current = { x: e.clientX, y: e.clientY, panX: pan.x, panY: pan.y }
+      }
+    },
+    [pan]
+  )
+  const handleCanvasMouseMove = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      if (!isPanning) return
+      const dx = e.clientX - panStart.current.x
+      const dy = e.clientY - panStart.current.y
+      setPan({ x: panStart.current.panX + dx, y: panStart.current.panY + dy })
+    },
+    [isPanning]
+  )
+  const handleCanvasMouseUp = useCallback(() => {
+    setIsPanning(false)
+  }, [])
 
   const saveToHistory = useCallback(
     (canvas: HTMLCanvasElement) => {
@@ -342,6 +394,21 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
               setShapeFill((v) => !v)
             }
             break
+          case "+":
+          case "=":
+            e.preventDefault()
+            setZoom((z) => Math.min(z + ZOOM_STEP, MAX_ZOOM))
+            break
+          case "-":
+          case "_":
+            e.preventDefault()
+            setZoom((z) => Math.max(z - ZOOM_STEP, MIN_ZOOM))
+            break
+          case "0":
+            e.preventDefault()
+            setZoom(1)
+            setPan({ x: 0, y: 0 })
+            break
           case "?":
           case "Escape":
             // ? opens/toggles help overlay; Escape closes it or cancels in-progress shape
@@ -386,6 +453,22 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
     window.addEventListener("keydown", handleKeyDown)
     return () => window.removeEventListener("keydown", handleKeyDown)
   }, [undo, redo, history, historyIndex, redrawCanvas, updateMask])
+
+  // Zoom controls
+  const handleZoomIn = useCallback(() => {
+    setZoom((z) => Math.min(z + ZOOM_STEP, MAX_ZOOM))
+  }, [])
+  const handleZoomOut = useCallback(() => {
+    setZoom((z) => Math.max(z - ZOOM_STEP, MIN_ZOOM))
+  }, [])
+  const handleZoomReset = useCallback(() => {
+    setZoom(1)
+    setPan({ x: 0, y: 0 })
+  }, [])
+  const handleFitZoom = useCallback(() => {
+    setZoom(1)
+    setPan({ x: 0, y: 0 })
+  }, [])
 
   const clearMask = useCallback(() => {
     const maskCanvas = maskCanvasRef.current
@@ -670,6 +753,20 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
             <Button variant="outline" size="sm" onClick={clearMask}>
               <Trash2 className="h-4 w-4" />
             </Button>
+            <div className="mx-1 h-6 w-px bg-border" />
+            <Button variant="outline" size="sm" onClick={handleZoomOut} disabled={zoom <= MIN_ZOOM} title="Zoom out (-)">
+              <ZoomOut className="h-4 w-4" />
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleZoomReset} className="min-w-[3.5rem] text-xs" title="Reset zoom (0)">
+              {Math.round(zoom * 100)}%
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleZoomIn} disabled={zoom >= MAX_ZOOM} title="Zoom in (+)">
+              <ZoomIn className="h-4 w-4" />
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleFitZoom} title="Fit to view (0)">
+              <Maximize2 className="h-4 w-4" />
+            </Button>
+            <div className="mx-1 h-6 w-px bg-border" />
             <Button variant="outline" size="sm" onClick={() => setShowHelp(true)}>
               <HelpCircle className="h-4 w-4" />
             </Button>
@@ -736,7 +833,21 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
       </div>
 
       <div className="flex items-center justify-center p-6">
-        <div className="relative">
+        <div
+          id="canvas-editor-container"
+          className="relative overflow-hidden rounded-lg border shadow-lg"
+          style={{
+            maxWidth: "100%",
+            maxHeight: "min(400px, 50vh)",
+            cursor: isPanning ? "grabbing" : undefined,
+            transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+            transformOrigin: "center center",
+          }}
+          onMouseDown={handleCanvasMouseDown}
+          onMouseMove={handleCanvasMouseMove}
+          onMouseUp={handleCanvasMouseUp}
+          onMouseLeave={handleCanvasMouseUp}
+        >
           <canvas
             ref={canvasRef}
             onMouseDown={startDrawing}
@@ -779,8 +890,7 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
                 }
               }
             }}
-            className="cursor-crosshair rounded-lg border shadow-lg"
-            style={{ maxWidth: "100%", maxHeight: "min(400px, 50vh)", height: "auto" }}
+            className="cursor-crosshair"
           />
           <canvas ref={maskCanvasRef} className="hidden" />
 
