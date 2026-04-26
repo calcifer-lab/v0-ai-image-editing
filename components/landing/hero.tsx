@@ -1,6 +1,18 @@
 "use client"
 
 import Link from "next/link"
+import dynamic from "next/dynamic"
+
+const HeroVideo = dynamic(() => import("@/components/HeroVideo").then((m) => m.HeroVideo), {
+  ssr: false,
+  loading: () => (
+    <div className="hero-demo-placeholder" aria-label="Loading demo...">
+      <div className="hero-demo-inner">
+        <span className="lang-en">Loading demo...</span>
+      </div>
+    </div>
+  ),
+})
 
 export default function Hero() {
   return (
@@ -38,18 +50,8 @@ export default function Hero() {
         </div>
 
         <div className="hero-media">
-          {/* Hero visual: 7-8s animated demo loop — placeholder until designed */}
-          <div className="hero-demo-placeholder" aria-label="Animated demo: coffee shop scene with bicycle">
-            <div className="hero-demo-inner">
-              <span className="lang-en">7–8s animated demo</span>
-              <span className="lang-zh">7–8秒动态演示</span>
-              <p className="hero-demo-caption lang-en">
-                Coffee shop illustration + bicycle → reference photo → style-transferred result
-              </p>
-              <p className="hero-demo-caption lang-zh">
-                咖啡馆插画 + 自行车 → 参考图 → 风格转换后结果
-              </p>
-            </div>
+          <div className="mt-12 max-w-4xl mx-auto">
+            <HeroVideo />
           </div>
         </div>
       </div>
