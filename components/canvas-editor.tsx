@@ -287,6 +287,7 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
             setTool("circle")
             break
           case "[":
+          case "{":
             e.preventDefault()
             if (e.shiftKey) {
               setFeather((f) => Math.max(0, f - 2))
@@ -295,6 +296,7 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
             }
             break
           case "]":
+          case "}":
             e.preventDefault()
             if (e.shiftKey) {
               setFeather((f) => Math.min(20, f + 2))
