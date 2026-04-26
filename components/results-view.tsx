@@ -201,6 +201,7 @@ function SliderCompareView({
         <div
           ref={containerRef}
           className="relative overflow-hidden rounded-lg border"
+          style={{ maxHeight: "70vh" }}
           onMouseMove={handleMouseMove}
           onMouseLeave={() => {}}
         >
@@ -208,7 +209,7 @@ function SliderCompareView({
           <img
             src={resultImage || "/placeholder.svg"}
             alt="Result"
-            className="block w-full"
+            className="block w-full h-full object-contain"
             crossOrigin="anonymous"
             draggable={false}
           />
@@ -221,11 +222,7 @@ function SliderCompareView({
             <img
               src={originalImage || "/placeholder.svg"}
               alt="Original"
-              className="block h-full object-cover"
-              style={{
-                width: containerWidth > 0 ? containerWidth : "100%",
-                maxWidth: "none",
-              }}
+              className="h-full w-full object-contain"
               crossOrigin="anonymous"
               draggable={false}
             />
