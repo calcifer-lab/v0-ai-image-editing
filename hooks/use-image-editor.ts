@@ -10,6 +10,7 @@ import type {
   DEFAULT_EDIT_PARAMS,
 } from "@/types"
 import type { ElementCropperRef } from "@/components/element-cropper"
+import type { CanvasEditorRef } from "@/components/canvas-editor"
 import {
   resizeToAspectRatio,
   compositeImages,
@@ -61,6 +62,7 @@ export interface UseImageEditorReturn {
   setMask: (mask: MaskData | null) => void
   setElementCrop: (crop: CropRegion | null) => void
   getElementCropperRef: () => ElementCropperRef | null
+  setCanvasEditorRef: (ref: CanvasEditorRef | null) => void
   handleImagesUploaded: (elementImg: string, baseImg: string) => Promise<void>
   handleProcess: () => Promise<void>
   handleReset: () => void
@@ -358,6 +360,7 @@ export function useImageEditor(): UseImageEditorReturn {
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [elementCrop, setElementCrop] = useState<CropRegion | null>(null)
   const elementCropperRef = useRef<ElementCropperRef | null>(null)
+  const canvasEditorRef = useRef<CanvasEditorRef | null>(null)
 
   // Background removal result — populated after user previews cutout in Element Cropper
   // Stores the post-RMBG cutout so user can review and refine before compositing
@@ -535,13 +538,27 @@ export function useImageEditor(): UseImageEditorReturn {
     // 裁剪参考图片 (10%)
     updateProgress("Preparing reference image...", 10)
     const hasExplicitCrop = !!(elementCrop && elementCrop.width > 0 && elementCrop.height > 0)
-    const cropperRef = elementCropperRef.current
-    const maskCanvasForCrop = cropperRef?.maskCanvas ?? undefined
+    // CanvasEditor's brush mask (the circular/freeform strokes drawn by user)
+    const canvasEditorMaskCanvas = canvasEditorRef.current?.maskCanvas ?? undefined
+    // Use elementCrop if explicitly set via ElementCropper, otherwise use CanvasEditor's mask coordinates
+    const cropRegion = elementCrop ?? (mask && mask.coordinates ? { x: mask.coordinates.x, y: mask.coordinates.y, width: mask.coordinates.width, height: mask.coordinates.height, imageWidth: mask.coordinates.width, imageHeight: mask.coordinates.height } : null)
 
     let processedReference = images.elementImage
-    if (hasExplicitCrop && elementCrop) {
+    if (canvasEditorMaskCanvas) {
       try {
-        processedReference = await cropImageToDataUrl(images.elementImage, elementCrop, maskCanvasForCrop)
+        // Crop element image using CanvasEditor's brush mask to preserve circular/freeform shape
+        processedReference = await cropImageToDataUrl(
+          images.elementImage,
+          cropRegion || { x: 0, y: 0, width: images.elementImage ? 9999 : 0, height: images.elementImage ? 9999 : 0, imageWidth: 9999, imageHeight: 9999 },
+          canvasEditorMaskCanvas
+        )
+        console.log("[AI Editor] Applied CanvasEditor brush mask to reference image")
+      } catch (cropError) {
+        console.warn("[AI Editor] Failed to crop with brush mask, using original", cropError)
+      }
+    } else if (hasExplicitCrop && elementCrop) {
+      try {
+        processedReference = await cropImageToDataUrl(images.elementImage, elementCrop, undefined)
         console.log("[AI Editor] Applied user crop to reference image")
       } catch (cropError) {
         console.warn("[AI Editor] Failed to crop reference image, using original", cropError)
@@ -577,7 +594,7 @@ export function useImageEditor(): UseImageEditorReturn {
       processedReference,
       mask.dataUrl,
       mask.coordinates,
-      maskCanvasForCrop
+      canvasEditorMaskCanvas
     )
 
     console.log("[AI Editor] Composite complete, starting AI fusion...")
@@ -878,6 +895,8 @@ export function useImageEditor(): UseImageEditorReturn {
     setParams,
     setMask: handleMaskCreated,
     setElementCrop,
+    getElementCropperRef: () => elementCropperRef.current,
+    setCanvasEditorRef: (ref: CanvasEditorRef | null) => { canvasEditorRef.current = ref },
     handleImagesUploaded,
     handleProcess,
     handleReset,

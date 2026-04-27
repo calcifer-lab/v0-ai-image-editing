@@ -1,9 +1,10 @@
 "use client"
 
 import type React from "react"
+import { useRef, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import ImageUploadSection from "@/components/image-upload-section"
-import CanvasEditor from "@/components/canvas-editor"
+import CanvasEditor, { type CanvasEditorRef } from "@/components/canvas-editor"
 import ControlPanel from "@/components/control-panel"
 import ResultsView from "@/components/results-view"
 import ElementCropper from "@/components/element-cropper"
@@ -31,10 +32,18 @@ export default function ImageEditor() {
     setParams,
     setMask,
     setElementCrop,
+    setCanvasEditorRef,
     handleImagesUploaded,
     handleProcess,
     handleReset,
   } = useImageEditor()
+
+  const canvasEditorRef = useRef<CanvasEditorRef | null>(null)
+
+  // Register canvasEditorRef so the hook's processCompositeMode can access CanvasEditor's brush mask
+  useEffect(() => {
+    setCanvasEditorRef(canvasEditorRef.current)
+  }, [setCanvasEditorRef])
 
   return (
     <div className="flex h-screen flex-col">
@@ -53,6 +62,7 @@ export default function ImageEditor() {
             <div className="min-w-0 flex-1 overflow-y-auto">
               <div className="grid gap-6 lg:grid-cols-2">
                 <CanvasEditor
+                  ref={canvasEditorRef}
                   elementImage={images.elementImage!}
                   baseImage={images.baseImage!}
                   onMaskCreated={setMask}

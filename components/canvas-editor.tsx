@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useRef, useEffect, useState, useCallback } from "react"
+import { useRef, useEffect, useState, useCallback, forwardRef, useImperativeHandle } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -10,6 +10,10 @@ import { Pencil, Eraser, Square, Circle, Undo, Redo, Trash2 } from "lucide-react
 // Added Help overlay UI components
 
 import type { MaskData } from "@/types"
+
+export interface CanvasEditorRef {
+  maskCanvas: HTMLCanvasElement | null
+}
 
 interface CanvasEditorProps {
   elementImage: string
@@ -27,9 +31,13 @@ const MIN_ZOOM = 0.5
 const MAX_ZOOM = 4
 const ZOOM_STEP = 0.25
 
-export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }: CanvasEditorProps) {
+export default forwardRef(function CanvasEditor({ elementImage, baseImage, onMaskCreated }: CanvasEditorProps, ref) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const maskCanvasRef = useRef<HTMLCanvasElement>(null)
+
+  useImperativeHandle(ref, () => ({
+    maskCanvas: maskCanvasRef.current,
+  }))
   const [isDrawing, setIsDrawing] = useState(false)
   const [tool, setTool] = useState<Tool>("brush")
   const [brushSize, setBrushSize] = useState(80)
@@ -945,4 +953,4 @@ const getCanvasPoint = useCallback(
 
     </Card>
   )
-}
+})

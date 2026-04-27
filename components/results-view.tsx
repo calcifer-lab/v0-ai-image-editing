@@ -201,33 +201,33 @@ function SliderCompareView({
         <div
           ref={containerRef}
           className="relative overflow-hidden rounded-lg border"
-          style={{ width: "100%", height: "100%", maxHeight: "70vh" }}
+          style={{ width: "100%", minHeight: "300px", maxHeight: "70vh" }}
           onMouseMove={handleMouseMove}
           onMouseLeave={() => {}}
         >
-          {/* Both images are position absolute, same size - slider only clips, doesn't scale */}
-          {/* Result image (bottom layer, always full width) */}
+          {/* Both images use position absolute with fixed pixel dimensions so slider only clips, never scales */}
           <img
             src={resultImage || "/placeholder.svg"}
             alt="Result"
-            className="pointer-events-none absolute inset-0 block h-full w-full object-contain"
+            className="pointer-events-none absolute object-contain"
+            style={{ top: 0, left: 0, width: containerWidth || "100%", height: "100%" }}
             crossOrigin="anonymous"
             draggable={false}
           />
-
-          {/* Original image (top layer, clipped by slider position) */}
-          <div
-            className="pointer-events-none absolute inset-0 overflow-hidden"
-            style={{ width: `${sliderPosition}%` }}
-          >
-            <img
-              src={originalImage || "/placeholder.svg"}
-              alt="Original"
-              className="absolute inset-0 h-full w-full object-contain"
-              crossOrigin="anonymous"
-              draggable={false}
-            />
-          </div>
+          <img
+            src={originalImage || "/placeholder.svg"}
+            alt="Original"
+            className="pointer-events-none absolute object-contain"
+            style={{
+              top: 0,
+              left: 0,
+              width: containerWidth || "100%",
+              height: "100%",
+              clipPath: `inset(0 ${100 - sliderPosition}% 0 0)`,
+            }}
+            crossOrigin="anonymous"
+            draggable={false}
+          />
 
           {/* Slider divider line */}
           <div
