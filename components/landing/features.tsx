@@ -65,8 +65,8 @@ const AUDIENCE_CARDS = [
       "Teaching visuals must be factually correct — but AI-generated anatomy, machinery, molecular models, and maps often fail classroom scrutiny. Compose lets you pull the correct element from an authoritative reference and blend it in, so the layout stays and what students learn is right.",
     bodyZh:
       "教学配图的底线是知识不能错——AI 画的人体解剖、机械结构、分子模型、地图比例往往经不起课堂审视。用 Compose 从权威参考里取出正确的那部分，合成进你的插图，版面不变，学生学到的就是对的。",
-    beforeLabelEn: "Incorrect anatomy",
-    beforeLabelZh: "解剖结构错误",
+    beforeLabelEn: "Architectural fidelity",
+    beforeLabelZh: "复杂空间结构",
     ctaEn: "Try on your teaching visual",
     ctaZh: "试试你的课件配图",
     beforeImage: "/homepage_demo_cards/card_4_pavilion/before.png",
