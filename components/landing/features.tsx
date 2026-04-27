@@ -197,24 +197,34 @@ export default function Features() {
           user-select: none;
         }
 
-        .ba-after,
-        .ba-before {
+        .ba-after {
           position: absolute;
-          inset: 0;
+          top: 0;
+          left: 0;
           width: 100%;
           height: 100%;
           object-fit: cover;
           display: block;
           pointer-events: none;
+          z-index: 1;
         }
 
         .ba-before {
-          will-change: clip-path;
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          display: block;
+          pointer-events: none;
+          z-index: 2;
         }
 
         .ba-range {
           position: absolute;
-          inset: 0;
+          top: 0;
+          left: 0;
           width: 100%;
           height: 100%;
           opacity: 0;
@@ -231,7 +241,7 @@ export default function Features() {
           background: white;
           transform: translateX(-50%);
           pointer-events: none;
-          z-index: 5;
+          z-index: 8;
           box-shadow: 0 0 8px rgba(0,0,0,0.3);
         }
 
