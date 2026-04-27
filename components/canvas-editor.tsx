@@ -763,10 +763,10 @@ const getCanvasPoint = useCallback(
       <div className="flex items-center justify-center p-4">
         <div
           id="canvas-editor-container"
-          className="relative rounded-lg border shadow-lg"
+          className="relative rounded-lg border shadow-lg overflow-auto"
           style={{
-            width: canvasSize.width,
-            height: canvasSize.height,
+            maxWidth: "100%",
+            maxHeight: "60vh",
             cursor: isPanning ? "grabbing" : isSpacePanning ? "grab" : undefined,
             transform: `scale(${zoom}) translate(${pan.x / zoom}px, ${pan.y / zoom}px)`,
             transformOrigin: "center center",
