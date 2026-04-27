@@ -1,73 +1,126 @@
 "use client"
 
+import { useState } from "react"
 import Link from "next/link"
 
 const AUDIENCE_CARDS = [
   {
-    // Publication-Ready Creation
+    // Card 1: Structural fidelity — complex mechanical structure
     icon: "✦",
-    titleEn: "Publication-Ready Creation",
-    titleZh: "出版与公开发布",
-    subtitleEn: "Submitting, shipping, posting, sharing — all publication now.",
-    subtitleZh: "投稿、上架、发表、分享——都是出版。",
+    titleEn: "Structural fidelity",
+    titleZh: "复杂机械结构",
+    subtitleEn: "Prop consistency for vehicle renders.",
+    subtitleZh: "道具一致性",
     bodyEn:
-      "The moment your work goes public — submission, publishing, release — it's in publication territory. AI's broken details get amplified under public scrutiny. Compose lets you swap out what won't pass review with a compliant element, so the whole image holds up to editors, readers, and platforms alike.",
+      "Vehicles, machinery, and mechanical parts are unforgiving — one wrong wheel size or proportions breaks the whole render. Compose patches just the broken geometry, leaving the rest untouched.",
     bodyZh:
-      "只要你的作品要公开发布——投稿、上架、发表——它就进入了出版场景。AI 生成的细节崩坏会在公开后被放大。用 Compose 把不能过审的那一处换成合规元素，让整张图经得起编辑、读者、平台的三重审视。",
-    beforeLabelEn: "Needs a fix before release",
-    beforeLabelZh: "发布前需修正",
-    ctaEn: "Try on your release draft",
-    ctaZh: "试试你的发布稿",
+      "车辆、机械、零部件要求严苛——轮子尺寸或比例出错，整张图就废了。Compose 只修崩坏的那处结构，其余分毫不动。",
+    beforeLabelEn: "Before — structural inconsistency",
+    beforeLabelZh: "修复前：结构不一致",
+    ctaEn: "Try on your render",
+    ctaZh: "试试你的渲染图",
+    beforeImage: "/homepage_demo_cards/card_1_grill/before.png",
+    afterImage: "/homepage_demo_cards/card_1_grill/after.png",
   },
   {
-    // Picture Books & Children's Illustration
+    // Card 2: Prop consistency — wheels
     icon: "✦",
-    titleEn: "Picture Books & Children's Illustration",
-    titleZh: "绘本与儿童插图",
-    subtitleEn: "Spread intact. Fix only the one thing.",
-    subtitleZh: "跨页构图不变，只修那一处。",
+    titleEn: "Prop consistency",
+    titleZh: "道具一致性",
+    subtitleEn: "Every wheel should be the same.",
+    subtitleZh: "每个轮子都一样。",
     bodyEn:
-      "AI-generated children's illustrations often slip in the details — exposed midriffs, wrong finger counts, props that break picture-book conventions. Compose lets you pull the right element from a compliant reference and drop it in, without touching the rest of the spread.",
+      "When AI generates multiple instances of the same object — wheels on a car, books on a shelf, windows in a building — it often adds inconsistency. Compose fixes just the mismatched items without regenerating the whole image.",
     bodyZh:
-      "AI 生成的儿童插画常常在细节上踩线——角色露肚脐、手指数量不对、道具造型违反儿童读物规范。用 Compose 从合规的参考元素里取出对的那一处，合成进去，整页画面的笔触和构图分毫不动。",
-    beforeLabelEn: "Exposed midriff",
-    beforeLabelZh: "角色露肚脐",
-    ctaEn: "Try on your picture book",
-    ctaZh: "试试你的绘本稿",
+      "AI 生成同类物件的多个实例时——车轮、书架上的书、建筑窗户——常常出现不一致。Compose 只修不匹配的那几处，不用重生成整张图。",
+    beforeLabelEn: "Before — mismatched wheels",
+    beforeLabelZh: "修复前：轮子不一致",
+    ctaEn: "Try on your scene",
+    ctaZh: "试试你的场景图",
+    beforeImage: "/homepage_demo_cards/card_2_wheels/before.png",
+    afterImage: "/homepage_demo_cards/card_2_wheels/after.png",
   },
   {
-    // Comics & Motion Comics
+    // Card 3: Character detail — phoenix
     icon: "✦",
-    titleEn: "Comics & Motion Comics",
-    titleZh: "漫画与动态漫",
-    subtitleEn: "Panel layout stays. Fix just the detail that broke.",
-    subtitleZh: "分镜不重排，只换那一格里的那一处。",
+    titleEn: "Character detail",
+    titleZh: "角色身份细节",
+    subtitleEn: "Fix the identity, keep the style.",
+    subtitleZh: "换身份，保留画风。",
     bodyEn:
-      "Comic creators know the pain of inconsistent props across panels, or a single panel where AI got the weapon, the pose, or the expression wrong. Compose lets you pull the right version from another panel or reference and slot it in — the character and art style stay continuous.",
+      "AI-generated characters often lose consistency across scenes — the same phoenix looks different in every shot. Compose lets you pull a reference and patch in the right character detail while preserving the overall art style.",
     bodyZh:
-      "漫画创作最怕角色道具在分镜之间前后不一致，或者 AI 把某一格的道具、武器、表情画崩了。用 Compose 从另一格或参考图里取出对的部分，无缝合成到崩坏的那一格，角色和画风保持连贯。",
-    beforeLabelEn: "Broken prop geometry",
-    beforeLabelZh: "道具结构崩坏",
-    ctaEn: "Try on your comic panel",
-    ctaZh: "试试你的漫画分镜",
+      "AI 生成的角色在各个场景间常常失去一致性——同一只凤凰，每一帧看起来都不同。Compose 让你从参考图取元素，合成正确的角色细节，同时保留整体画风。",
+    beforeLabelEn: "Before — character inconsistency",
+    beforeLabelZh: "修复前：角色不一致",
+    ctaEn: "Try on your character",
+    ctaZh: "试试你的角色图",
+    beforeImage: "/homepage_demo_cards/card_3_phoenix/before.png",
+    afterImage: "/homepage_demo_cards/card_3_phoenix/after.png",
   },
   {
-    // Educational Visuals
+    // Card 4: Architectural fidelity — pavilion
     icon: "✦",
-    titleEn: "Educational Visuals",
-    titleZh: "教学与课件配图",
-    subtitleEn: "Keep the image. Make the knowledge right.",
-    subtitleZh: "画面保留，只让知识对。",
+    titleEn: "Architectural fidelity",
+    titleZh: "复杂空间结构",
+    subtitleEn: "Structure the space, not the whole image.",
+    subtitleZh: "重构空间，不动全图。",
     bodyEn:
-      "Teaching visuals must be factually correct — but AI-generated anatomy, machinery, molecular models, and maps often fail classroom scrutiny. Compose lets you pull the correct element from an authoritative reference and blend it in, so the layout stays and what students learn is right.",
+      "Architectural renders and spatial scenes have complex depth and lighting that AI struggles to maintain consistently. Compose patches only the broken structural element, preserving all the lighting, perspective, and surrounding context.",
     bodyZh:
-      "教学配图的底线是知识不能错——AI 画的人体解剖、机械结构、分子模型、地图比例往往经不起课堂审视。用 Compose 从权威参考里取出正确的那部分，合成进你的插图，版面不变，学生学到的就是对的。",
-    beforeLabelEn: "Incorrect anatomy",
-    beforeLabelZh: "解剖结构错误",
-    ctaEn: "Try on your teaching visual",
-    ctaZh: "试试你的课件配图",
+      "建筑渲染和空间场景有复杂的深度和光照，AI 很难保持一致。Compose 只修崩坏的结构元素，保留所有光照、透视和周围环境。",
+    beforeLabelEn: "Before — structural collapse",
+    beforeLabelZh: "修复前：结构崩坏",
+    ctaEn: "Try on your architectural render",
+    ctaZh: "试试你的建筑渲染图",
+    beforeImage: "/homepage_demo_cards/card_4_pavilion/before.png",
+    afterImage: "/homepage_demo_cards/card_4_pavilion/after.png",
   },
 ]
+
+function BeforeAfterSlider({
+  before,
+  after,
+  alt,
+}: {
+  before: string
+  after: string
+  alt: string
+}) {
+  const [sliderPos, setSliderPos] = useState(50)
+
+  return (
+    <div className="ba-slider" aria-label={alt}>
+      <img src={after} alt={`${alt} — after`} className="ba-after" draggable={false} />
+      <img
+        src={before}
+        alt={`${alt} — before`}
+        className="ba-before"
+        style={{ clipPath: `inset(0 ${100 - sliderPos}% 0 0)` }}
+        draggable={false}
+      />
+      <input
+        type="range"
+        min={0}
+        max={100}
+        value={sliderPos}
+        onChange={(e) => setSliderPos(Number(e.target.value))}
+        className="ba-range"
+        aria-label="Comparison slider"
+      />
+      <div className="ba-divider" style={{ left: `${sliderPos}%` }}>
+        <div className="ba-handle" aria-hidden="true">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+            <circle cx="10" cy="10" r="9" fill="white" stroke="#d1d5db" strokeWidth="1.5" />
+            <path d="M7 10L5 10M15 10L13 10M10 7L10 5M10 15L10 13" stroke="#6b7280" strokeWidth="1.5" strokeLinecap="round" />
+          </svg>
+        </div>
+      </div>
+      <div className="ba-label ba-label-left" aria-hidden="true">Before</div>
+      <div className="ba-label ba-label-right" aria-hidden="true">After</div>
+    </div>
+  )
+}
 
 export default function Features() {
   return (
@@ -75,7 +128,7 @@ export default function Features() {
       <div className="site-container">
         <div className="section-head">
           <span className="eyebrow">
-            <span className="lang-en">Who it's for</span>
+            <span className="lang-en">Who it&apos;s for</span>
             <span className="lang-zh">适合谁用</span>
           </span>
           <h2 className="section-title">
@@ -87,35 +140,130 @@ export default function Features() {
         <div className="cards-grid audience-grid">
           {AUDIENCE_CARDS.map((card) => (
             <article key={card.titleEn} className="landing-card audience-card">
-              <div className="audience-icon" aria-hidden="true">
-                {card.icon}
+              <div className="audience-slider-wrapper">
+                <BeforeAfterSlider
+                  before={card.beforeImage}
+                  after={card.afterImage}
+                  alt={`${card.titleEn} — ${card.titleZh}`}
+                />
               </div>
-              <h3 className="audience-title">
-                <span className="lang-en">{card.titleEn}</span>
-                <span className="lang-zh">{card.titleZh}</span>
-              </h3>
-              <p className="audience-subtitle">
-                <span className="lang-en">{card.subtitleEn}</span>
-                <span className="lang-zh">{card.subtitleZh}</span>
-              </p>
-              <p className="audience-copy">
-                <span className="lang-en">{card.bodyEn}</span>
-                <span className="lang-zh">{card.bodyZh}</span>
-              </p>
-              <div className="audience-before-tag">
-                <span className="lang-en">{card.beforeLabelEn}</span>
-                <span className="lang-zh">{card.beforeLabelZh}</span>
-              </div>
-              <div className="audience-actions">
-                <Link href="/editor" className="button button-primary button-sm">
-                  <span className="lang-en">{card.ctaEn}</span>
-                  <span className="lang-zh">{card.ctaZh}</span>
-                </Link>
+              <div className="audience-content">
+                <div className="audience-icon" aria-hidden="true">
+                  {card.icon}
+                </div>
+                <h3 className="audience-title">
+                  <span className="lang-en">{card.titleEn}</span>
+                  <span className="lang-zh">{card.titleZh}</span>
+                </h3>
+                <p className="audience-subtitle">
+                  <span className="lang-en">{card.subtitleEn}</span>
+                  <span className="lang-zh">{card.subtitleZh}</span>
+                </p>
+                <p className="audience-copy">
+                  <span className="lang-en">{card.bodyEn}</span>
+                  <span className="lang-zh">{card.bodyZh}</span>
+                </p>
+                <div className="audience-before-tag">
+                  <span className="lang-en">{card.beforeLabelEn}</span>
+                  <span className="lang-zh">{card.beforeLabelZh}</span>
+                </div>
+                <div className="audience-actions">
+                  <Link href="/editor" className="button button-primary button-sm">
+                    <span className="lang-en">{card.ctaEn}</span>
+                    <span className="lang-zh">{card.ctaZh}</span>
+                  </Link>
+                </div>
               </div>
             </article>
           ))}
         </div>
       </div>
+
+      <style>{`
+        .audience-slider-wrapper {
+          width: 100%;
+          border-radius: 8px;
+          overflow: hidden;
+          aspect-ratio: 16 / 9;
+          position: relative;
+          background: #f3f4f6;
+        }
+
+        .ba-slider {
+          position: relative;
+          width: 100%;
+          height: 100%;
+          overflow: hidden;
+          user-select: none;
+        }
+
+        .ba-after,
+        .ba-before {
+          position: absolute;
+          inset: 0;
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          display: block;
+          pointer-events: none;
+        }
+
+        .ba-before {
+          will-change: clip-path;
+        }
+
+        .ba-range {
+          position: absolute;
+          inset: 0;
+          width: 100%;
+          height: 100%;
+          opacity: 0;
+          cursor: ew-resize;
+          margin: 0;
+          z-index: 10;
+        }
+
+        .ba-divider {
+          position: absolute;
+          top: 0;
+          bottom: 0;
+          width: 2px;
+          background: white;
+          transform: translateX(-50%);
+          pointer-events: none;
+          z-index: 5;
+          box-shadow: 0 0 8px rgba(0,0,0,0.3);
+        }
+
+        .ba-handle {
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          pointer-events: none;
+          filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));
+        }
+
+        .ba-label {
+          position: absolute;
+          bottom: 10px;
+          padding: 3px 8px;
+          background: rgba(0,0,0,0.55);
+          color: white;
+          font-size: 11px;
+          font-weight: 500;
+          border-radius: 4px;
+          pointer-events: none;
+          z-index: 5;
+        }
+
+        .ba-label-left { left: 10px; }
+        .ba-label-right { right: 10px; }
+
+        .audience-content {
+          padding: 20px 0 0;
+        }
+      `}</style>
     </section>
   )
 }
