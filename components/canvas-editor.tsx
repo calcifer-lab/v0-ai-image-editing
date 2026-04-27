@@ -55,6 +55,8 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
   const [isPanning, setIsPanning] = useState(false)
   const [isSpacePanning, setIsSpacePanning] = useState(false)
   const panStart = useRef({ x: 0, y: 0, panX: 0, panY: 0 })
+  // Canvas dimensions state for container sizing
+  const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 })
 
   const redrawCanvas = useCallback(() => {
     const canvas = canvasRef.current
@@ -117,6 +119,9 @@ export default function CanvasEditor({ elementImage, baseImage, onMaskCreated }:
     canvas.height = height
     maskCanvas.width = width
     maskCanvas.height = height
+
+    // Update canvasSize state for container sizing
+    setCanvasSize({ width, height })
 
     ctx.clearRect(0, 0, width, height)
     ctx.drawImage(img, 0, 0, width, height)
