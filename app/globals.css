@@ -584,6 +584,7 @@ html[lang="en"] .lang-zh {
   display: grid;
   grid-template-columns: 1fr;
   gap: 20px;
+  align-items: stretch;
 }
 
 .how-step-number {
@@ -1029,8 +1030,8 @@ html[lang="en"] .lang-zh {
 
 /* ─── Step illustration SVG wrapper ─── */
 .step-svg-wrapper {
-  margin-top: 20px;
-  min-height: 300px;
+  margin-top: 10px;
+  min-height: 220px;
   display: flex;
   align-items: center;
   justify-content: center;
