@@ -44,15 +44,15 @@ export default function BeforeAfter({ before, after }: { before: string; after: 
       onTouchMove={handleTouchMove}
       style={{ cursor: "ew-resize", touchAction: "none" }}
     >
-      {/* After image (full, bottom layer) */}
-      <img src={after} alt="After fix" className="ba-img" draggable={false} />
+      {/* Before image (full, bottom layer) */}
+      <img src={before} alt="Before fix" className="ba-img" draggable={false} />
 
-      {/* Before image (clipped, top layer) — clip left side, show left portion on the left */}
+      {/* After image (clipped, top layer) — slider left = show more of after */}
       <img
-        src={before}
-        alt="Before fix"
+        src={after}
+        alt="After fix"
         className="ba-img ba-before"
-        style={{ clipPath: `inset(0 0 0 ${100 - sliderPos}%)` }}
+        style={{ clipPath: `inset(0 ${100 - sliderPos}% 0 0)` }}
         draggable={false}
       />
 
