@@ -537,7 +537,9 @@ html[lang="en"] .lang-zh {
 .how-card,
 .module-card,
 .faq-cta {
-  padding: 20px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
 }
 
 .audience-grid,
@@ -553,7 +555,7 @@ html[lang="en"] .lang-zh {
 .how-step-title,
 .module-title,
 .faq-cta-title {
-  margin: 18px 0 0;
+  margin: 8px 0 0;
   font-size: 26px;
   line-height: 1.2;
   letter-spacing: -0.03em;
@@ -565,7 +567,7 @@ html[lang="en"] .lang-zh {
 .module-copy,
 .faq-answer,
 .footer-slogan {
-  margin: 14px 0 0;
+  margin: 8px 0 0;
   font-size: 17px;
   line-height: 1.7;
   color: var(--text-muted);
@@ -1031,10 +1033,12 @@ html[lang="en"] .lang-zh {
 /* ─── Step illustration SVG wrapper ─── */
 .step-svg-wrapper {
   margin-top: 10px;
-  min-height: 220px;
+  flex: 1;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-end;
+  min-height: 0;
 }
 
 .step-svg-wrapper svg {
@@ -1042,6 +1046,9 @@ html[lang="en"] .lang-zh {
   height: auto;
   max-width: 320px;
   display: block;
+  border-radius: 16px;
+  border: 1.5px solid #e5e7eb;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
 }
 
 /* ─── Footer layout update (3-column) ─── */
