@@ -576,7 +576,8 @@ export function useImageEditor(): UseImageEditorReturn {
       images.baseImage,
       processedReference,
       mask.dataUrl,
-      mask.coordinates
+      mask.coordinates,
+      maskCanvasForCrop
     )
 
     console.log("[AI Editor] Composite complete, starting AI fusion...")

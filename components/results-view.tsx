@@ -201,7 +201,7 @@ function SliderCompareView({
         <div
           ref={containerRef}
           className="relative overflow-hidden rounded-lg border"
-          style={{ maxHeight: "70vh" }}
+          style={{ width: "100%", height: "100%", maxHeight: "70vh" }}
           onMouseMove={handleMouseMove}
           onMouseLeave={() => {}}
         >

@@ -270,7 +270,8 @@ async function compositePatchOnBase(
   baseImageUrl: string,
   referenceImageUrl: string,
   placement: PatchPlacement,
-  options: LocalFusionOptions = {}
+  options: LocalFusionOptions = {},
+  brushMaskCanvas?: HTMLCanvasElement
 ): Promise<string> {
   const [baseImg, refImg] = await Promise.all([
     loadImage(baseImageUrl),
@@ -349,6 +350,28 @@ async function compositePatchOnBase(
   const baseData = ctx.getImageData(targetX, targetY, targetWidth, targetHeight)
   const fullBaseData = ctx.getImageData(0, 0, canvas.width, canvas.height)
 
+  // Extract brush mask region if provided (canvas mask from the editor brush/eraser tool)
+  let brushMaskData: Uint8ClampedArray | null = null
+  if (brushMaskCanvas) {
+    const maskCtx = brushMaskCanvas.getContext("2d")
+    if (maskCtx) {
+      const maskImageData = maskCtx.getImageData(0, 0, brushMaskCanvas.width, brushMaskCanvas.height)
+      // Scale mask coordinates from canvas space to target space
+      const maskScaleX = brushMaskCanvas.width / targetWidth
+      const maskScaleY = brushMaskCanvas.height / targetHeight
+      brushMaskData = new Uint8ClampedArray(targetWidth * targetHeight)
+      for (let y = 0; y < targetHeight; y++) {
+        for (let x = 0; x < targetWidth; x++) {
+          const maskX = Math.floor(x * maskScaleX)
+          const maskY = Math.floor(y * maskScaleY)
+          const maskI = (maskY * brushMaskCanvas.width + maskX) * 4
+          // White pixels in brush mask = selected (255) = use reference pixel
+          brushMaskData[y * targetWidth + x] = maskImageData.data[maskI]
+        }
+      }
+    }
+  }
+
   const featherPx = options.featherPx ?? clamp(Math.round(Math.min(targetWidth, targetHeight) * 0.08), 6, 20)
   const toneMatchStrength = clamp(options.toneMatchStrength ?? 0.72, 0, 1)
 
@@ -361,7 +384,9 @@ async function compositePatchOnBase(
     clamp(Math.round(Math.max(targetWidth, targetHeight) * 0.16), 12, 48)
   )
 
-  const mask = buildAlphaAwareFeatherMask(refData.data, targetWidth, targetHeight, featherPx)
+  // Use brush mask data for feather mask when available, otherwise fall back to reference alpha
+  const maskDataForFeather = brushMaskData || refData.data
+  const mask = buildAlphaAwareFeatherMask(maskDataForFeather, targetWidth, targetHeight, featherPx)
   const scaleR = sourceStats.count > 0 && targetStats.count > 0 ? clamp(targetStats.r / Math.max(1, sourceStats.r), 0.78, 1.22) : 1
   const scaleG = sourceStats.count > 0 && targetStats.count > 0 ? clamp(targetStats.g / Math.max(1, sourceStats.g), 0.78, 1.22) : 1
   const scaleB = sourceStats.count > 0 && targetStats.count > 0 ? clamp(targetStats.b / Math.max(1, sourceStats.b), 0.78, 1.22) : 1
@@ -372,7 +397,8 @@ async function compositePatchOnBase(
   for (let y = 0; y < targetHeight; y += 1) {
     for (let x = 0; x < targetWidth; x += 1) {
       const pixelIndex = (y * targetWidth + x) * 4
-      const alpha = refData.data[pixelIndex + 3] / 255
+      // Use brush mask alpha when available, otherwise reference image alpha
+      const alpha = brushMaskData ? brushMaskData[y * targetWidth + x] / 255 : refData.data[pixelIndex + 3] / 255
       if (alpha < 0.02) continue
 
       const contourOpacity = mask[y * targetWidth + x] / 255
@@ -733,7 +759,8 @@ export async function compositeImages(
   baseImageUrl: string,
   referenceImageUrl: string,
   maskImageUrl: string,
-  maskCoordinates: { x: number; y: number; width: number; height: number }
+  maskCoordinates: { x: number; y: number; width: number; height: number },
+  brushMaskCanvas?: HTMLCanvasElement
 ): Promise<string> {
   const [baseImg, refImg, maskImg] = await Promise.all([
     loadImage(baseImageUrl),
@@ -774,7 +801,7 @@ export async function compositeImages(
     y: targetY,
     width: targetWidth,
     height: targetHeight,
-  })
+  }, {}, brushMaskCanvas)
 }
 
 export async function compositePatchWithLocalFusion(
