@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
+  <!-- Background -->
+  <rect width="400" height="400" fill="#ffffff"/>
+
+  <!-- Upload arrow above main image -->
+  <line x1="160" y1="90" x2="160" y2="125" stroke="#1a1a1a" stroke-width="2" stroke-linecap="round"/>
+  <polyline points="153,118 160,128 167,118" fill="none" stroke="#1a1a1a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Upload arrow above patch image -->
+  <line x1="330" y1="90" x2="330" y2="115" stroke="#1a1a1a" stroke-width="2" stroke-linecap="round"/>
+  <polyline points="323,108 330,118 337,108" fill="none" stroke="#1a1a1a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Main image frame -->
+  <rect x="60" y="140" width="200" height="130" fill="none" stroke="#1a1a1a" stroke-width="2"/>
+
+  <!-- Main image content: landscape skeleton with a missing circle in the upper-left -->
+  <!-- Horizon line -->
+  <line x1="75" y1="220" x2="245" y2="220" stroke="#1a1a1a" stroke-width="2" stroke-linecap="round"/>
+  <!-- Distant mountain (right side, above horizon) -->
+  <polyline points="170,220 195,180 220,220" fill="none" stroke="#1a1a1a" stroke-width="2" stroke-linejoin="round"/>
+  <!-- Foreground object (small house/rock, lower-left) -->
+  <rect x="85" y="240" width="22" height="18" fill="none" stroke="#1a1a1a" stroke-width="2"/>
+  <!-- Note: the upper-left area (around x=95, y=175) is intentionally empty -->
+
+  <!-- Patch image frame -->
+  <rect x="290" y="130" width="80" height="140" fill="none" stroke="#1a1a1a" stroke-width="2"/>
+
+  <!-- Patch image content: a small horizon line + a circle (the element to be moved) -->
+  <line x1="300" y1="220" x2="360" y2="220" stroke="#1a1a1a" stroke-width="2" stroke-linecap="round"/>
+  <circle cx="330" cy="180" r="14" fill="none" stroke="#1a1a1a" stroke-width="2"/>
+</svg>

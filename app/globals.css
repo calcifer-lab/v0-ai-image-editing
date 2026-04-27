@@ -1027,19 +1027,20 @@ html[lang="en"] .lang-zh {
   margin: 0;
 }
 
-/* ─── Step illustration placeholder ─── */
-.step-placeholder {
+/* ─── Step illustration SVG wrapper ─── */
+.step-svg-wrapper {
   margin-top: 20px;
-  width: 100%;
-  aspect-ratio: 4 / 3;
-  background: var(--bg-card);
-  border: 1px dashed var(--border);
-  border-radius: 10px;
+  min-height: 300px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--text-muted);
-  font-size: 13px;
+}
+
+.step-svg-wrapper svg {
+  width: 80%;
+  height: auto;
+  max-width: 320px;
+  display: block;
 }
 
 /* ─── Footer layout update (3-column) ─── */

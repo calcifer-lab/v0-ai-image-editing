@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
+  <!-- Background -->
+  <rect width="400" height="400" fill="#ffffff"/>
+
+  <!-- Main image frame -->
+  <rect x="60" y="140" width="200" height="130" fill="none" stroke="#1a1a1a" stroke-width="2"/>
+
+  <!-- Main image content (same as step 1) -->
+  <line x1="75" y1="220" x2="245" y2="220" stroke="#1a1a1a" stroke-width="2" stroke-linecap="round"/>
+  <polyline points="170,220 195,180 220,220" fill="none" stroke="#1a1a1a" stroke-width="2" stroke-linejoin="round"/>
+  <rect x="85" y="240" width="22" height="18" fill="none" stroke="#1a1a1a" stroke-width="2"/>
+
+  <!-- Patch image frame -->
+  <rect x="290" y="130" width="80" height="140" fill="none" stroke="#1a1a1a" stroke-width="2"/>
+
+  <!-- Patch image content (same as step 1) -->
+  <line x1="300" y1="220" x2="360" y2="220" stroke="#1a1a1a" stroke-width="2" stroke-linecap="round"/>
+  <circle cx="330" cy="180" r="14" fill="none" stroke="#1a1a1a" stroke-width="2"/>
+
+  <!-- ACCENT: orange lasso around the patch element (in patch image) -->
+  <ellipse cx="330" cy="180" rx="22" ry="22" fill="none" stroke="#E94E1B" stroke-width="2.5" stroke-linecap="round"/>
+
+  <!-- ACCENT: orange lasso around the triangle mountain (the wrong element) -->
+  <ellipse cx="195" cy="200" rx="32" ry="28" fill="none" stroke="#E94E1B" stroke-width="2.5" stroke-linecap="round"/>
+
+  <!-- ACCENT: dashed curved connector from patch lasso to main lasso -->
+  <path d="M 308 175 Q 250 110 220 188" fill="none" stroke="#E94E1B" stroke-width="2" stroke-dasharray="5,5" stroke-linecap="round"/>
+  <!-- Arrow head pointing into the main lasso -->
+  <polyline points="227,182 219,190 226,196" fill="none" stroke="#E94E1B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
