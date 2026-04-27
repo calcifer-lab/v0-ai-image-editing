@@ -535,6 +535,8 @@ export function useImageEditor(): UseImageEditorReturn {
     // 裁剪参考图片 (10%)
     updateProgress("Preparing reference image...", 10)
     const hasExplicitCrop = !!(elementCrop && elementCrop.width > 0 && elementCrop.height > 0)
+    const cropperRef = elementCropperRef.current
+    const maskCanvasForCrop = cropperRef?.maskCanvas ?? undefined
 
     let processedReference = images.elementImage
     if (hasExplicitCrop && elementCrop) {

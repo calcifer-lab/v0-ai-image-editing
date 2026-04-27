@@ -205,24 +205,25 @@ function SliderCompareView({
           onMouseMove={handleMouseMove}
           onMouseLeave={() => {}}
         >
-          {/* Result image (bottom layer) */}
+          {/* Both images are position absolute, same size - slider only clips, doesn't scale */}
+          {/* Result image (bottom layer, always full width) */}
           <img
             src={resultImage || "/placeholder.svg"}
             alt="Result"
-            className="block w-full h-full object-contain"
+            className="pointer-events-none absolute inset-0 block h-full w-full object-contain"
             crossOrigin="anonymous"
             draggable={false}
           />
 
-          {/* Original image (top layer, clipped by slider) */}
+          {/* Original image (top layer, clipped by slider position) */}
           <div
-            className="absolute inset-y-0 left-0 overflow-hidden"
+            className="pointer-events-none absolute inset-0 overflow-hidden"
             style={{ width: `${sliderPosition}%` }}
           >
             <img
               src={originalImage || "/placeholder.svg"}
               alt="Original"
-              className="h-full w-full object-contain"
+              className="absolute inset-0 h-full w-full object-contain"
               crossOrigin="anonymous"
               draggable={false}
             />
