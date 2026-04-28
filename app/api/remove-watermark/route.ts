@@ -1,4 +1,11 @@
 import { NextRequest, NextResponse } from "next/server"
+import {
+  openRouterHeaders,
+  callGoogleGenerate,
+  extractGoogleImage,
+  GOOGLE_IMAGE_MODEL,
+  type OpenRouterContentPart,
+} from "@/lib/api"
 
 export const runtime = "nodejs"
 export const maxDuration = 60
@@ -34,37 +41,44 @@ export async function POST(request: NextRequest): Promise<NextResponse<RemoveWat
     console.log("[RemoveWatermark] Starting watermark removal...")
     console.log("[RemoveWatermark] Watermark location:", watermark_location)
 
-    // 优先使用 Gemini Flash 进行水印去除（快速、效果好）
+    const content = buildWatermarkContent(image, watermark_location)
+    const failures: string[] = []
+
+    // 1. Google AI Studio direct
+    const googleApiKey = process.env.GOOGLE_API_KEY
+    if (googleApiKey) {
+      try {
+        console.log("[RemoveWatermark] Using Google AI Studio direct...")
+        const result = await removeWatermarkWithGoogle(content, googleApiKey, startTime)
+        if (result) return result
+        failures.push("Google: no image in response")
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : "Google call threw"
+        failures.push(`Google: ${msg}`)
+        console.warn("[RemoveWatermark] Google direct failed:", error)
+      }
+    }
+
+    // 2. OpenRouter Gemini fallback
     const openRouterApiKey = process.env.OPENROUTER_API_KEY
     if (openRouterApiKey) {
       try {
-        console.log("[RemoveWatermark] Using Gemini for watermark removal...")
-        const geminiResult = await removeWatermarkWithGemini(image, watermark_location, openRouterApiKey, startTime)
-        if (geminiResult) {
-          return geminiResult
-        }
+        console.log("[RemoveWatermark] Using OpenRouter Gemini for watermark removal...")
+        const geminiResult = await removeWatermarkWithOpenRouter(content, openRouterApiKey, startTime)
+        if (geminiResult) return geminiResult
+        failures.push("OpenRouter: no image in response")
       } catch (error) {
-        console.warn("[RemoveWatermark] Gemini failed, trying alternatives:", error)
+        const msg = error instanceof Error ? error.message : "OpenRouter call threw"
+        failures.push(`OpenRouter: ${msg}`)
+        console.warn("[RemoveWatermark] OpenRouter failed:", error)
       }
     }
 
-    // 后备方案：使用 Replicate LaMa 或其他修复模型
-    const replicateApiKey = process.env.REPLICATE_API_KEY
-    if (replicateApiKey) {
-      try {
-        console.log("[RemoveWatermark] Using Replicate inpainting for watermark removal...")
-        return await removeWatermarkWithReplicate(image, watermark_location, replicateApiKey, startTime)
-      } catch (error) {
-        console.warn("[RemoveWatermark] Replicate failed:", error)
-      }
-    }
-
-    // 如果所有方法都失败，返回原图
-    console.warn("[RemoveWatermark] No watermark removal API available, returning original image")
-    return NextResponse.json({
-      result_image: image,
-      meta: { model: "no-removal", duration_ms: Date.now() - startTime },
-    })
+    const reason = failures.length > 0 ? failures.join("; ") : "no provider configured"
+    return NextResponse.json(
+      { error: `Watermark removal unavailable: ${reason}` },
+      { status: 502 }
+    )
   } catch (error) {
     console.error("[RemoveWatermark] Error:", error)
     return NextResponse.json(
@@ -75,14 +89,9 @@ export async function POST(request: NextRequest): Promise<NextResponse<RemoveWat
 }
 
 /**
- * 使用 Gemini 去除水印
+ * 构建水印去除的 multimodal content（OpenRouter 格式，会被 Google 适配器转换）
  */
-async function removeWatermarkWithGemini(
-  image: string,
-  location: string,
-  apiKey: string,
-  startTime: number
-): Promise<NextResponse<RemoveWatermarkResponse> | null> {
+function buildWatermarkContent(image: string, location: string): OpenRouterContentPart[] {
   const locationHint = getLocationHint(location)
 
   const prompt = `You are an expert image restoration specialist. This image contains a watermark that needs to be removed.
@@ -137,7 +146,7 @@ CRITICAL REQUIREMENTS:
 
 OUTPUT: Generate the same image with ALL watermarks cleanly removed. The result should look like watermarks were never there.`
 
-  const content = [
+  return [
     { type: "text", text: prompt },
     { type: "text", text: "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" },
     { type: "text", text: "🖼️ IMAGE WITH WATERMARK:" },
@@ -145,13 +154,49 @@ OUTPUT: Generate the same image with ALL watermarks cleanly removed. The result 
     { type: "text", text: "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" },
     { type: "text", text: "🎯 TASK: Remove the watermark cleanly while preserving everything else. START NOW." },
   ]
+}
 
+/**
+ * 通过 Google AI Studio 直连去除水印
+ */
+async function removeWatermarkWithGoogle(
+  content: OpenRouterContentPart[],
+  apiKey: string,
+  startTime: number
+): Promise<NextResponse<RemoveWatermarkResponse> | null> {
+  const result = await callGoogleGenerate(GOOGLE_IMAGE_MODEL, content, apiKey, {
+    responseModalities: ["TEXT", "IMAGE"],
+  })
+
+  if (!result.ok) {
+    console.error("[RemoveWatermark] Google API error:", result.status, result.error)
+    return null
+  }
+
+  const image = extractGoogleImage(result.data)
+  if (!image) {
+    console.error("[RemoveWatermark] No image found in Google response")
+    return null
+  }
+
+  console.log("[RemoveWatermark] Successfully removed watermark via Google direct")
+  return NextResponse.json({
+    result_image: image,
+    meta: { model: "google-gemini-2.5-flash-image", duration_ms: Date.now() - startTime },
+  })
+}
+
+/**
+ * 通过 OpenRouter 调用 Gemini 去除水印（fallback）
+ */
+async function removeWatermarkWithOpenRouter(
+  content: OpenRouterContentPart[],
+  apiKey: string,
+  startTime: number
+): Promise<NextResponse<RemoveWatermarkResponse> | null> {
   const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
+    headers: openRouterHeaders(apiKey),
     body: JSON.stringify({
       model: "google/gemini-2.5-flash-image",
       messages: [{ role: "user", content }],
@@ -160,16 +205,13 @@ OUTPUT: Generate the same image with ALL watermarks cleanly removed. The result 
 
   if (!response.ok) {
     const errorText = await response.text()
-    console.error("[RemoveWatermark] Gemini API error:", errorText)
+    console.error("[RemoveWatermark] OpenRouter Gemini API error:", errorText)
     return null
   }
 
   const data = await response.json()
-  console.log("[RemoveWatermark] Gemini response received")
-
   const message = data.choices?.[0]?.message
 
-  // Extract image from response
   if (message?.images && Array.isArray(message.images) && message.images.length > 0) {
     const imageData = message.images[0]
     let resultImage: string
@@ -185,34 +227,15 @@ OUTPUT: Generate the same image with ALL watermarks cleanly removed. The result 
       return null
     }
 
-    console.log("[RemoveWatermark] Successfully removed watermark with Gemini")
+    console.log("[RemoveWatermark] Successfully removed watermark via OpenRouter")
     return NextResponse.json({
       result_image: resultImage,
-      meta: { model: "gemini-watermark-removal", duration_ms: Date.now() - startTime },
+      meta: { model: "openrouter-gemini-2.5-flash-image", duration_ms: Date.now() - startTime },
     })
   }
 
-  console.error("[RemoveWatermark] No image found in Gemini response")
+  console.error("[RemoveWatermark] No image found in OpenRouter response")
   return null
-}
-
-/**
- * 使用 Replicate 去除水印（使用 LaMa 或类似的修复模型）
- */
-async function removeWatermarkWithReplicate(
-  image: string,
-  location: string,
-  apiKey: string,
-  startTime: number
-): Promise<NextResponse<RemoveWatermarkResponse | { error: string }>> {
-  // TODO: 实现使用 Replicate LaMa 或其他修复模型
-  // 这需要生成一个掩码来标记水印位置
-  console.log("[RemoveWatermark] Replicate watermark removal not yet implemented")
-
-  return NextResponse.json({
-    result_image: image,
-    meta: { model: "no-replicate-removal", duration_ms: Date.now() - startTime },
-  })
 }
 
 /**

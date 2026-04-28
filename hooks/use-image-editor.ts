@@ -507,7 +507,9 @@ export function useImageEditor(): UseImageEditorReturn {
       })
 
       if (!fusionResponse.ok) {
-        console.warn("[AI Editor] AI fusion failed, using unfused composite")
+        const errorText = await fusionResponse.text().catch(() => "")
+        console.warn("[AI Editor] AI fusion failed, using unfused composite:", errorText)
+        setError("AI fusion failed — showing the unblended composite instead. Please try again.")
         return compositeImage
       }
 
@@ -522,10 +524,11 @@ export function useImageEditor(): UseImageEditorReturn {
       }
     } catch (fusionError) {
       console.warn("[AI Editor] AI fusion error:", fusionError)
+      setError("AI fusion failed — showing the unblended composite instead. Please try again.")
     }
 
     return compositeImage
-  }, [images.baseImage, mask, updateProgress])
+  }, [images.baseImage, mask, updateProgress, setError])
 
   // 处理直接合成模式（带 AI 融合）
   const processCompositeMode = useCallback(async (): Promise<string> => {
@@ -758,16 +761,9 @@ export function useImageEditor(): UseImageEditorReturn {
       }
     }
 
-    if (hasExplicitCrop) {
-      console.log("[AI Editor] AI Generate: running fusion after pixel composite")
-      return runFusionPass(compositedBase, processedReference, {
-        status: "AI fusion: Matching patch to the scene...",
-        value: 60,
-        driftTo: 76,
-      })
-    }
-
-    // No explicit crop — fall back to inpaint API (original behaviour)
+    // Plan A: pre-composited base + mask + reference go through /api/inpaint.
+    // Gemini does edge harmonization on top of the already-pasted patch; the
+    // route also has a Replicate FLUX fallback if Gemini is unavailable.
     updateProgress("Sending request to AI model...", 60, { driftTo: 72 })
 
     const response = await fetch("/api/inpaint", {
@@ -787,7 +783,9 @@ export function useImageEditor(): UseImageEditorReturn {
     })
 
     if (!response.ok) {
-      console.warn("[AI Editor] Inpaint API failed:", await response.text())
+      const errorText = await response.text().catch(() => "")
+      console.warn("[AI Editor] Inpaint API failed:", errorText)
+      setError("AI fusion failed — showing the unblended composite instead. Please try again.")
       return compositedBase
     }
 
@@ -799,7 +797,7 @@ export function useImageEditor(): UseImageEditorReturn {
     }
 
     return data.result_image
-  }, [images, mask, params, imageAnalysis, analyzeImage, elementCrop, updateProgress, runFusionPass])
+  }, [images, mask, params, imageAnalysis, analyzeImage, elementCrop, updateProgress, setError])
 
   // 处理主流程
   const handleProcess = useCallback(async () => {
