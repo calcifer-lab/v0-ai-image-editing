@@ -356,14 +356,18 @@ async function compositePatchOnBase(
     const maskCtx = brushMaskCanvas.getContext("2d")
     if (maskCtx) {
       const maskImageData = maskCtx.getImageData(0, 0, brushMaskCanvas.width, brushMaskCanvas.height)
-      // Scale mask coordinates from canvas space to target space
-      const maskScaleX = brushMaskCanvas.width / targetWidth
-      const maskScaleY = brushMaskCanvas.height / targetHeight
+      // Map from target patch space -> full editor mask canvas space.
+      // IMPORTANT: include targetX/targetY offset, otherwise we sample the wrong
+      // mask area and can create random "cutout" artifacts in the patch.
+      const maskScaleX = brushMaskCanvas.width / baseImg.width
+      const maskScaleY = brushMaskCanvas.height / baseImg.height
       brushMaskData = new Uint8ClampedArray(targetWidth * targetHeight)
       for (let y = 0; y < targetHeight; y++) {
         for (let x = 0; x < targetWidth; x++) {
-          const maskX = Math.floor(x * maskScaleX)
-          const maskY = Math.floor(y * maskScaleY)
+          const globalX = targetX + x
+          const globalY = targetY + y
+          const maskX = clamp(Math.floor(globalX * maskScaleX), 0, brushMaskCanvas.width - 1)
+          const maskY = clamp(Math.floor(globalY * maskScaleY), 0, brushMaskCanvas.height - 1)
           const maskI = (maskY * brushMaskCanvas.width + maskX) * 4
           // White pixels in brush mask = selected (255) = use reference pixel
           brushMaskData[y * targetWidth + x] = maskImageData.data[maskI]

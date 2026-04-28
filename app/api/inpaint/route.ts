@@ -117,7 +117,11 @@ async function inpaintWithOpenRouter(
 
   if (!response.ok) {
     const errorText = await response.text()
-    console.error("[Inpaint] OpenRouter Gemini API error:", errorText)
+    if (response.status === 403) {
+      console.warn("[Inpaint] OpenRouter rejected request (403/TOS). Falling back to other providers.")
+    } else {
+      console.error("[Inpaint] OpenRouter Gemini API error:", errorText)
+    }
     return null
   }
 

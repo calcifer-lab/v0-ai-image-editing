@@ -39,6 +39,7 @@ interface FusionResponse {
   meta: {
     model: string
     duration_ms: number
+    warning?: string
   }
 }
 
@@ -99,15 +100,23 @@ export async function POST(request: NextRequest): Promise<NextResponse<FusionRes
       }
     }
 
-    // 3. FLUX img2img (尚未实现)
+    // 3. FLUX img2img (尚未实现，记录失败并继续走 passthrough)
     const replicateApiKey = process.env.REPLICATE_API_KEY
     if (replicateApiKey) {
-      console.log("[Fusion] Using FLUX img2img for fusion...")
-      return await fusionWithFlux(composite_image, fusionPrompt, replicateApiKey, startTime)
+      console.warn("[Fusion] FLUX img2img fallback is configured but not implemented; skipping.")
+      failures.push("Replicate FLUX fallback not implemented")
     }
 
     const reason = failures.length > 0 ? failures.join("; ") : "no provider configured"
-    return NextResponse.json({ error: `AI fusion unavailable: ${reason}` }, { status: 502 })
+    console.warn("[Fusion] All AI providers unavailable, returning unfused composite:", reason)
+    return NextResponse.json({
+      fused_image: composite_image,
+      meta: {
+        model: "passthrough-composite",
+        duration_ms: Date.now() - startTime,
+        warning: reason,
+      },
+    })
   } catch (error) {
     console.error("[Fusion] Error:", error)
     return NextResponse.json(
@@ -355,7 +364,11 @@ async function fusionWithOpenRouter(
 
   if (!response.ok) {
     const errorText = await response.text()
-    console.error("[Fusion] OpenRouter Gemini API error:", errorText)
+    if (response.status === 403) {
+      console.warn("[Fusion] OpenRouter rejected request (403/TOS). Skipping OpenRouter fallback.")
+    } else {
+      console.error("[Fusion] OpenRouter Gemini API error:", errorText)
+    }
     return null
   }
 
@@ -386,20 +399,4 @@ async function fusionWithOpenRouter(
 
   console.error("[Fusion] No image found in OpenRouter response")
   return null
-}
-
-/**
- * 使用 FLUX img2img 进行融合 (尚未实现)
- */
-async function fusionWithFlux(
-  _composite_image: string,
-  _prompt: string,
-  _apiKey: string,
-  _startTime: number
-): Promise<NextResponse<{ error: string }>> {
-  console.warn("[Fusion] FLUX img2img fusion not yet implemented")
-  return NextResponse.json(
-    { error: "FLUX fusion fallback is not implemented" },
-    { status: 502 }
-  )
 }

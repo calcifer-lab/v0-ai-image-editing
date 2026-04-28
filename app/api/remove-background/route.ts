@@ -28,22 +28,61 @@ export async function POST(
       return NextResponse.json({ error: "REPLICATE_API_KEY not configured" }, { status: 500 })
     }
 
-    console.log("[RemoveBG] Using Replicate RMBG model...")
+    const candidateModels = [
+      "lucataco/remove-bg",
+      "lucataco/rembg",
+    ]
 
-    const response = await fetch("https://api.replicate.com/v1/models/lucataco/rembg/predictions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${replicateApiKey}`,
-        "Content-Type": "application/json",
-        Prefer: "wait",
-      },
-      body: JSON.stringify({
-        input: { image: validatedImage.image.dataUrl },
-      }),
-    })
+    let response: Response | null = null
+    let selectedModel: string | null = null
+
+    for (const model of candidateModels) {
+      console.log(`[RemoveBG] Trying Replicate model: ${model}`)
+      const attempt = await fetch(`https://api.replicate.com/v1/models/${model}/predictions`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${replicateApiKey}`,
+          "Content-Type": "application/json",
+          Prefer: "wait",
+        },
+        body: JSON.stringify({
+          input: { image: validatedImage.image.dataUrl },
+        }),
+      })
+
+      if (attempt.ok) {
+        response = attempt
+        selectedModel = model
+        break
+      }
+
+      // 404 generally means the model slug is unavailable in this account/region.
+      if (attempt.status !== 404) {
+        response = attempt
+        selectedModel = model
+        break
+      }
+
+      console.warn(`[RemoveBG] Model not found: ${model} (404), trying next candidate...`)
+    }
+
+    if (!response) {
+      console.warn("[RemoveBG] No Replicate remove-background model available. Returning original image.")
+      return NextResponse.json({
+        result_image: validatedImage.image.dataUrl,
+        meta: { model: "passthrough-original", duration_ms: Date.now() - startTime },
+      })
+    }
 
     if (!response.ok) {
       const errorText = await response.text()
+      if (response.status === 404) {
+        console.warn("[RemoveBG] Replicate model endpoint unavailable (404). Returning original image.")
+        return NextResponse.json({
+          result_image: validatedImage.image.dataUrl,
+          meta: { model: "passthrough-original", duration_ms: Date.now() - startTime },
+        })
+      }
       console.error("[RemoveBG] Replicate API error:", errorText)
       return NextResponse.json(
         { error: `Replicate API error: ${response.status}` },
@@ -61,7 +100,7 @@ export async function POST(
         const resultImage = await urlToBase64(outputUrl)
         return NextResponse.json({
           result_image: resultImage,
-          meta: { model: "rembg", duration_ms: Date.now() - startTime },
+          meta: { model: selectedModel || "remove-bg", duration_ms: Date.now() - startTime },
         })
       }
     }
@@ -89,7 +128,7 @@ export async function POST(
     const resultImage = await urlToBase64(outputUrl)
     return NextResponse.json({
       result_image: resultImage,
-      meta: { model: "rembg", duration_ms: Date.now() - startTime },
+      meta: { model: selectedModel || "remove-bg", duration_ms: Date.now() - startTime },
     })
   } catch (error) {
     console.error("[RemoveBG] Error:", error)

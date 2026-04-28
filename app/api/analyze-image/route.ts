@@ -84,8 +84,13 @@ export async function POST(
       }
 
       const errorText = await response.text()
-      failures.push(`OpenRouter: ${response.status} ${errorText}`)
-      console.error("OpenRouter API error:", errorText)
+      if (response.status === 403) {
+        failures.push("OpenRouter: 403 provider TOS rejection")
+        console.warn("[AnalyzeImage] OpenRouter rejected request (403/TOS), skipping fallback provider.")
+      } else {
+        failures.push(`OpenRouter: ${response.status} ${errorText}`)
+        console.error("OpenRouter API error:", errorText)
+      }
     }
 
     const reason = failures.length > 0 ? failures.join("; ") : "no provider configured"

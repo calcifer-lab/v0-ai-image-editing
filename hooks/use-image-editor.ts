@@ -509,7 +509,6 @@ export function useImageEditor(): UseImageEditorReturn {
       if (!fusionResponse.ok) {
         const errorText = await fusionResponse.text().catch(() => "")
         console.warn("[AI Editor] AI fusion failed, using unfused composite:", errorText)
-        setError("AI fusion failed — showing the unblended composite instead. Please try again.")
         return compositeImage
       }
 
@@ -524,7 +523,6 @@ export function useImageEditor(): UseImageEditorReturn {
       }
     } catch (fusionError) {
       console.warn("[AI Editor] AI fusion error:", fusionError)
-      setError("AI fusion failed — showing the unblended composite instead. Please try again.")
     }
 
     return compositeImage
