@@ -86,12 +86,20 @@ export default async function BlogPostPage({
       />
       <main className="min-h-screen bg-background text-foreground">
         <article className="mx-auto flex w-full max-w-[680px] flex-col px-4 py-10 sm:px-6 sm:py-14">
-          <Link
-            href="/blog"
-            className="mb-8 inline-flex items-center text-sm text-muted-foreground transition-colors hover:text-foreground"
-          >
-            ← Back to Blog
-          </Link>
+          <div className="mb-8 flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:gap-6">
+            <Link
+              href="/blog"
+              className="inline-flex items-center text-sm text-muted-foreground transition-colors hover:text-foreground"
+            >
+              ← Back to Blog
+            </Link>
+            <Link
+              href={SITE_URL}
+              className="inline-flex items-center text-sm text-muted-foreground transition-colors hover:text-foreground"
+            >
+              ← Back to Home
+            </Link>
+          </div>
 
           <p className="mb-4 text-sm text-muted-foreground">{formatPostDate(post.date)}</p>
           <h1 className="mb-8 text-[clamp(2rem,4vw,3rem)] font-semibold leading-tight tracking-[-0.04em]">

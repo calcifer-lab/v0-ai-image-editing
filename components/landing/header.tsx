@@ -15,6 +15,11 @@ const NAV_LINKS = [
     zh: "工作方式",
   },
   {
+    href: "/blog",
+    en: "Blog",
+    zh: "博客",
+  },
+  {
     href: "#faq",
     en: "FAQ",
     zh: "常见问题",

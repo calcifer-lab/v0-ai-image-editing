@@ -35,7 +35,7 @@ export default function About() {
           </h2>
         </div>
 
-        <div className="about-body">
+        <div className="about-body mx-auto">
           <div className="about-text">
             <span className="lang-zh">
               {ABOUT_ZH.split("\n\n").map((para, i) => (
