@@ -13,6 +13,21 @@ export default function BlogPage() {
 
   return (
     <main className="min-h-screen bg-background text-foreground">
+      <header className="border-b border-border">
+        <div className="mx-auto flex w-full max-w-5xl items-center justify-between px-4 py-4 sm:px-6">
+          <Link href="/" className="brand-lockup" aria-label="ReDiagram">
+            <span className="brand-mark">R</span>
+            <span className="brand-text">ReDiagram</span>
+          </Link>
+          <Link
+            href="/blog"
+            className="text-sm font-medium text-foreground underline underline-offset-4"
+          >
+            Blog
+          </Link>
+        </div>
+      </header>
+
       <section className="mx-auto flex w-full max-w-5xl flex-col px-4 py-16 sm:px-6 sm:py-20">
         <div className="section-head">
           <span className="eyebrow">Insights</span>
