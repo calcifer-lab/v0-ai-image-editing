@@ -4,3 +4,4 @@
 
 export * from "./replicate"
 export * from "./prompts"
+export * from "./openrouter"

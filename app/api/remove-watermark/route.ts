@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { openRouterHeaders } from "@/lib/api"
 
 export const runtime = "nodejs"
 export const maxDuration = 60
@@ -148,10 +149,7 @@ OUTPUT: Generate the same image with ALL watermarks cleanly removed. The result 
 
   const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
+    headers: openRouterHeaders(apiKey),
     body: JSON.stringify({
       model: "google/gemini-2.5-flash-image",
       messages: [{ role: "user", content }],

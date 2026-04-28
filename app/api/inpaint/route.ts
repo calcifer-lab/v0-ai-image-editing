@@ -9,7 +9,7 @@ import {
   extractOutputUrl,
   validateImageDataUrl,
 } from "@/lib/api"
-import { buildGeminiInpaintPrompt, buildFluxEnhancedPrompt } from "@/lib/api"
+import { buildGeminiInpaintPrompt, buildFluxEnhancedPrompt, openRouterHeaders } from "@/lib/api"
 
 export const runtime = "nodejs"
 export const maxDuration = 300 // 5 minutes for model processing
@@ -89,10 +89,7 @@ async function tryGeminiImageGeneration(
 
   const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
+    headers: openRouterHeaders(apiKey),
     body: JSON.stringify({
       model: "google/gemini-2.5-flash-image",
       messages: [{ role: "user", content }],
@@ -339,14 +336,6 @@ async function tryFluxFillDev(
   })
 }
 
-// ============ Mock 函数（开发测试用） ============
-function mockInpaintResult(base_image: string, startTime: number): NextResponse<InpaintResponse> {
-  return NextResponse.json({
-    result_image: base_image,
-    meta: { model: "mock-inpainting", duration_ms: Date.now() - startTime + 2000 },
-  })
-}
-
 // ============ 主路由处理 ============
 export async function POST(request: NextRequest): Promise<NextResponse<InpaintResponse | ApiErrorResponse>> {
   const startTime = Date.now()
@@ -398,7 +387,10 @@ export async function POST(request: NextRequest): Promise<NextResponse<InpaintRe
 
     // 优先使用 Gemini（如果有参考图片且配置了 OpenRouter API key）
     const openRouterApiKey = process.env.OPENROUTER_API_KEY
+    let geminiAttempted = false
+    let geminiFailureReason: string | null = null
     if (validatedReference && openRouterApiKey) {
+      geminiAttempted = true
       console.log("[Inpaint] Trying Gemini for reference-guided inpainting...")
       try {
         const geminiResult = await tryGeminiImageGeneration(
@@ -412,8 +404,10 @@ export async function POST(request: NextRequest): Promise<NextResponse<InpaintRe
         if (geminiResult) {
           return geminiResult
         }
+        geminiFailureReason = "Gemini returned no usable image"
         console.log("[Inpaint] Gemini returned null, falling back to FLUX...")
       } catch (geminiError) {
+        geminiFailureReason = geminiError instanceof Error ? geminiError.message : "Gemini call threw"
         console.error("[Inpaint] Gemini error, falling back to FLUX:", geminiError)
       }
     }
@@ -421,8 +415,11 @@ export async function POST(request: NextRequest): Promise<NextResponse<InpaintRe
     // 使用 Replicate FLUX 作为后备
     const replicateApiKey = process.env.REPLICATE_API_KEY
     if (!replicateApiKey) {
-      console.warn("[Inpaint] REPLICATE_API_KEY not configured. Returning mock result.")
-      return mockInpaintResult(validatedBase.image.dataUrl, startTime)
+      const reason = geminiAttempted
+        ? `AI inpainting failed (${geminiFailureReason ?? "Gemini unavailable"}) and no Replicate fallback is configured`
+        : "No AI inpainting providers are configured"
+      console.warn("[Inpaint] " + reason)
+      return NextResponse.json({ error: reason }, { status: 502 })
     }
 
     return tryFluxFillPro(

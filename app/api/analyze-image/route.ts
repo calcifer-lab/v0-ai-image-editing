@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import type { AnalyzeImageRequest, AnalyzeImageResponse, ApiErrorResponse } from "@/types"
-import { IMAGE_ANALYSIS_PROMPT } from "@/lib/api"
-import { validateImageDataUrl } from "@/lib/api"
+import { IMAGE_ANALYSIS_PROMPT, openRouterHeaders, validateImageDataUrl } from "@/lib/api"
 
 export const runtime = "nodejs"
 export const maxDuration = 60
@@ -33,10 +32,7 @@ export async function POST(
 
     const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
+      headers: openRouterHeaders(apiKey),
       body: JSON.stringify({
         model: "openai/gpt-4o-mini",
         messages: [
