@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from "next/server"
-import { openRouterHeaders } from "@/lib/api"
+import {
+  callGoogleGenerate,
+  extractGoogleImage,
+  GOOGLE_IMAGE_MODEL,
+  openRouterHeaders,
+  type OpenRouterContentPart,
+} from "@/lib/api"
 
 /**
  * Normalize a data URI to always use PNG format.
@@ -59,47 +65,49 @@ export async function POST(request: NextRequest): Promise<NextResponse<FusionRes
     console.log("[Fusion] Starting AI fusion post-processing...")
     console.log("[Fusion] Mask region:", mask_region)
 
-    // 构建融合提示词
     const fusionPrompt = buildFusionPrompt(mask_region)
+    const fusionContent = buildFusionContent(composite_image, original_base, reference_image, fusionPrompt)
+    const failures: string[] = []
 
-    // 优先使用 Gemini Flash 进行融合（速度快、效果好）
-    const openRouterApiKey = process.env.OPENROUTER_API_KEY
-    let geminiFailureReason: string | null = null
-    if (openRouterApiKey) {
+    // 1. Google AI Studio direct (preferred — bypasses OpenRouter content routing)
+    const googleApiKey = process.env.GOOGLE_API_KEY
+    if (googleApiKey) {
       try {
-        console.log("[Fusion] Using Gemini 2.5 Flash for fusion...")
-        const geminiResult = await fusionWithGemini(
-          composite_image,
-          original_base,
-          reference_image,
-          fusionPrompt,
-          openRouterApiKey,
-          startTime
-        )
-        if (geminiResult) {
-          return geminiResult
-        }
-        geminiFailureReason = "Gemini returned no usable image"
+        console.log("[Fusion] Using Google AI Studio (gemini-2.5-flash-image-preview)...")
+        const result = await fusionWithGoogle(fusionContent, googleApiKey, startTime)
+        if (result) return result
+        failures.push("Google: no image in response")
       } catch (error) {
-        geminiFailureReason = error instanceof Error ? error.message : "Gemini call threw"
-        console.warn("[Fusion] Gemini fusion failed:", error)
+        const msg = error instanceof Error ? error.message : "Google call threw"
+        failures.push(`Google: ${msg}`)
+        console.warn("[Fusion] Google fusion failed:", error)
       }
-    } else {
-      geminiFailureReason = "OPENROUTER_API_KEY not configured"
     }
 
-    // 后备：FLUX img2img (尚未实现)
+    // 2. OpenRouter (fallback)
+    const openRouterApiKey = process.env.OPENROUTER_API_KEY
+    if (openRouterApiKey) {
+      try {
+        console.log("[Fusion] Using OpenRouter Gemini 2.5 Flash for fusion...")
+        const result = await fusionWithOpenRouter(fusionContent, openRouterApiKey, startTime)
+        if (result) return result
+        failures.push("OpenRouter: no image in response")
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : "OpenRouter call threw"
+        failures.push(`OpenRouter: ${msg}`)
+        console.warn("[Fusion] OpenRouter fusion failed:", error)
+      }
+    }
+
+    // 3. FLUX img2img (尚未实现)
     const replicateApiKey = process.env.REPLICATE_API_KEY
     if (replicateApiKey) {
       console.log("[Fusion] Using FLUX img2img for fusion...")
       return await fusionWithFlux(composite_image, fusionPrompt, replicateApiKey, startTime)
     }
 
-    // 没有可用的 AI 融合服务 — 不再静默返回未融合图，让前端能感知失败
-    return NextResponse.json(
-      { error: `AI fusion unavailable: ${geminiFailureReason ?? "no provider configured"}` },
-      { status: 502 }
-    )
+    const reason = failures.length > 0 ? failures.join("; ") : "no provider configured"
+    return NextResponse.json({ error: `AI fusion unavailable: ${reason}` }, { status: 502 })
   } catch (error) {
     console.error("[Fusion] Error:", error)
     return NextResponse.json(
@@ -259,19 +267,17 @@ OUTPUT: A seamlessly fused image where:
 }
 
 /**
- * 使用 Gemini 进行融合
+ * 构建融合的多模态 content 数组（OpenRouter 格式，可被 google-ai 适配器转换为 Google 格式）
  */
-async function fusionWithGemini(
+function buildFusionContent(
   composite_image: string,
   original_base: string,
   reference_image: string | undefined,
-  prompt: string,
-  apiKey: string,
-  startTime: number
-): Promise<NextResponse<FusionResponse> | null> {
+  prompt: string
+): OpenRouterContentPart[] {
   const systemPrompt = `You are an expert image fusion and harmonization AI. Your task is to take a composited image and make the newly added elements look naturally integrated with the scene through lighting adjustments, shadow generation, color matching, and edge blending.`
 
-  const content = [
+  const content: OpenRouterContentPart[] = [
     { type: "text", text: systemPrompt },
     { type: "text", text: "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" },
     { type: "text", text: "🧱 ORIGINAL BASE IMAGE (must remain unchanged outside the patched area):" },
@@ -281,18 +287,63 @@ async function fusionWithGemini(
     { type: "text", text: "🎨 COMPOSITED IMAGE (needs fusion):" },
     { type: "text", text: "This image contains a newly composited element that needs to be seamlessly fused with the background." },
     { type: "image_url", image_url: { url: composite_image } },
-    ...(reference_image
-      ? [
-          { type: "text", text: "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" },
-          { type: "text", text: "🧩 REFERENCE ELEMENT (already cropped to the intended patch):" },
-          { type: "image_url", image_url: { url: reference_image } },
-        ]
-      : []),
-    { type: "text", text: "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" },
-    { type: "text", text: "🎯 FUSION TASK:" },
-    { type: "text", text: prompt },
   ]
 
+  if (reference_image) {
+    content.push(
+      { type: "text", text: "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" },
+      { type: "text", text: "🧩 REFERENCE ELEMENT (already cropped to the intended patch):" },
+      { type: "image_url", image_url: { url: reference_image } }
+    )
+  }
+
+  content.push(
+    { type: "text", text: "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" },
+    { type: "text", text: "🎯 FUSION TASK:" },
+    { type: "text", text: prompt }
+  )
+
+  return content
+}
+
+/**
+ * 通过 Google AI Studio 直连调用 Gemini 进行融合
+ */
+async function fusionWithGoogle(
+  content: OpenRouterContentPart[],
+  apiKey: string,
+  startTime: number
+): Promise<NextResponse<FusionResponse> | null> {
+  const result = await callGoogleGenerate(GOOGLE_IMAGE_MODEL, content, apiKey, {
+    responseModalities: ["TEXT", "IMAGE"],
+  })
+
+  if (!result.ok) {
+    console.error("[Fusion] Google API error:", result.status, result.error)
+    return null
+  }
+
+  const image = extractGoogleImage(result.data)
+  if (!image) {
+    console.error("[Fusion] No image found in Google response")
+    return null
+  }
+
+  console.log("[Fusion] Successfully fused image with Google direct API")
+  return NextResponse.json({
+    fused_image: normalizeDataUri(image),
+    meta: { model: "google-gemini-2.5-flash-image", duration_ms: Date.now() - startTime },
+  })
+}
+
+/**
+ * 通过 OpenRouter 调用 Gemini 进行融合（fallback）
+ */
+async function fusionWithOpenRouter(
+  content: OpenRouterContentPart[],
+  apiKey: string,
+  startTime: number
+): Promise<NextResponse<FusionResponse> | null> {
   const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     headers: openRouterHeaders(apiKey),
@@ -304,16 +355,13 @@ async function fusionWithGemini(
 
   if (!response.ok) {
     const errorText = await response.text()
-    console.error("[Fusion] Gemini API error:", errorText)
+    console.error("[Fusion] OpenRouter Gemini API error:", errorText)
     return null
   }
 
   const data = await response.json()
-  console.log("[Fusion] Gemini response received")
-
   const message = data.choices?.[0]?.message
 
-  // Extract image from Gemini response
   if (message?.images && Array.isArray(message.images) && message.images.length > 0) {
     const imageData = message.images[0]
     let resultImage: string
@@ -325,18 +373,18 @@ async function fusionWithGemini(
     } else if (imageData?.b64_json) {
       resultImage = `data:image/png;base64,${imageData.b64_json}`
     } else {
-      console.error("[Fusion] Unexpected image format in Gemini response")
+      console.error("[Fusion] Unexpected image format in OpenRouter response")
       return null
     }
 
-    console.log("[Fusion] Successfully fused image with Gemini")
+    console.log("[Fusion] Successfully fused image with OpenRouter")
     return NextResponse.json({
       fused_image: resultImage,
-      meta: { model: "gemini-2.5-flash-fusion", duration_ms: Date.now() - startTime },
+      meta: { model: "openrouter-gemini-2.5-flash-image", duration_ms: Date.now() - startTime },
     })
   }
 
-  console.error("[Fusion] No image found in Gemini response")
+  console.error("[Fusion] No image found in OpenRouter response")
   return null
 }
 

@@ -9,7 +9,15 @@ import {
   extractOutputUrl,
   validateImageDataUrl,
 } from "@/lib/api"
-import { buildGeminiInpaintPrompt, buildFluxEnhancedPrompt, openRouterHeaders } from "@/lib/api"
+import {
+  buildGeminiInpaintPrompt,
+  buildFluxEnhancedPrompt,
+  openRouterHeaders,
+  callGoogleGenerate,
+  extractGoogleImage,
+  GOOGLE_IMAGE_MODEL,
+  type OpenRouterContentPart,
+} from "@/lib/api"
 
 export const runtime = "nodejs"
 export const maxDuration = 300 // 5 minutes for model processing
@@ -25,68 +33,79 @@ function normalizeDataUri(uri: string): string {
 }
 
 // ============ Gemini 图像生成 ============
-async function tryGeminiImageGeneration(
+
+interface InpaintInputs {
+  base_image: string
+  reference_image: string
+  alignedMask: string
+  prompt: string
+}
+
+async function prepareInpaintInputs(
   base_image: string,
   mask_image: string,
   reference_image: string,
-  prompt: string,
-  apiKey: string,
-  startTime: number
-): Promise<NextResponse<InpaintResponse | ApiErrorResponse> | null> {
-  console.log("[Inpaint] Using Gemini 2.5 Flash Image (google/gemini-2.5-flash-image)...")
-  console.log("[Inpaint] Prompt:", prompt)
-
-  // Align mask dimensions with the base image so the model applies it correctly
+  prompt: string
+): Promise<InpaintInputs> {
   const baseDims = await getImageDimensions(base_image)
   const alignedMask = await resizeMaskToMatchImage(mask_image, baseDims.width, baseDims.height)
+  return { base_image, reference_image, alignedMask, prompt }
+}
 
-  // 调试日志：验证图片大小
-  const getBase64Size = (dataUrl: string) => {
-    const base64 = dataUrl.split(",")[1] || dataUrl
-    return Math.round((base64.length * 3) / 4 / 1024) // KB
-  }
-  console.log("[Inpaint] Reference image size:", getBase64Size(reference_image), "KB")
-  console.log("[Inpaint] Base image size:", getBase64Size(base_image), "KB")
-  console.log("[Inpaint] Mask image size:", getBase64Size(mask_image), "KB")
-
-  // 调试：检查掩码是否包含白色像素
-  try {
-    const maskBase64 = mask_image.split(",")[1] || mask_image
-    console.log("[Inpaint] Mask format check:", mask_image.substring(0, 50))
-
-    // 验证掩码是否实际包含白色像素
-    if (typeof window === 'undefined') {
-      // Server-side: use Buffer to decode base64
-      const Buffer = require('buffer').Buffer
-      const imgData = Buffer.from(maskBase64, 'base64')
-      console.log("[Inpaint] Mask data size:", imgData.length, "bytes")
-    }
-  } catch (e) {
-    console.warn("[Inpaint] Could not analyze mask:", e)
-  }
-
-  const systemPrompt = buildGeminiInpaintPrompt(prompt)
-  console.log("[Inpaint] System prompt length:", systemPrompt.length, "chars")
-  
-  const content = [
+function buildInpaintContent(inputs: InpaintInputs): OpenRouterContentPart[] {
+  const systemPrompt = buildGeminiInpaintPrompt(inputs.prompt)
+  return [
     { type: "text", text: systemPrompt },
     { type: "text", text: "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" },
     { type: "text", text: "📥 IMAGE 1: REFERENCE/SOURCE (NEW CONTENT TO INSERT)" },
     { type: "text", text: "This contains the NEW elements that must REPLACE the masked region in Image 2. Study every detail - colors, textures, layers, structure. These MUST appear in your final output." },
-    { type: "image_url", image_url: { url: reference_image } },
+    { type: "image_url", image_url: { url: inputs.reference_image } },
     { type: "text", text: "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" },
     { type: "text", text: "🎨 IMAGE 2: TARGET/BASE (CANVAS TO MODIFY)" },
     { type: "text", text: "This is the background that will be MODIFIED. The masked region in this image will be DELETED and REPLACED with Image 1's content. Do NOT preserve Image 2's content in the masked area." },
-    { type: "image_url", image_url: { url: base_image } },
+    { type: "image_url", image_url: { url: inputs.base_image } },
     { type: "text", text: "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" },
     { type: "text", text: "⬜ IMAGE 3: MASK (DELETION/INSERTION ZONE)" },
     { type: "text", text: "White pixels = DELETE Image 2's content here and INSERT Image 1's content instead. Black pixels = keep Image 2's original content unchanged." },
-    { type: "image_url", image_url: { url: alignedMask } },
+    { type: "image_url", image_url: { url: inputs.alignedMask } },
     { type: "text", text: "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" },
     { type: "text", text: "🎯 FINAL COMMAND - READ CAREFULLY:" },
     { type: "text", text: "Generate a NEW image where:\n✓ BLACK masked area = Keep Image 2's original content\n✓ WHITE masked area = COMPLETELY REPLACE with Image 1's content (NOT Image 2's!)\n\n⚠️ The white-masked region MUST look DIFFERENT from Image 2's original.\n⚠️ The white-masked region MUST show Image 1's elements CLEARLY.\n⚠️ This is INPAINTING (replacement), NOT blending or harmonization.\n\nSTART GENERATING NOW." },
   ]
+}
 
+async function inpaintWithGoogle(
+  content: OpenRouterContentPart[],
+  apiKey: string,
+  startTime: number
+): Promise<NextResponse<InpaintResponse | ApiErrorResponse> | null> {
+  const result = await callGoogleGenerate(GOOGLE_IMAGE_MODEL, content, apiKey, {
+    responseModalities: ["TEXT", "IMAGE"],
+  })
+
+  if (!result.ok) {
+    console.error("[Inpaint] Google API error:", result.status, result.error)
+    return null
+  }
+
+  const image = extractGoogleImage(result.data)
+  if (!image) {
+    console.error("[Inpaint] No image found in Google response")
+    return null
+  }
+
+  console.log("[Inpaint] Successfully generated image via Google direct API")
+  return NextResponse.json({
+    result_image: normalizeDataUri(image),
+    meta: { model: "google-gemini-2.5-flash-image", duration_ms: Date.now() - startTime },
+  })
+}
+
+async function inpaintWithOpenRouter(
+  content: OpenRouterContentPart[],
+  apiKey: string,
+  startTime: number
+): Promise<NextResponse<InpaintResponse | ApiErrorResponse> | null> {
   const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     headers: openRouterHeaders(apiKey),
@@ -98,29 +117,17 @@ async function tryGeminiImageGeneration(
 
   if (!response.ok) {
     const errorText = await response.text()
-    console.error("[Inpaint] Gemini API error:", errorText)
-    // 返回 null 让调用者回退到 FLUX
+    console.error("[Inpaint] OpenRouter Gemini API error:", errorText)
     return null
   }
 
   const data = await response.json()
-  console.log("[Inpaint] Gemini response received")
-  console.log("[Inpaint] Response structure:", JSON.stringify({
-    hasChoices: !!data.choices,
-    choicesLength: data.choices?.length,
-    hasMessage: !!data.choices?.[0]?.message,
-    hasImages: !!data.choices?.[0]?.message?.images,
-    messageKeys: data.choices?.[0]?.message ? Object.keys(data.choices[0].message) : []
-  }))
-
-  // 提取生成的图片
   const message = data.choices?.[0]?.message
-  
-  // 检查 message.images 数组（OpenRouter Gemini 图像生成格式）
+
   if (message?.images && Array.isArray(message.images) && message.images.length > 0) {
     const imageData = message.images[0]
     let resultImage: string
-    
+
     if (typeof imageData === "string") {
       resultImage = imageData.startsWith("data:") ? normalizeDataUri(imageData) : `data:image/png;base64,${imageData}`
     } else if (imageData?.image_url?.url) {
@@ -132,40 +139,38 @@ async function tryGeminiImageGeneration(
       return null
     }
 
-    console.log("[Inpaint] Successfully got image from Gemini message.images")
+    console.log("[Inpaint] Successfully got image from OpenRouter message.images")
     return NextResponse.json({
       result_image: resultImage,
-      meta: { model: "gemini-2.5-flash-image", duration_ms: Date.now() - startTime },
+      meta: { model: "openrouter-gemini-2.5-flash-image", duration_ms: Date.now() - startTime },
     })
   }
 
-  // 检查 content 中的 inline_data（另一种可能的格式）
   const contentArray = message?.content
   if (Array.isArray(contentArray)) {
     for (const part of contentArray) {
       if (part.type === "image" && part.image?.base64) {
         const resultImage = `data:image/png;base64,${part.image.base64}`
-        console.log("[Inpaint] Successfully got image from Gemini content array")
+        console.log("[Inpaint] Successfully got image from OpenRouter content array")
         return NextResponse.json({
           result_image: resultImage,
-          meta: { model: "gemini-2.5-flash-image", duration_ms: Date.now() - startTime },
+          meta: { model: "openrouter-gemini-2.5-flash-image", duration_ms: Date.now() - startTime },
         })
       }
     }
   }
 
-  // 检查 content 字符串中的 base64 图片
   const contentText = typeof message?.content === "string" ? message.content : ""
   const base64Match = contentText.match(/data:image\/[^;]+;base64,[A-Za-z0-9+/=]+/)
   if (base64Match) {
-    console.log("[Inpaint] Successfully extracted base64 image from Gemini content text")
+    console.log("[Inpaint] Successfully extracted base64 image from OpenRouter content text")
     return NextResponse.json({
       result_image: normalizeDataUri(base64Match[0]),
-      meta: { model: "gemini-2.5-flash-image", duration_ms: Date.now() - startTime },
+      meta: { model: "openrouter-gemini-2.5-flash-image", duration_ms: Date.now() - startTime },
     })
   }
 
-  console.error("[Inpaint] No image found in Gemini response:", JSON.stringify(data).substring(0, 1000))
+  console.error("[Inpaint] No image found in OpenRouter response:", JSON.stringify(data).substring(0, 1000))
   return null
 }
 
@@ -385,38 +390,54 @@ export async function POST(request: NextRequest): Promise<NextResponse<InpaintRe
     console.log("[Inpaint] Prompt:", prompt)
     console.log("[Inpaint] Options:", JSON.stringify(options))
 
-    // 优先使用 Gemini（如果有参考图片且配置了 OpenRouter API key）
-    const openRouterApiKey = process.env.OPENROUTER_API_KEY
-    let geminiAttempted = false
-    let geminiFailureReason: string | null = null
-    if (validatedReference && openRouterApiKey) {
-      geminiAttempted = true
-      console.log("[Inpaint] Trying Gemini for reference-guided inpainting...")
-      try {
-        const geminiResult = await tryGeminiImageGeneration(
-          validatedBase.image.dataUrl,
-          validatedMask.image.dataUrl,
-          validatedReference,
-          prompt,
-          openRouterApiKey,
-          startTime
-        )
-        if (geminiResult) {
-          return geminiResult
+    const failures: string[] = []
+
+    // Reference-guided Gemini path: Google direct → OpenRouter
+    if (validatedReference) {
+      const inputs = await prepareInpaintInputs(
+        validatedBase.image.dataUrl,
+        validatedMask.image.dataUrl,
+        validatedReference,
+        prompt
+      )
+      const content = buildInpaintContent(inputs)
+
+      // 1. Google AI Studio direct
+      const googleApiKey = process.env.GOOGLE_API_KEY
+      if (googleApiKey) {
+        console.log("[Inpaint] Trying Google AI Studio direct (gemini-2.5-flash-image-preview)...")
+        try {
+          const result = await inpaintWithGoogle(content, googleApiKey, startTime)
+          if (result) return result
+          failures.push("Google: no image in response")
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : "Google call threw"
+          failures.push(`Google: ${msg}`)
+          console.error("[Inpaint] Google direct error:", error)
         }
-        geminiFailureReason = "Gemini returned no usable image"
-        console.log("[Inpaint] Gemini returned null, falling back to FLUX...")
-      } catch (geminiError) {
-        geminiFailureReason = geminiError instanceof Error ? geminiError.message : "Gemini call threw"
-        console.error("[Inpaint] Gemini error, falling back to FLUX:", geminiError)
+      }
+
+      // 2. OpenRouter
+      const openRouterApiKey = process.env.OPENROUTER_API_KEY
+      if (openRouterApiKey) {
+        console.log("[Inpaint] Trying OpenRouter Gemini for reference-guided inpainting...")
+        try {
+          const result = await inpaintWithOpenRouter(content, openRouterApiKey, startTime)
+          if (result) return result
+          failures.push("OpenRouter: no image in response")
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : "OpenRouter call threw"
+          failures.push(`OpenRouter: ${msg}`)
+          console.error("[Inpaint] OpenRouter error:", error)
+        }
       }
     }
 
-    // 使用 Replicate FLUX 作为后备
+    // 3. Replicate FLUX
     const replicateApiKey = process.env.REPLICATE_API_KEY
     if (!replicateApiKey) {
-      const reason = geminiAttempted
-        ? `AI inpainting failed (${geminiFailureReason ?? "Gemini unavailable"}) and no Replicate fallback is configured`
+      const reason = failures.length > 0
+        ? `AI inpainting failed (${failures.join("; ")}) and no Replicate fallback is configured`
         : "No AI inpainting providers are configured"
       console.warn("[Inpaint] " + reason)
       return NextResponse.json({ error: reason }, { status: 502 })
