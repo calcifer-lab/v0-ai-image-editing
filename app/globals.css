@@ -527,6 +527,27 @@ html[lang="en"] .lang-zh {
   box-shadow: 0 18px 36px rgba(17, 17, 17, 0.06);
 }
 
+.about-section .section-head {
+  max-width: 680px;
+  margin-bottom: 20px;
+}
+
+.about-body {
+  max-width: 680px;
+}
+
+.about-text p {
+  margin: 0;
+  padding: 10px 0 0;
+  font-size: 17px;
+  line-height: 1.7;
+  color: var(--text-muted);
+}
+
+.about-text p:first-child {
+  padding-top: 0;
+}
+
 .cards-grid {
   display: grid;
   grid-template-columns: 1fr;
