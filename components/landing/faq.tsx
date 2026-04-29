@@ -21,6 +21,14 @@ const FAQS = [
       "这正是 Fix 存在的理由。AI 生成图能做到同风格抽卡几十次，但当你手里只有一张真实照片可以当补丁时，就是我们出场的时候。风格跨度越大，普通拼接越失败，Fix 越必要。",
   },
   {
+    qEn: "How is this different from inpainting?",
+    qZh: "和局部重绘（inpainting）有什么区别？",
+    aEn:
+      "Inpainting erases a region and asks AI to regenerate content to fill it — you're relying on the model to imagine what should be there. Element Transplant takes a different element you already have and transplants it in exactly as it is. When you already own the right reference, you shouldn't have to ask AI to guess — you point, we place.",
+    aZh:
+      "局部重绘是擦除一块区域，让 AI 重新生成内容来填充——你在让模型猜测那里应该是什么。器官移植则是把你已有的正确元素直接移植进去，一模一样。当你已经有心仪的参考素材时，为什么要让它重新生成？指认比猜测更可靠。",
+  },
+  {
     qEn: "How is this different from Photoshop's Generative Fill or other AI editors?",
     qZh: "这和 Photoshop 的 Generative Fill 或其他 AI 修图工具有什么不同？",
     aEn:
@@ -100,18 +108,18 @@ export default function FAQ() {
         <div className="landing-card faq-cta">
           <div>
             <p className="faq-cta-kicker">
-              <span className="lang-en">Ready to try Fix?</span>
-              <span className="lang-zh">准备好体验 Fix 了吗？</span>
+              <span className="lang-en">Ready to transplant?</span>
+              <span className="lang-zh">准备好做移植了吗？</span>
             </p>
             <h3 className="faq-cta-title">
-              <span className="lang-en">Keep what works. Change only what needs to.</span>
-              <span className="lang-zh">保留对的，只改要改的。</span>
+              <span className="lang-en">Find the one thing wrong. Fix it.</span>
+              <span className="lang-zh">找出崩坏的那处，换掉它。</span>
             </h3>
           </div>
           <div className="faq-cta-actions">
             <Link href="/editor" className="button button-primary">
-              <span className="lang-en">Try Fix</span>
-              <span className="lang-zh">立即体验</span>
+              <span className="lang-en">Try Transplant</span>
+              <span className="lang-zh">开始移植</span>
             </Link>
           </div>
         </div>

@@ -21,26 +21,28 @@ export default function Hero() {
         <div className="hero-copy">
           <h1 className="hero-title">
             <span className="lang-en">
-              Keep the 90% AI got right.<br />Compose the 10% it didn't.
+              Every AI image has<br />that one thing wrong.<br />Fix it.
             </span>
             <span className="lang-zh">
-              把 AI 画对的部分留下，<br />画崩的部分换掉。
+              每张 AI 图<br />都有那么一处崩坏。<br />换掉它。
             </span>
           </h1>
 
           <p className="hero-subtitle">
             <span className="lang-en">
-              Take what you want from one image. Compose it into another. Leave the rest untouched.
+              Transplant the exact element from one image into another.
+              Everything else — style, lighting, composition — stays intact.
             </span>
             <span className="lang-zh">
-              从一张图里取出好的部分，合成到另一张图。其余分毫不动。
+              把一张图里对的那处元素，移植进另一张图。
+              其余的风格、光影、构图，分毫不动。
             </span>
           </p>
 
           <div className="hero-actions">
             <Link href="/editor" className="button button-primary">
-              <span className="lang-en">Try Fix</span>
-              <span className="lang-zh">体验 Fix</span>
+              <span className="lang-en">Try Transplant</span>
+              <span className="lang-zh">开始移植</span>
             </Link>
             <a href="#how-it-works" className="button button-ghost">
               <span className="lang-en">See how it works</span>
