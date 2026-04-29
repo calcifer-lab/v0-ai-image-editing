@@ -1,14 +1,14 @@
-import ImageEditor from "@/components/image-editor"
+import ElementTransplantEditor from "./transplant-editor"
 
 export const metadata = {
-  title: "Fix ReDiagram",
-  description: "AI-powered image editing workspace",
+  title: "Element Transplant Editor",
+  description: "Extract an element from one image and transplant it into another.",
 }
 
 export default function EditorPage() {
   return (
     <main className="min-h-screen bg-background">
-      <ImageEditor />
+      <ElementTransplantEditor />
     </main>
   )
 }
