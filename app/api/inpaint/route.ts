@@ -405,7 +405,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<InpaintRe
       // 1. Google AI Studio direct
       const googleApiKey = process.env.GOOGLE_API_KEY
       if (googleApiKey) {
-        console.log("[Inpaint] Trying Google AI Studio direct (gemini-2.5-flash-image-preview)...")
+        console.log("[Inpaint] Trying Google AI Studio direct (gemini-2.5-flash-image)...")
         try {
           const result = await inpaintWithGoogle(content, googleApiKey, startTime)
           if (result) return result
