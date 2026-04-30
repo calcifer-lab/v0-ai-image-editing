@@ -2,8 +2,12 @@
  * Direct Google AI Studio (Generative Language API) client.
  *
  * We support two models:
- *   - `gemini-2.5-flash-image-preview`  → image generation / fusion (a.k.a. "Nano Banana")
- *   - `gemini-2.0-flash`                → vision analysis (text-out)
+ *   - `gemini-2.5-flash-image`  → image generation / fusion (a.k.a. "Nano Banana", GA)
+ *   - `gemini-2.0-flash`        → vision analysis (text-out)
+ *
+ * Note: the previous preview alias `gemini-2.5-flash-image-preview` was
+ * retired by Google and now returns 404 from v1beta `generateContent`. Always
+ * use the GA model id below.
  *
  * Why this exists: OpenRouter started rejecting our account at the Google
  * provider routing layer (403 "Terms Of Service violation" with
@@ -134,5 +138,5 @@ export function extractGoogleText(data: unknown): string {
   return chunks.join("")
 }
 
-export const GOOGLE_IMAGE_MODEL = "gemini-2.5-flash-image-preview"
+export const GOOGLE_IMAGE_MODEL = "gemini-2.5-flash-image"
 export const GOOGLE_VISION_MODEL = "gemini-2.0-flash"
