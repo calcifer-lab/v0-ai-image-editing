@@ -356,6 +356,7 @@ export function useImageEditor(): UseImageEditorReturn {
   const [processingStatus, setProcessingStatus] = useState("")
   const [processingProgress, setProcessingProgress] = useState(0)
   const [error, setError] = useState<string | null>(null)
+  const [warning, setWarning] = useState<string | null>(null)
   const [imageAnalysis, setImageAnalysis] = useState<string | null>(null)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [elementCrop, setElementCrop] = useState<CropRegion | null>(null)
@@ -784,9 +785,7 @@ export function useImageEditor(): UseImageEditorReturn {
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => "")
-      console.warn("[AI Editor] Inpaint API failed:", errorText)
-      setError("AI fusion failed — showing the unblended composite instead. Please try again.")
-      return compositedBase
+      throw new Error(`Inpaint API ${response.status}: ${errorText}`)
     }
 
     updateProgress("AI model processing response...", 75, { driftTo: 80 })
@@ -805,6 +804,7 @@ export function useImageEditor(): UseImageEditorReturn {
 
     setIsProcessing(true)
     setError(null)
+    setWarning(null)
     updateProgress("Preparing images...", 5)
 
     try {
@@ -820,6 +820,7 @@ export function useImageEditor(): UseImageEditorReturn {
           updateProgress("AI inpaint failed, using direct composite fallback...", 65)
           finalImage = await processCompositeMode()
           console.log("[AI Editor] Fallback composite complete")
+          setWarning("AI 不可用，显示的是直接拼图")
         }
       }
 
@@ -886,6 +887,7 @@ export function useImageEditor(): UseImageEditorReturn {
     processingStatus,
     processingProgress,
     error,
+    warning,
     imageAnalysis,
     isAnalyzing,
     elementCrop,
