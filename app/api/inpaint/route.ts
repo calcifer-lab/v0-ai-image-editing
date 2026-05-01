@@ -18,11 +18,22 @@ import {
   GOOGLE_IMAGE_MODEL,
   type OpenRouterContentPart,
 } from "@/lib/api"
+import { logStageEvent, newRequestId } from "@/lib/observability/log-stage"
 
 export const runtime = "nodejs"
 export const maxDuration = 300 // 5 minutes for model processing
 const MAX_INPAINT_IMAGE_BYTES = 12 * 1024 * 1024
 const MAX_INPAINT_REFERENCE_BYTES = 8 * 1024 * 1024
+
+interface InpaintFailure {
+  provider: string
+  error_code: string
+  message?: string
+}
+
+type InpaintAttempt =
+  | { ok: true; response: NextResponse<InpaintResponse | ApiErrorResponse> }
+  | { ok: false; error_code: string; message?: string }
 
 /** Normalize any data URI to always use PNG MIME type, preventing .jfif saves */
 function normalizeDataUri(uri: string): string {
@@ -78,34 +89,37 @@ async function inpaintWithGoogle(
   content: OpenRouterContentPart[],
   apiKey: string,
   startTime: number
-): Promise<NextResponse<InpaintResponse | ApiErrorResponse> | null> {
+): Promise<InpaintAttempt> {
   const result = await callGoogleGenerate(GOOGLE_IMAGE_MODEL, content, apiKey, {
     responseModalities: ["TEXT", "IMAGE"],
   })
 
   if (!result.ok) {
     console.error("[Inpaint] Google API error:", result.status, result.error)
-    return null
+    return { ok: false, error_code: `HTTP_${result.status}`, message: result.error }
   }
 
   const image = extractGoogleImage(result.data)
   if (!image) {
     console.error("[Inpaint] No image found in Google response")
-    return null
+    return { ok: false, error_code: "NO_IMAGE_IN_RESPONSE" }
   }
 
   console.log("[Inpaint] Successfully generated image via Google direct API")
-  return NextResponse.json({
-    result_image: normalizeDataUri(image),
-    meta: { model: "google-gemini-2.5-flash-image", duration_ms: Date.now() - startTime },
-  })
+  return {
+    ok: true,
+    response: NextResponse.json({
+      result_image: normalizeDataUri(image),
+      meta: { model: "google-gemini-2.5-flash-image", duration_ms: Date.now() - startTime },
+    }),
+  }
 }
 
 async function inpaintWithOpenRouter(
   content: OpenRouterContentPart[],
   apiKey: string,
   startTime: number
-): Promise<NextResponse<InpaintResponse | ApiErrorResponse> | null> {
+): Promise<InpaintAttempt> {
   const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     headers: openRouterHeaders(apiKey),
@@ -118,11 +132,19 @@ async function inpaintWithOpenRouter(
   if (!response.ok) {
     const errorText = await response.text()
     console.error("[Inpaint] OpenRouter Gemini API error:", errorText)
-    return null
+    return { ok: false, error_code: `HTTP_${response.status}`, message: errorText }
   }
 
   const data = await response.json()
   const message = data.choices?.[0]?.message
+
+  const okResponse = (resultImage: string): InpaintAttempt => ({
+    ok: true,
+    response: NextResponse.json({
+      result_image: resultImage,
+      meta: { model: "openrouter-gemini-2.5-flash-image", duration_ms: Date.now() - startTime },
+    }),
+  })
 
   if (message?.images && Array.isArray(message.images) && message.images.length > 0) {
     const imageData = message.images[0]
@@ -136,26 +158,19 @@ async function inpaintWithOpenRouter(
       resultImage = `data:image/png;base64,${imageData.b64_json}`
     } else {
       console.error("[Inpaint] Unexpected image format in message.images:", imageData)
-      return null
+      return { ok: false, error_code: "UNEXPECTED_IMAGE_FORMAT" }
     }
 
     console.log("[Inpaint] Successfully got image from OpenRouter message.images")
-    return NextResponse.json({
-      result_image: resultImage,
-      meta: { model: "openrouter-gemini-2.5-flash-image", duration_ms: Date.now() - startTime },
-    })
+    return okResponse(resultImage)
   }
 
   const contentArray = message?.content
   if (Array.isArray(contentArray)) {
     for (const part of contentArray) {
       if (part.type === "image" && part.image?.base64) {
-        const resultImage = `data:image/png;base64,${part.image.base64}`
         console.log("[Inpaint] Successfully got image from OpenRouter content array")
-        return NextResponse.json({
-          result_image: resultImage,
-          meta: { model: "openrouter-gemini-2.5-flash-image", duration_ms: Date.now() - startTime },
-        })
+        return okResponse(`data:image/png;base64,${part.image.base64}`)
       }
     }
   }
@@ -164,14 +179,11 @@ async function inpaintWithOpenRouter(
   const base64Match = contentText.match(/data:image\/[^;]+;base64,[A-Za-z0-9+/=]+/)
   if (base64Match) {
     console.log("[Inpaint] Successfully extracted base64 image from OpenRouter content text")
-    return NextResponse.json({
-      result_image: normalizeDataUri(base64Match[0]),
-      meta: { model: "openrouter-gemini-2.5-flash-image", duration_ms: Date.now() - startTime },
-    })
+    return okResponse(normalizeDataUri(base64Match[0]))
   }
 
   console.error("[Inpaint] No image found in OpenRouter response:", JSON.stringify(data).substring(0, 1000))
-  return null
+  return { ok: false, error_code: "NO_IMAGE_IN_RESPONSE" }
 }
 
 // ============ FLUX Fill Pro ============
@@ -185,6 +197,9 @@ async function tryFluxFillPro(
   reference_image?: string
 ): Promise<NextResponse<InpaintResponse | ApiErrorResponse>> {
   console.log("[Inpaint] Using FLUX.1 Fill Pro for inpainting...")
+  if (reference_image) {
+    console.warn("[Inpaint] FLUX fallback does not support reference_image; reference will be IGNORED");
+  }
 
   const imageDims = await getImageDimensions(base_image)
   console.log("[Inpaint] Image dimensions:", imageDims.width, "x", imageDims.height)
@@ -209,7 +224,6 @@ async function tryFluxFillPro(
         output_format: "png",
         safety_tolerance: 2,
         prompt_upsampling: true,
-        ...(reference_image ? { reference_image } : {}),
       },
     }),
   })
@@ -231,7 +245,7 @@ async function tryFluxFillPro(
       const resultImage = await urlToBase64(outputUrl)
       return NextResponse.json({
         result_image: resultImage,
-        meta: { model: "flux-fill-pro", duration_ms: Date.now() - startTime },
+        meta: { model: "flux-fill-pro", duration_ms: Date.now() - startTime, reference_used: false },
       })
     }
   }
@@ -258,7 +272,7 @@ async function tryFluxFillPro(
   const resultImage = await urlToBase64(outputUrl)
   return NextResponse.json({
     result_image: resultImage,
-    meta: { model: "flux-fill-pro", duration_ms: Date.now() - startTime },
+    meta: { model: "flux-fill-pro", duration_ms: Date.now() - startTime, reference_used: false },
   })
 }
 
@@ -273,6 +287,9 @@ async function tryFluxFillDev(
   reference_image?: string
 ): Promise<NextResponse<InpaintResponse | ApiErrorResponse>> {
   console.log("[Inpaint] Using FLUX Fill Dev as fallback...")
+  if (reference_image) {
+    console.warn("[Inpaint] FLUX fallback does not support reference_image; reference will be IGNORED");
+  }
 
   const response = await fetch("https://api.replicate.com/v1/models/black-forest-labs/flux-fill-dev/predictions", {
     method: "POST",
@@ -289,7 +306,6 @@ async function tryFluxFillDev(
         guidance: options.guidance_scale || 30,
         steps: options.steps || 50,
         output_format: "png",
-        ...(reference_image ? { reference_image } : {}),
       },
     }),
   })
@@ -312,7 +328,7 @@ async function tryFluxFillDev(
       const resultImage = await urlToBase64(outputUrl)
       return NextResponse.json({
         result_image: resultImage,
-        meta: { model: "flux-fill-dev", duration_ms: Date.now() - startTime },
+        meta: { model: "flux-fill-dev", duration_ms: Date.now() - startTime, reference_used: false },
       })
     }
   }
@@ -337,7 +353,7 @@ async function tryFluxFillDev(
   const resultImage = await urlToBase64(outputUrl)
   return NextResponse.json({
     result_image: resultImage,
-    meta: { model: "flux-fill-dev", duration_ms: Date.now() - startTime },
+    meta: { model: "flux-fill-dev", duration_ms: Date.now() - startTime, reference_used: false },
   })
 }
 
@@ -385,12 +401,24 @@ export async function POST(request: NextRequest): Promise<NextResponse<InpaintRe
       validatedReference = referenceCheck.image.dataUrl
     }
 
-    console.log("[Inpaint] Has reference image:", !!validatedReference)
-    console.log("[Inpaint] Reference image preview:", validatedReference ? validatedReference.substring(0, 50) + "..." : "null")
+    const requestId = newRequestId()
+    const baseDims = await getImageDimensions(validatedBase.image.dataUrl)
+
+    logStageEvent("info", {
+      requestId,
+      stage: "inpaint",
+      mode: "ai",
+      input_meta: {
+        width: baseDims.width,
+        height: baseDims.height,
+        bytes: validatedBase.image.bytes,
+      },
+      message: `inpaint request received (has_reference=${!!validatedReference})`,
+    })
     console.log("[Inpaint] Prompt:", prompt)
     console.log("[Inpaint] Options:", JSON.stringify(options))
 
-    const failures: string[] = []
+    const failures: InpaintFailure[] = []
 
     // Reference-guided Gemini path: Google direct → OpenRouter
     if (validatedReference) {
@@ -405,14 +433,41 @@ export async function POST(request: NextRequest): Promise<NextResponse<InpaintRe
       // 1. Google AI Studio direct
       const googleApiKey = process.env.GOOGLE_API_KEY
       if (googleApiKey) {
-        console.log("[Inpaint] Trying Google AI Studio direct (gemini-2.5-flash-image-preview)...")
+        const googleStartedAt = Date.now()
         try {
-          const result = await inpaintWithGoogle(content, googleApiKey, startTime)
-          if (result) return result
-          failures.push("Google: no image in response")
+          const attempt = await inpaintWithGoogle(content, googleApiKey, startTime)
+          if (attempt.ok) {
+            logStageEvent("info", {
+              requestId,
+              stage: "inpaint",
+              provider: "google",
+              model: GOOGLE_IMAGE_MODEL,
+              elapsed_ms: Date.now() - googleStartedAt,
+            })
+            return attempt.response
+          }
+          failures.push({ provider: "google", error_code: attempt.error_code, message: attempt.message })
+          logStageEvent("warn", {
+            requestId,
+            stage: "inpaint",
+            provider: "google",
+            error_code: attempt.error_code,
+            fallback_from: "google",
+            fallback_to: "openrouter",
+            message: attempt.message,
+          })
         } catch (error) {
           const msg = error instanceof Error ? error.message : "Google call threw"
-          failures.push(`Google: ${msg}`)
+          failures.push({ provider: "google", error_code: "GOOGLE_CALL_THROW", message: msg })
+          logStageEvent("warn", {
+            requestId,
+            stage: "inpaint",
+            provider: "google",
+            error_code: "GOOGLE_CALL_THROW",
+            fallback_from: "google",
+            fallback_to: "openrouter",
+            message: msg,
+          })
           console.error("[Inpaint] Google direct error:", error)
         }
       }
@@ -420,14 +475,41 @@ export async function POST(request: NextRequest): Promise<NextResponse<InpaintRe
       // 2. OpenRouter
       const openRouterApiKey = process.env.OPENROUTER_API_KEY
       if (openRouterApiKey) {
-        console.log("[Inpaint] Trying OpenRouter Gemini for reference-guided inpainting...")
+        const openRouterStartedAt = Date.now()
         try {
-          const result = await inpaintWithOpenRouter(content, openRouterApiKey, startTime)
-          if (result) return result
-          failures.push("OpenRouter: no image in response")
+          const attempt = await inpaintWithOpenRouter(content, openRouterApiKey, startTime)
+          if (attempt.ok) {
+            logStageEvent("info", {
+              requestId,
+              stage: "inpaint",
+              provider: "openrouter",
+              model: "google/gemini-2.5-flash-image",
+              elapsed_ms: Date.now() - openRouterStartedAt,
+            })
+            return attempt.response
+          }
+          failures.push({ provider: "openrouter", error_code: attempt.error_code, message: attempt.message })
+          logStageEvent("warn", {
+            requestId,
+            stage: "inpaint",
+            provider: "openrouter",
+            error_code: attempt.error_code,
+            fallback_from: "openrouter",
+            fallback_to: "replicate-flux",
+            message: attempt.message,
+          })
         } catch (error) {
           const msg = error instanceof Error ? error.message : "OpenRouter call threw"
-          failures.push(`OpenRouter: ${msg}`)
+          failures.push({ provider: "openrouter", error_code: "OPENROUTER_CALL_THROW", message: msg })
+          logStageEvent("warn", {
+            requestId,
+            stage: "inpaint",
+            provider: "openrouter",
+            error_code: "OPENROUTER_CALL_THROW",
+            fallback_from: "openrouter",
+            fallback_to: "replicate-flux",
+            message: msg,
+          })
           console.error("[Inpaint] OpenRouter error:", error)
         }
       }
@@ -436,12 +518,27 @@ export async function POST(request: NextRequest): Promise<NextResponse<InpaintRe
     // 3. Replicate FLUX
     const replicateApiKey = process.env.REPLICATE_API_KEY
     if (!replicateApiKey) {
+      const summary = failures.map(f => `${f.provider}:${f.error_code}`).join("; ")
       const reason = failures.length > 0
-        ? `AI inpainting failed (${failures.join("; ")}) and no Replicate fallback is configured`
+        ? `AI inpainting failed (${summary}) and no Replicate fallback is configured`
         : "No AI inpainting providers are configured"
-      console.warn("[Inpaint] " + reason)
+      logStageEvent("error", {
+        requestId,
+        stage: "inpaint",
+        error_code: "ALL_PROVIDERS_FAILED",
+        message: summary || "no provider configured",
+      })
       return NextResponse.json({ error: reason }, { status: 502 })
     }
+
+    logStageEvent("info", {
+      requestId,
+      stage: "inpaint",
+      provider: "replicate",
+      fallback_from: validatedReference ? "openrouter" : undefined,
+      fallback_to: "replicate-flux",
+      message: "Falling through to FLUX Fill Pro",
+    })
 
     return tryFluxFillPro(
       validatedBase.image.dataUrl,

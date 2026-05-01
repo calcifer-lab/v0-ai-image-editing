@@ -73,7 +73,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<FusionRes
     const googleApiKey = process.env.GOOGLE_API_KEY
     if (googleApiKey) {
       try {
-        console.log("[Fusion] Using Google AI Studio (gemini-2.5-flash-image-preview)...")
+        console.log("[Fusion] Using Google AI Studio (gemini-2.5-flash-image)...")
         const result = await fusionWithGoogle(fusionContent, googleApiKey, startTime)
         if (result) return result
         failures.push("Google: no image in response")
