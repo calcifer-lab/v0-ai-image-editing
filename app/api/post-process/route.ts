@@ -100,7 +100,7 @@ export async function POST(request: NextRequest) {
           ])
           .toBuffer()
       } catch (error) {
-        console.error("Edge blending failed, returning original result:", error)
+        console.warn("[PostProcess] Edge blending failed, returning original result:", error)
       }
     }
 
@@ -117,7 +117,7 @@ export async function POST(request: NextRequest) {
       },
     })
   } catch (error) {
-    console.error("Error in post-processing:", error)
+    console.error("[PostProcess] Error:", error)
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Failed to post-process image" },
       { status: 500 },
