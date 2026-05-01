@@ -22,6 +22,7 @@ export interface InpaintResponse {
   meta: {
     model: string
     duration_ms: number
+    reference_used?: boolean
   }
 }
 
