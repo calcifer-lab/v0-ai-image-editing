@@ -185,6 +185,9 @@ async function tryFluxFillPro(
   reference_image?: string
 ): Promise<NextResponse<InpaintResponse | ApiErrorResponse>> {
   console.log("[Inpaint] Using FLUX.1 Fill Pro for inpainting...")
+  if (reference_image) {
+    console.warn("[Inpaint] FLUX fallback does not support reference_image; reference will be IGNORED");
+  }
 
   const imageDims = await getImageDimensions(base_image)
   console.log("[Inpaint] Image dimensions:", imageDims.width, "x", imageDims.height)
@@ -209,7 +212,6 @@ async function tryFluxFillPro(
         output_format: "png",
         safety_tolerance: 2,
         prompt_upsampling: true,
-        ...(reference_image ? { reference_image } : {}),
       },
     }),
   })
@@ -231,7 +233,7 @@ async function tryFluxFillPro(
       const resultImage = await urlToBase64(outputUrl)
       return NextResponse.json({
         result_image: resultImage,
-        meta: { model: "flux-fill-pro", duration_ms: Date.now() - startTime },
+        meta: { model: "flux-fill-pro", duration_ms: Date.now() - startTime, reference_used: false },
       })
     }
   }
@@ -258,7 +260,7 @@ async function tryFluxFillPro(
   const resultImage = await urlToBase64(outputUrl)
   return NextResponse.json({
     result_image: resultImage,
-    meta: { model: "flux-fill-pro", duration_ms: Date.now() - startTime },
+    meta: { model: "flux-fill-pro", duration_ms: Date.now() - startTime, reference_used: false },
   })
 }
 
@@ -273,6 +275,9 @@ async function tryFluxFillDev(
   reference_image?: string
 ): Promise<NextResponse<InpaintResponse | ApiErrorResponse>> {
   console.log("[Inpaint] Using FLUX Fill Dev as fallback...")
+  if (reference_image) {
+    console.warn("[Inpaint] FLUX fallback does not support reference_image; reference will be IGNORED");
+  }
 
   const response = await fetch("https://api.replicate.com/v1/models/black-forest-labs/flux-fill-dev/predictions", {
     method: "POST",
@@ -289,7 +294,6 @@ async function tryFluxFillDev(
         guidance: options.guidance_scale || 30,
         steps: options.steps || 50,
         output_format: "png",
-        ...(reference_image ? { reference_image } : {}),
       },
     }),
   })
@@ -312,7 +316,7 @@ async function tryFluxFillDev(
       const resultImage = await urlToBase64(outputUrl)
       return NextResponse.json({
         result_image: resultImage,
-        meta: { model: "flux-fill-dev", duration_ms: Date.now() - startTime },
+        meta: { model: "flux-fill-dev", duration_ms: Date.now() - startTime, reference_used: false },
       })
     }
   }
@@ -337,7 +341,7 @@ async function tryFluxFillDev(
   const resultImage = await urlToBase64(outputUrl)
   return NextResponse.json({
     result_image: resultImage,
-    meta: { model: "flux-fill-dev", duration_ms: Date.now() - startTime },
+    meta: { model: "flux-fill-dev", duration_ms: Date.now() - startTime, reference_used: false },
   })
 }
 
