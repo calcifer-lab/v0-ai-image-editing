@@ -572,10 +572,12 @@ export function useImageEditor(): UseImageEditorReturn {
     // 移除背景 (25%)
     updateProgress("Removing background...", 25)
     try {
+      // Compress reference before upload to avoid silent failure on large images
+      const compressedForBgRemoval = await compressDataUrlForUpload(processedReference, { preserveTransparency: false })
       const bgResponse = await fetch("/api/remove-background", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image: processedReference }),
+        body: JSON.stringify({ image: compressedForBgRemoval }),
       })
 
       if (bgResponse.ok) {
@@ -583,12 +585,18 @@ export function useImageEditor(): UseImageEditorReturn {
         if (bgData.result_image) {
           processedReference = bgData.result_image
           console.log("[AI Editor] Background removed successfully")
+        } else {
+          console.warn("[AI Editor] Background removal returned no result, using original image (element may have white background)")
+          setError("Background removal returned no result — element may appear with its original background. Try again or use a pre-cutout image.")
         }
       } else {
-        console.warn("[AI Editor] Background removal failed, using original image")
+        const errText = await bgResponse.text().catch(() => "")
+        console.warn("[AI Editor] Background removal failed:", errText, "— using original image")
+        setError("Background removal failed — element may appear with its original background. Try again or use a pre-cutout image.")
       }
     } catch (bgError) {
       console.warn("[AI Editor] Background removal error:", bgError)
+      setError("Background removal failed — element may appear with its original background.")
     }
 
     // 合成图片 (40%)

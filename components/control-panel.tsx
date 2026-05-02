@@ -98,7 +98,7 @@ function EditModeSection({
             active={params.editMode === "ai"}
             onClick={() => onParamsChange({ ...params, editMode: "ai" })}
             icon={Wand2}
-            label="AI Generate"
+            label="AI Compose"
             description="AI reinterprets patch"
           />
         </div>
