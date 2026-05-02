@@ -14,7 +14,6 @@ import type { CanvasEditorRef } from "@/components/canvas-editor"
 import {
   resizeToAspectRatio,
   compositeImages,
-  compositePatchWithLocalFusion,
   loadImage,
   resizeImage,
   compressImage,
@@ -543,8 +542,9 @@ export function useImageEditor(): UseImageEditorReturn {
     const hasExplicitCrop = !!(elementCrop && elementCrop.width > 0 && elementCrop.height > 0)
     // CanvasEditor's brush mask (the circular/freeform strokes drawn by user)
     const canvasEditorMaskCanvas = canvasEditorRef.current?.maskCanvas ?? undefined
-    // Use elementCrop if explicitly set via ElementCropper, otherwise use CanvasEditor's mask coordinates
-    const cropRegion = elementCrop ?? (mask && mask.coordinates ? { x: mask.coordinates.x, y: mask.coordinates.y, width: mask.coordinates.width, height: mask.coordinates.height, imageWidth: mask.coordinates.width, imageHeight: mask.coordinates.height } : null)
+    // Use elementCrop if explicitly set via ElementCropper; do NOT fall back to mask coordinates as
+    // imageWidth/imageHeight must reflect the element image dimensions, not the mask canvas size.
+    const cropRegion = elementCrop ?? null
 
     let processedReference = images.elementImage
     if (canvasEditorMaskCanvas) {
@@ -591,13 +591,16 @@ export function useImageEditor(): UseImageEditorReturn {
     }
 
     // 合成图片 (40%)
+    // toneMatchStrength=0: skip local color correction — /api/fusion (Gemini) handles all
+    // lighting/color harmonization. Pre-adjusting here causes double-correction artifacts.
     updateProgress("Patching element into image...", 40)
     const compositeResult = await compositeImages(
       images.baseImage,
       processedReference,
       mask.dataUrl,
       mask.coordinates,
-      canvasEditorMaskCanvas
+      canvasEditorMaskCanvas,
+      { toneMatchStrength: 0 }
     )
 
     console.log("[AI Editor] Composite complete, starting AI fusion...")
@@ -637,17 +640,14 @@ export function useImageEditor(): UseImageEditorReturn {
       resizeImageBlob(maskBlob, 1536, 0.95),
     ])
 
-    const originalProcessedBaseImage = await blobToDataUrl(compressedBase)
-    let processedBaseImage = originalProcessedBaseImage
+    let processedBaseImage = await blobToDataUrl(compressedBase)
     const processedMaskImage = await blobToDataUrl(compressedMask)
 
-    if (!hasExplicitCrop) {
-      updateProgress("Cleaning masked region...", 20, { driftTo: 28 })
-      // For true inpaint mode, remove the masked region so the model is forced to replace it.
-      processedBaseImage = await removeMaskedRegionFromBase(processedBaseImage, processedMaskImage)
-    } else {
-      updateProgress("Preparing targeted transplant...", 20, { driftTo: 28 })
-    }
+    // Always punch a hole in the masked region so the AI model is forced to fill it from the
+    // reference image rather than preserving the original content. This matches the 4d7bdb1
+    // behavior that produced reliable results.
+    updateProgress("Cleaning masked region...", 20, { driftTo: 28 })
+    processedBaseImage = await removeMaskedRegionFromBase(processedBaseImage, processedMaskImage)
 
     // 使用局部变量跟踪分析结果，避免闭包捕获的状态值过时问题
     // 关键：只有当 (1) 已有分析 AND (2) 没有新的 elementCrop AND (3) 没有自定义 prompt 时才复用
@@ -723,54 +723,15 @@ export function useImageEditor(): UseImageEditorReturn {
     console.log("[AI Editor] Final prompt being sent:", finalPrompt)
     console.log("[AI Editor] Has elementCrop:", !!elementCrop, elementCrop)
 
-    // ── Pixel-perfect composite: place reference pixels directly into the masked
-    //    region BEFORE sending to AI. This ensures the AI uses the actual
-    //    reference content (not just as a "style hint") and only needs to
-    //    blend edges rather than regenerate content.
-    updateProgress("Compositing reference into target region...", 50, { driftTo: 58 })
-    let compositedBase = processedBaseImage
-
-    if (hasExplicitCrop && mask) {
-      try {
-        const [baseImgEl, maskImgEl] = await Promise.all([
-          loadImage(originalProcessedBaseImage),
-          loadImage(processedMaskImage),
-        ])
-        const resizedBaseW = baseImgEl.width
-        const resizedBaseH = baseImgEl.height
-
-        // Scale mask coords from mask canvas space to the resized base space.
-        const scaledMask = {
-          x: Math.round(mask.coordinates.x * (resizedBaseW / maskImgEl.width)),
-          y: Math.round(mask.coordinates.y * (resizedBaseH / maskImgEl.height)),
-          width: Math.round(mask.coordinates.width * (resizedBaseW / maskImgEl.width)),
-          height: Math.round(mask.coordinates.height * (resizedBaseH / maskImgEl.height)),
-        }
-
-        console.log("[AI Editor] Composite: mask at", scaledMask)
-
-        const composited = await compositePatchWithLocalFusion(
-          originalProcessedBaseImage,
-          processedReference,
-          scaledMask
-        )
-        compositedBase = composited
-        console.log("[AI Editor] Local fusion composite done")
-      } catch (compositeError) {
-        console.warn("[AI Editor] Local fusion composite failed:", compositeError)
-      }
-    }
-
-    // Plan A: pre-composited base + mask + reference go through /api/inpaint.
-    // Gemini does edge harmonization on top of the already-pasted patch; the
-    // route also has a Replicate FLUX fallback if Gemini is unavailable.
-    updateProgress("Sending request to AI model...", 60, { driftTo: 72 })
+    // Send hole-punched base + reference to AI — the model generates the inpainted content
+    // directly from the reference image. This matches the 4d7bdb1 approach that worked well.
+    updateProgress("Sending request to AI model...", 50, { driftTo: 70 })
 
     const response = await fetch("/api/inpaint", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        base_image: compositedBase,
+        base_image: processedBaseImage,
         mask_image: processedMaskImage,
         reference_image: processedReference,
         prompt: finalPrompt,
@@ -785,8 +746,7 @@ export function useImageEditor(): UseImageEditorReturn {
     if (!response.ok) {
       const errorText = await response.text().catch(() => "")
       console.warn("[AI Editor] Inpaint API failed:", errorText)
-      setError("AI fusion failed — showing the unblended composite instead. Please try again.")
-      return compositedBase
+      throw new Error(errorText || `Inpaint API error: ${response.status}`)
     }
 
     updateProgress("AI model processing response...", 75, { driftTo: 80 })
