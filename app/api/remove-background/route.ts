@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import type { RemoveBackgroundRequest, RemoveBackgroundResponse, ApiErrorResponse } from "@/types"
 import { pollReplicatePrediction, urlToBase64, extractOutputUrl, validateImageDataUrl } from "@/lib/api"
+import { logStageEvent, resolveRequestId } from "@/lib/observability/log-stage"
 
 export const runtime = "nodejs"
 export const maxDuration = 120
@@ -10,6 +11,7 @@ export async function POST(
   request: NextRequest
 ): Promise<NextResponse<RemoveBackgroundResponse | ApiErrorResponse>> {
   const startTime = Date.now()
+  const requestId = resolveRequestId(request.headers.get("x-request-id"))
 
   try {
     const body: RemoveBackgroundRequest = await request.json()
@@ -20,15 +22,36 @@ export async function POST(
       maxBytes: MAX_REMOVE_BACKGROUND_BYTES,
     })
     if (!validatedImage.ok) {
+      logStageEvent("warn", {
+        requestId,
+        stage: "process",
+        provider: "replicate",
+        error_code: `INVALID_INPUT_${validatedImage.status}`,
+        message: validatedImage.error,
+      })
       return NextResponse.json({ error: validatedImage.error }, { status: validatedImage.status })
     }
 
     const replicateApiKey = process.env.REPLICATE_API_KEY
     if (!replicateApiKey) {
+      logStageEvent("error", {
+        requestId,
+        stage: "process",
+        provider: "replicate",
+        error_code: "REPLICATE_API_KEY_MISSING",
+      })
       return NextResponse.json({ error: "REPLICATE_API_KEY not configured" }, { status: 500 })
     }
 
     const imageBytes = validatedImage.image.bytes
+    logStageEvent("info", {
+      requestId,
+      stage: "process",
+      provider: "replicate",
+      model: "rembg",
+      input_meta: { bytes: imageBytes },
+      message: "remove-background request received",
+    })
     console.log(`[RemoveBG] Image size: ${Math.round(imageBytes / 1024)}KB`)
 
     // Replicate's synchronous endpoint is unreliable above ~1.5 MB decoded.
@@ -66,6 +89,15 @@ export async function POST(
 
     if (!response.ok) {
       const errorText = await response.text()
+      logStageEvent("error", {
+        requestId,
+        stage: "process",
+        provider: "replicate",
+        model: "rembg",
+        error_code: `HTTP_${response.status}`,
+        elapsed_ms: Date.now() - startTime,
+        message: errorText.slice(0, 200),
+      })
       console.error(`[RemoveBG] Replicate API error (${response.status}):`, errorText)
       return NextResponse.json(
         { error: `Replicate API error ${response.status}: ${errorText.slice(0, 200)}` },
@@ -81,9 +113,16 @@ export async function POST(
       const outputUrl = extractOutputUrl(prediction.output)
       if (outputUrl) {
         const resultImage = await urlToBase64(outputUrl)
+        logStageEvent("info", {
+          requestId,
+          stage: "process",
+          provider: "replicate",
+          model: "rembg",
+          elapsed_ms: Date.now() - startTime,
+        })
         return NextResponse.json({
           result_image: resultImage,
-          meta: { model: "rembg", duration_ms: Date.now() - startTime },
+          meta: { model: "rembg", duration_ms: Date.now() - startTime, requestId },
         })
       }
     }
@@ -97,6 +136,15 @@ export async function POST(
     )
 
     if (result.status !== "succeeded" || !result.output) {
+      logStageEvent("error", {
+        requestId,
+        stage: "process",
+        provider: "replicate",
+        model: "rembg",
+        error_code: "PREDICTION_FAILED",
+        elapsed_ms: Date.now() - startTime,
+        message: result.error || "Background removal failed",
+      })
       return NextResponse.json(
         { error: result.error || "Background removal failed" },
         { status: 500 }
@@ -105,15 +153,39 @@ export async function POST(
 
     const outputUrl = extractOutputUrl(result.output)
     if (!outputUrl) {
+      logStageEvent("error", {
+        requestId,
+        stage: "process",
+        provider: "replicate",
+        model: "rembg",
+        error_code: "NO_OUTPUT_URL",
+        elapsed_ms: Date.now() - startTime,
+      })
       return NextResponse.json({ error: "No output URL in prediction result" }, { status: 500 })
     }
 
     const resultImage = await urlToBase64(outputUrl)
+    logStageEvent("info", {
+      requestId,
+      stage: "process",
+      provider: "replicate",
+      model: "rembg",
+      elapsed_ms: Date.now() - startTime,
+    })
     return NextResponse.json({
       result_image: resultImage,
-      meta: { model: "rembg", duration_ms: Date.now() - startTime },
+      meta: { model: "rembg", duration_ms: Date.now() - startTime, requestId },
     })
   } catch (error) {
+    logStageEvent("error", {
+      requestId,
+      stage: "process",
+      provider: "replicate",
+      model: "rembg",
+      error_code: "UNHANDLED_EXCEPTION",
+      elapsed_ms: Date.now() - startTime,
+      message: error instanceof Error ? error.message : "unknown",
+    })
     console.error("[RemoveBG] Error:", error)
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Failed to remove background" },

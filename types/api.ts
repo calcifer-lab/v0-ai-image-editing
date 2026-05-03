@@ -23,6 +23,9 @@ export interface InpaintResponse {
     model: string
     duration_ms: number
     reference_used?: boolean
+    requestId?: string
+    fallback_from?: string
+    fallback_to?: string
   }
 }
 
@@ -37,6 +40,9 @@ export interface AnalyzeImageResponse {
   meta: {
     model: string
     usage?: unknown
+    requestId?: string
+    fallback_from?: string
+    fallback_to?: string
   }
 }
 
@@ -50,6 +56,7 @@ export interface RemoveBackgroundResponse {
   meta: {
     model: string
     duration_ms: number
+    requestId?: string
   }
 }
 

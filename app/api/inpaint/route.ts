@@ -18,7 +18,7 @@ import {
   GOOGLE_IMAGE_MODEL,
   type OpenRouterContentPart,
 } from "@/lib/api"
-import { logStageEvent, newRequestId } from "@/lib/observability/log-stage"
+import { logStageEvent, resolveRequestId } from "@/lib/observability/log-stage"
 
 export const runtime = "nodejs"
 export const maxDuration = 300 // 5 minutes for model processing
@@ -88,7 +88,8 @@ function buildInpaintContent(inputs: InpaintInputs): OpenRouterContentPart[] {
 async function inpaintWithGoogle(
   content: OpenRouterContentPart[],
   apiKey: string,
-  startTime: number
+  startTime: number,
+  requestId: string
 ): Promise<InpaintAttempt> {
   const result = await callGoogleGenerate(GOOGLE_IMAGE_MODEL, content, apiKey, {
     responseModalities: ["TEXT", "IMAGE"],
@@ -110,7 +111,7 @@ async function inpaintWithGoogle(
     ok: true,
     response: NextResponse.json({
       result_image: normalizeDataUri(image),
-      meta: { model: "google-gemini-2.5-flash-image", duration_ms: Date.now() - startTime },
+      meta: { model: "google-gemini-2.5-flash-image", duration_ms: Date.now() - startTime, requestId },
     }),
   }
 }
@@ -118,7 +119,8 @@ async function inpaintWithGoogle(
 async function inpaintWithOpenRouter(
   content: OpenRouterContentPart[],
   apiKey: string,
-  startTime: number
+  startTime: number,
+  requestId: string
 ): Promise<InpaintAttempt> {
   const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
@@ -142,7 +144,13 @@ async function inpaintWithOpenRouter(
     ok: true,
     response: NextResponse.json({
       result_image: resultImage,
-      meta: { model: "openrouter-gemini-2.5-flash-image", duration_ms: Date.now() - startTime },
+      meta: {
+        model: "openrouter-gemini-2.5-flash-image",
+        duration_ms: Date.now() - startTime,
+        requestId,
+        fallback_from: "google",
+        fallback_to: "openrouter",
+      },
     }),
   })
 
@@ -194,6 +202,7 @@ async function tryFluxFillPro(
   options: { guidance_scale?: number; steps?: number },
   apiKey: string,
   startTime: number,
+  requestId: string,
   reference_image?: string
 ): Promise<NextResponse<InpaintResponse | ApiErrorResponse>> {
   console.log("[Inpaint] Using FLUX.1 Fill Pro for inpainting...")
@@ -232,7 +241,7 @@ async function tryFluxFillPro(
     const errorText = await response.text()
     console.error("[Inpaint] Replicate API error:", errorText)
     // 尝试降级到 flux-fill-dev
-    return tryFluxFillDev(base_image, resizedMask, enhancedPrompt, options, apiKey, startTime, reference_image)
+    return tryFluxFillDev(base_image, resizedMask, enhancedPrompt, options, apiKey, startTime, requestId, reference_image)
   }
 
   const prediction = await response.json()
@@ -245,7 +254,14 @@ async function tryFluxFillPro(
       const resultImage = await urlToBase64(outputUrl)
       return NextResponse.json({
         result_image: resultImage,
-        meta: { model: "flux-fill-pro", duration_ms: Date.now() - startTime, reference_used: false },
+        meta: {
+        model: "flux-fill-pro",
+        duration_ms: Date.now() - startTime,
+        reference_used: false,
+        requestId,
+        fallback_from: "openrouter",
+        fallback_to: "replicate-flux",
+      },
       })
     }
   }
@@ -284,6 +300,7 @@ async function tryFluxFillDev(
   options: { guidance_scale?: number; steps?: number },
   apiKey: string,
   startTime: number,
+  requestId: string,
   reference_image?: string
 ): Promise<NextResponse<InpaintResponse | ApiErrorResponse>> {
   console.log("[Inpaint] Using FLUX Fill Dev as fallback...")
@@ -328,7 +345,14 @@ async function tryFluxFillDev(
       const resultImage = await urlToBase64(outputUrl)
       return NextResponse.json({
         result_image: resultImage,
-        meta: { model: "flux-fill-dev", duration_ms: Date.now() - startTime, reference_used: false },
+        meta: {
+        model: "flux-fill-dev",
+        duration_ms: Date.now() - startTime,
+        reference_used: false,
+        requestId,
+        fallback_from: "openrouter",
+        fallback_to: "replicate-flux-dev",
+      },
       })
     }
   }
@@ -401,7 +425,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<InpaintRe
       validatedReference = referenceCheck.image.dataUrl
     }
 
-    const requestId = newRequestId()
+    const requestId = resolveRequestId(request.headers.get("x-request-id"))
     const baseDims = await getImageDimensions(validatedBase.image.dataUrl)
 
     logStageEvent("info", {
@@ -435,7 +459,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<InpaintRe
       if (googleApiKey) {
         const googleStartedAt = Date.now()
         try {
-          const attempt = await inpaintWithGoogle(content, googleApiKey, startTime)
+          const attempt = await inpaintWithGoogle(content, googleApiKey, startTime, requestId)
           if (attempt.ok) {
             logStageEvent("info", {
               requestId,
@@ -477,7 +501,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<InpaintRe
       if (openRouterApiKey) {
         const openRouterStartedAt = Date.now()
         try {
-          const attempt = await inpaintWithOpenRouter(content, openRouterApiKey, startTime)
+          const attempt = await inpaintWithOpenRouter(content, openRouterApiKey, startTime, requestId)
           if (attempt.ok) {
             logStageEvent("info", {
               requestId,
@@ -547,6 +571,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<InpaintRe
       options,
       replicateApiKey,
       startTime,
+      requestId,
       validatedReference
     )
   } catch (error) {

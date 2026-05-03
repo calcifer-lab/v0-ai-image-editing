@@ -20,6 +20,7 @@ import {
   removeWhiteMatteIfNeeded,
 } from "@/lib/image-utils"
 import { safeParseJSON } from "@/utils/safeParse"
+import { logStageEvent, newRequestId } from "@/lib/observability/log-stage"
 
 // ============ 初始状态 ============
 const INITIAL_IMAGES: ImageData = {
@@ -51,6 +52,7 @@ export interface UseImageEditorReturn {
   processingStatus: string
   processingProgress: number // 0-100 百分比
   error: string | null
+  warning: string | null
   imageAnalysis: string | null
   isAnalyzing: boolean
   elementCrop: CropRegion | null
@@ -287,6 +289,7 @@ export function useImageEditor(): UseImageEditorReturn {
 
   const runFusionPass = useCallback(async (
     compositeImage: string,
+    requestId: string,
     referenceImage?: string,
     progress?: { status: string; value: number; driftTo?: number }
   ): Promise<string> => {
@@ -298,6 +301,7 @@ export function useImageEditor(): UseImageEditorReturn {
       updateProgress(progress.status, progress.value, progress.driftTo ? { driftTo: progress.driftTo } : undefined)
     }
 
+    const fusionStartedAt = Date.now()
     try {
       const [compressedComposite, compressedBase, compressedReference] = await Promise.all([
         compressDataUrlForUpload(compositeImage),
@@ -314,7 +318,7 @@ export function useImageEditor(): UseImageEditorReturn {
       try {
         fusionResponse = await fetch("/api/fusion", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", "x-request-id": requestId },
           body: JSON.stringify({
             composite_image: compressedComposite,
             original_base: compressedBase,
@@ -329,41 +333,82 @@ export function useImageEditor(): UseImageEditorReturn {
 
       if (!fusionResponse.ok) {
         const errorText = await fusionResponse.text().catch(() => "")
+        logStageEvent("warn", {
+          requestId,
+          stage: "fusion",
+          mode: "composite",
+          error_code: `HTTP_${fusionResponse.status}`,
+          elapsed_ms: Date.now() - fusionStartedAt,
+          fallback_from: "fusion",
+          fallback_to: "composite",
+          message: errorText.slice(0, 200),
+        })
         console.warn("[AI Editor] AI fusion failed, using unfused composite:", errorText)
-        setError("AI fusion failed — showing the unblended composite instead. Please try again.")
+        // Successful-but-degraded outcome — surface as warning, not error.
+        setWarning("AI blending unavailable — showing the unblended composite. You can try again later.")
         return compositeImage
       }
 
       const fusionData = await safeParseJSON(fusionResponse) as {
         fused_image?: string
-        meta?: { model?: string }
+        meta?: { model?: string; fallback_from?: string; fallback_to?: string }
       }
 
       if (fusionData.fused_image) {
-        if (fusionData.meta?.model === "passthrough") {
-          // All AI providers were unavailable; server returned the composite as-is.
-          // This is expected degraded behaviour — don't show an error to the user.
+        const model = fusionData.meta?.model
+        if (model === "passthrough") {
+          logStageEvent("warn", {
+            requestId,
+            stage: "fusion",
+            mode: "composite",
+            elapsed_ms: Date.now() - fusionStartedAt,
+            error_code: "PASSTHROUGH",
+            fallback_from: "fusion",
+            fallback_to: "composite",
+          })
           console.log("[AI Editor] AI fusion unavailable — using local composite (passthrough)")
+          setWarning("AI blending unavailable — showing the unblended composite.")
         } else {
-          console.log("[AI Editor] AI fusion complete:", fusionData.meta?.model)
+          logStageEvent("info", {
+            requestId,
+            stage: "fusion",
+            mode: "composite",
+            model,
+            elapsed_ms: Date.now() - fusionStartedAt,
+            fallback_from: fusionData.meta?.fallback_from,
+            fallback_to: fusionData.meta?.fallback_to,
+          })
+          console.log("[AI Editor] AI fusion complete:", model)
         }
         return fusionData.fused_image
       }
     } catch (fusionError) {
+      const msg = fusionError instanceof Error ? fusionError.message : "fusion threw"
+      logStageEvent("warn", {
+        requestId,
+        stage: "fusion",
+        mode: "composite",
+        error_code: "CALL_THROW",
+        elapsed_ms: Date.now() - fusionStartedAt,
+        fallback_from: "fusion",
+        fallback_to: "composite",
+        message: msg,
+      })
       console.warn("[AI Editor] AI fusion error:", fusionError)
-      setError("AI fusion failed — showing the unblended composite instead. Please try again.")
+      setWarning("AI blending unavailable — showing the unblended composite. You can try again later.")
     }
 
     return compositeImage
-  }, [images.baseImage, mask, updateProgress, setError])
+  }, [images.baseImage, mask, updateProgress, setWarning])
 
   // 处理直接合成模式（带 AI 融合）
-  const processCompositeMode = useCallback(async (): Promise<string> => {
+  const processCompositeMode = useCallback(async (requestId: string): Promise<string> => {
     if (!images.baseImage || !images.elementImage || !mask) {
       throw new Error("Missing required images or mask")
     }
 
     console.log("[AI Editor] Using Direct Patch mode with AI fusion")
+    logStageEvent("info", { requestId, stage: "composite", mode: "composite", message: "starting composite pipeline" })
 
     // 裁剪参考图片 (10%)
     updateProgress("Preparing reference image...", 10)
@@ -386,6 +431,7 @@ export function useImageEditor(): UseImageEditorReturn {
 
     // 移除背景 (25%)
     updateProgress("Removing background...", 25)
+    const bgStartedAt = Date.now()
     try {
       const compressedForBgRemoval = await compressDataUrlForUpload(processedReference, { preserveTransparency: false })
       const bgController = new AbortController()
@@ -394,7 +440,7 @@ export function useImageEditor(): UseImageEditorReturn {
       try {
         bgResponse = await fetch("/api/remove-background", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", "x-request-id": requestId },
           body: JSON.stringify({ image: compressedForBgRemoval }),
           signal: bgController.signal,
         })
@@ -406,17 +452,58 @@ export function useImageEditor(): UseImageEditorReturn {
         const bgData = await bgResponse.json()
         if (bgData.result_image) {
           processedReference = bgData.result_image
+          logStageEvent("info", {
+            requestId,
+            stage: "process",
+            mode: "composite",
+            provider: "replicate",
+            model: "rembg",
+            elapsed_ms: Date.now() - bgStartedAt,
+          })
           console.log("[AI Editor] Background removed successfully")
         } else {
+          logStageEvent("warn", {
+            requestId,
+            stage: "process",
+            mode: "composite",
+            provider: "replicate",
+            error_code: "EMPTY_RESULT",
+            fallback_from: "rembg",
+            fallback_to: "local-white-matte",
+            elapsed_ms: Date.now() - bgStartedAt,
+          })
           console.warn("[AI Editor] Background removal returned no result — attempting local white matte removal")
           processedReference = await removeWhiteMatteIfNeeded(processedReference)
         }
       } else {
         const errText = await bgResponse.text().catch(() => "")
+        logStageEvent("warn", {
+          requestId,
+          stage: "process",
+          mode: "composite",
+          provider: "replicate",
+          error_code: `HTTP_${bgResponse.status}`,
+          fallback_from: "rembg",
+          fallback_to: "local-white-matte",
+          elapsed_ms: Date.now() - bgStartedAt,
+          message: errText.slice(0, 200),
+        })
         console.warn("[AI Editor] Background removal failed:", errText, "— attempting local white matte removal")
         processedReference = await removeWhiteMatteIfNeeded(processedReference)
       }
     } catch (bgError) {
+      const msg = bgError instanceof Error ? bgError.message : "bg-remove threw"
+      logStageEvent("warn", {
+        requestId,
+        stage: "process",
+        mode: "composite",
+        provider: "replicate",
+        error_code: "CALL_THROW",
+        fallback_from: "rembg",
+        fallback_to: "local-white-matte",
+        elapsed_ms: Date.now() - bgStartedAt,
+        message: msg,
+      })
       console.warn("[AI Editor] Background removal error:", bgError, "— attempting local white matte removal")
       processedReference = await removeWhiteMatteIfNeeded(processedReference)
     }
@@ -436,7 +523,7 @@ export function useImageEditor(): UseImageEditorReturn {
 
     console.log("[AI Editor] Composite complete, starting AI fusion...")
 
-    const fusedResult = await runFusionPass(compositeResult, processedReference, {
+    const fusedResult = await runFusionPass(compositeResult, requestId, processedReference, {
       status: "AI fusion: Harmonizing lighting and style...",
       value: 60,
       driftTo: 78,
@@ -456,10 +543,12 @@ export function useImageEditor(): UseImageEditorReturn {
   //      Gemini sees a clean canvas — no ghost overlay noise — and uses the reference
   //      image to understand WHAT to generate inside the masked area.
   // Falls back to processCompositeMode if inpaint fails.
-  const processAIMode = useCallback(async (): Promise<string> => {
+  const processAIMode = useCallback(async (requestId: string): Promise<string> => {
     if (!images.baseImage || !images.elementImage || !mask) {
       throw new Error("Missing required images or mask")
     }
+
+    logStageEvent("info", { requestId, stage: "inpaint", mode: "ai", message: "starting AI compose pipeline" })
 
     // Crop reference if user defined a crop region (same as Direct Patch)
     updateProgress("Preparing reference image...", 10)
@@ -475,6 +564,7 @@ export function useImageEditor(): UseImageEditorReturn {
 
     // Remove background so Gemini receives only the subject
     updateProgress("Removing background...", 20)
+    const bgStartedAt = Date.now()
     try {
       const compressedForBg = await compressDataUrlForUpload(processedReference, { preserveTransparency: false })
       const bgController = new AbortController()
@@ -483,7 +573,7 @@ export function useImageEditor(): UseImageEditorReturn {
       try {
         bgResponse = await fetch("/api/remove-background", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", "x-request-id": requestId },
           body: JSON.stringify({ image: compressedForBg }),
           signal: bgController.signal,
         })
@@ -492,13 +582,51 @@ export function useImageEditor(): UseImageEditorReturn {
       }
       if (bgResponse.ok) {
         const bgData = await bgResponse.json()
-        if (bgData.result_image) processedReference = bgData.result_image
-        else processedReference = await removeWhiteMatteIfNeeded(processedReference)
+        if (bgData.result_image) {
+          processedReference = bgData.result_image
+          logStageEvent("info", {
+            requestId,
+            stage: "process",
+            mode: "ai",
+            provider: "replicate",
+            model: "rembg",
+            elapsed_ms: Date.now() - bgStartedAt,
+          })
+        } else {
+          logStageEvent("warn", {
+            requestId,
+            stage: "process",
+            mode: "ai",
+            error_code: "EMPTY_RESULT",
+            fallback_from: "rembg",
+            fallback_to: "local-white-matte",
+          })
+          processedReference = await removeWhiteMatteIfNeeded(processedReference)
+        }
       } else {
+        logStageEvent("warn", {
+          requestId,
+          stage: "process",
+          mode: "ai",
+          error_code: `HTTP_${bgResponse.status}`,
+          fallback_from: "rembg",
+          fallback_to: "local-white-matte",
+          elapsed_ms: Date.now() - bgStartedAt,
+        })
         console.warn("[AI Editor] BG removal failed:", bgResponse.status, "— attempting local white matte removal")
         processedReference = await removeWhiteMatteIfNeeded(processedReference)
       }
     } catch (bgError) {
+      logStageEvent("warn", {
+        requestId,
+        stage: "process",
+        mode: "ai",
+        error_code: "CALL_THROW",
+        fallback_from: "rembg",
+        fallback_to: "local-white-matte",
+        elapsed_ms: Date.now() - bgStartedAt,
+        message: bgError instanceof Error ? bgError.message : "bg-remove threw",
+      })
       console.warn("[AI Editor] BG removal error, continuing:", bgError)
       processedReference = await removeWhiteMatteIfNeeded(processedReference)
     }
@@ -519,13 +647,14 @@ export function useImageEditor(): UseImageEditorReturn {
 
     // Call inpaint with clean base — Gemini gets an unambiguous canvas to work with
     updateProgress("AI Compose: generating from reference...", 45, { driftTo: 80 })
+    const inpaintStartedAt = Date.now()
     const inpaintController = new AbortController()
     const inpaintTimeout = setTimeout(() => inpaintController.abort(), 240_000)
     let response: Response
     try {
       response = await fetch("/api/inpaint", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "x-request-id": requestId },
         body: JSON.stringify({
           base_image: compressedBase,
           mask_image: compressedMask,
@@ -541,13 +670,42 @@ export function useImageEditor(): UseImageEditorReturn {
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => "")
+      logStageEvent("error", {
+        requestId,
+        stage: "inpaint",
+        mode: "ai",
+        error_code: `HTTP_${response.status}`,
+        elapsed_ms: Date.now() - inpaintStartedAt,
+        message: errorText.slice(0, 200),
+      })
       throw new Error(`Inpaint API ${response.status}: ${errorText}`)
     }
 
     updateProgress("AI model processing response...", 82, { driftTo: 88 })
-    const data = await safeParseJSON(response) as { result_image?: string }
-    if (!data.result_image) throw new Error("Inpainting API response missing result image")
+    const data = await safeParseJSON(response) as {
+      result_image?: string
+      meta?: { model?: string; fallback_from?: string; fallback_to?: string }
+    }
+    if (!data.result_image) {
+      logStageEvent("error", {
+        requestId,
+        stage: "inpaint",
+        mode: "ai",
+        error_code: "MISSING_RESULT_IMAGE",
+        elapsed_ms: Date.now() - inpaintStartedAt,
+      })
+      throw new Error("Inpainting API response missing result image")
+    }
 
+    logStageEvent("info", {
+      requestId,
+      stage: "inpaint",
+      mode: "ai",
+      model: data.meta?.model,
+      elapsed_ms: Date.now() - inpaintStartedAt,
+      fallback_from: data.meta?.fallback_from,
+      fallback_to: data.meta?.fallback_to,
+    })
     return data.result_image
   }, [images, mask, params, elementCrop, updateProgress])
 
@@ -555,25 +713,44 @@ export function useImageEditor(): UseImageEditorReturn {
   const handleProcess = useCallback(async () => {
     if (!images.baseImage || !images.elementImage || !mask) return
 
+    const requestId = newRequestId()
+    const processStartedAt = Date.now()
     setIsProcessing(true)
     setError(null)
     setWarning(null)
     updateProgress("Preparing images...", 5)
 
+    logStageEvent("info", {
+      requestId,
+      stage: "process",
+      mode: params.editMode === "composite" ? "composite" : "ai",
+      message: "user-initiated process started",
+    })
+
     try {
       let finalImage: string
 
       if (params.editMode === "composite") {
-        finalImage = await processCompositeMode()
+        finalImage = await processCompositeMode(requestId)
       } else {
         try {
-          finalImage = await processAIMode()
+          finalImage = await processAIMode(requestId)
         } catch (aiError) {
+          const msg = aiError instanceof Error ? aiError.message : "ai-mode threw"
+          logStageEvent("warn", {
+            requestId,
+            stage: "inpaint",
+            mode: "ai",
+            error_code: "AI_MODE_FAILED",
+            fallback_from: "ai",
+            fallback_to: "composite",
+            message: msg,
+          })
           console.warn("[AI Editor] Inpaint failed, falling back to Direct Patch", aiError)
           updateProgress("AI inpaint failed, using direct composite fallback...", 65)
-          finalImage = await processCompositeMode()
+          finalImage = await processCompositeMode(requestId)
           console.log("[AI Editor] Fallback composite complete")
-          setWarning("AI 不可用，显示的是直接拼图")
+          setWarning("AI compose unavailable — showing the direct composite instead.")
         }
       }
 
@@ -601,10 +778,25 @@ export function useImageEditor(): UseImageEditorReturn {
       updateProgress("Complete!", 90)
       setResultImage(finalImage)
       setStep("result")
+      logStageEvent("info", {
+        requestId,
+        stage: "result",
+        mode: params.editMode === "composite" ? "composite" : "ai",
+        elapsed_ms: Date.now() - processStartedAt,
+      })
       console.log("[AI Editor] Processing complete")
     } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed to process image"
+      logStageEvent("error", {
+        requestId,
+        stage: "process",
+        mode: params.editMode === "composite" ? "composite" : "ai",
+        error_code: "PROCESS_FAILED",
+        elapsed_ms: Date.now() - processStartedAt,
+        message: msg,
+      })
       console.error("Processing failed:", error)
-      setError(error instanceof Error ? error.message : "Failed to process image")
+      setError(msg)
     } finally {
       stopProgressDrift()
       setIsProcessing(false)

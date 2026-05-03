@@ -6,7 +6,7 @@ import {
   openRouterHeaders,
   type OpenRouterContentPart,
 } from "@/lib/api"
-import { logStageEvent, newRequestId } from "@/lib/observability/log-stage"
+import { logStageEvent, resolveRequestId } from "@/lib/observability/log-stage"
 
 /**
  * Normalize a data URI to always use PNG format.
@@ -40,6 +40,9 @@ interface FusionResponse {
   meta: {
     model: string
     duration_ms: number
+    requestId?: string
+    fallback_from?: string
+    fallback_to?: string
   }
 }
 
@@ -54,7 +57,7 @@ interface FusionResponse {
  */
 export async function POST(request: NextRequest): Promise<NextResponse<FusionResponse | { error: string }>> {
   const startTime = Date.now()
-  const requestId = newRequestId()
+  const requestId = resolveRequestId(request.headers.get("x-request-id"))
 
   try {
     const body: FusionRequest = await request.json()
@@ -83,7 +86,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<FusionRes
     if (googleApiKey) {
       try {
         console.log("[Fusion] Using Google AI Studio (gemini-2.5-flash-image)...")
-        const result = await fusionWithGoogle(fusionContent, googleApiKey, startTime)
+        const result = await fusionWithGoogle(fusionContent, googleApiKey, startTime, requestId)
         if (result) {
           logStageEvent("info", { requestId, stage: "fusion", provider: "google", model: GOOGLE_IMAGE_MODEL, elapsed_ms: Date.now() - startTime })
           return result
@@ -103,7 +106,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<FusionRes
     if (openRouterApiKey) {
       try {
         console.log("[Fusion] Using OpenRouter Gemini 2.5 Flash for fusion...")
-        const result = await fusionWithOpenRouter(fusionContent, openRouterApiKey, startTime)
+        const result = await fusionWithOpenRouter(fusionContent, openRouterApiKey, startTime, requestId)
         if (result) {
           logStageEvent("info", { requestId, stage: "fusion", provider: "openrouter", model: "google/gemini-2.5-flash-image", elapsed_ms: Date.now() - startTime })
           return result
@@ -131,7 +134,13 @@ export async function POST(request: NextRequest): Promise<NextResponse<FusionRes
     console.warn("[Fusion] All providers failed — returning composite unchanged:", reason)
     return NextResponse.json({
       fused_image: composite_image,
-      meta: { model: "passthrough", duration_ms: Date.now() - startTime },
+      meta: {
+        model: "passthrough",
+        duration_ms: Date.now() - startTime,
+        requestId,
+        fallback_from: "fusion",
+        fallback_to: "composite",
+      },
     })
   } catch (error) {
     logStageEvent("error", {
@@ -344,7 +353,8 @@ function buildFusionContent(
 async function fusionWithGoogle(
   content: OpenRouterContentPart[],
   apiKey: string,
-  startTime: number
+  startTime: number,
+  requestId: string
 ): Promise<NextResponse<FusionResponse> | null> {
   const result = await callGoogleGenerate(GOOGLE_IMAGE_MODEL, content, apiKey, {
     responseModalities: ["TEXT", "IMAGE"],
@@ -364,7 +374,7 @@ async function fusionWithGoogle(
   console.log("[Fusion] Successfully fused image with Google direct API")
   return NextResponse.json({
     fused_image: normalizeDataUri(image),
-    meta: { model: "google-gemini-2.5-flash-image", duration_ms: Date.now() - startTime },
+    meta: { model: "google-gemini-2.5-flash-image", duration_ms: Date.now() - startTime, requestId },
   })
 }
 
@@ -374,7 +384,8 @@ async function fusionWithGoogle(
 async function fusionWithOpenRouter(
   content: OpenRouterContentPart[],
   apiKey: string,
-  startTime: number
+  startTime: number,
+  requestId: string
 ): Promise<NextResponse<FusionResponse> | null> {
   const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
@@ -412,7 +423,13 @@ async function fusionWithOpenRouter(
     console.log("[Fusion] Successfully fused image with OpenRouter")
     return NextResponse.json({
       fused_image: resultImage,
-      meta: { model: "openrouter-gemini-2.5-flash-image", duration_ms: Date.now() - startTime },
+      meta: {
+        model: "openrouter-gemini-2.5-flash-image",
+        duration_ms: Date.now() - startTime,
+        requestId,
+        fallback_from: "google",
+        fallback_to: "openrouter",
+      },
     })
   }
 

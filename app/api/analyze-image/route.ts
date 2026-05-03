@@ -10,7 +10,7 @@ import {
   GOOGLE_VISION_MODEL,
   type OpenRouterContentPart,
 } from "@/lib/api"
-import { logStageEvent, newRequestId } from "@/lib/observability/log-stage"
+import { logStageEvent, resolveRequestId } from "@/lib/observability/log-stage"
 
 export const runtime = "nodejs"
 export const maxDuration = 60
@@ -36,7 +36,7 @@ export async function POST(
     }
 
     const dimensions = await getImageDimensions(validatedImage.image.dataUrl)
-    const requestId = newRequestId()
+    const requestId = resolveRequestId(request.headers.get("x-request-id"))
     logStageEvent("info", {
       requestId,
       stage: "analyze",
@@ -74,7 +74,7 @@ export async function POST(
           })
           return NextResponse.json({
             analysis,
-            meta: { model: `google-${GOOGLE_VISION_MODEL}` },
+            meta: { model: `google-${GOOGLE_VISION_MODEL}`, requestId },
           })
         }
         failures.push(`Google: ${result.status} ${result.error}`)
@@ -129,7 +129,13 @@ export async function POST(
         })
         return NextResponse.json({
           analysis,
-          meta: { model: "openai/gpt-4o-mini", usage: data.usage },
+          meta: {
+            model: "openai/gpt-4o-mini",
+            usage: data.usage,
+            requestId,
+            fallback_from: "google",
+            fallback_to: "openrouter",
+          },
         })
       }
 

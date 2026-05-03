@@ -31,6 +31,19 @@ export function newRequestId(): string {
   return `req_${timestamp}_${random}`
 }
 
+const REQUEST_ID_PATTERN = /^req_\d+_[a-z0-9]{4,12}$/i
+
+// Trust the client-provided x-request-id when it matches our format so a single user
+// action can be correlated across analyze → inpaint → fusion logs. Anything malformed
+// (or missing) falls back to a fresh server-side id so we never lose stage coverage.
+export function resolveRequestId(headerValue: string | null | undefined): string {
+  if (!headerValue) return newRequestId()
+  const trimmed = headerValue.trim()
+  if (!trimmed || trimmed.length > 64) return newRequestId()
+  if (!REQUEST_ID_PATTERN.test(trimmed)) return newRequestId()
+  return trimmed
+}
+
 export function logStageEvent(level: Level, event: StageEvent): void {
   if (!event?.requestId || !event?.stage) {
     throw new Error("logStageEvent requires requestId and stage")
