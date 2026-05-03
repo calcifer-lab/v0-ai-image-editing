@@ -28,25 +28,55 @@ export async function POST(
       return NextResponse.json({ error: "REPLICATE_API_KEY not configured" }, { status: 500 })
     }
 
-    console.log("[RemoveBG] Using Replicate RMBG model...")
+    const imageBytes = validatedImage.image.bytes
+    console.log(`[RemoveBG] Image size: ${Math.round(imageBytes / 1024)}KB`)
 
-    const response = await fetch("https://api.replicate.com/v1/models/lucataco/rembg/predictions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${replicateApiKey}`,
-        "Content-Type": "application/json",
-        Prefer: "wait",
-      },
-      body: JSON.stringify({
-        input: { image: validatedImage.image.dataUrl },
-      }),
-    })
+    // Replicate's synchronous endpoint is unreliable above ~1.5 MB decoded.
+    // If the image is larger, recompress it with sharp before sending.
+    let imageDataUrl = validatedImage.image.dataUrl
+    if (imageBytes > 1.5 * 1024 * 1024) {
+      try {
+        console.log("[RemoveBG] Image too large — recompressing with sharp...")
+        const sharp = (await import("sharp")).default
+        const base64Data = imageDataUrl.replace(/^data:[^;]+;base64,/, "")
+        const buffer = Buffer.from(base64Data, "base64")
+        const resizedBuffer = await sharp(buffer)
+          .resize(1024, 1024, { fit: "inside", withoutEnlargement: true })
+          .jpeg({ quality: 80 })
+          .toBuffer()
+        imageDataUrl = `data:image/jpeg;base64,${resizedBuffer.toString("base64")}`
+        console.log(`[RemoveBG] Recompressed to ${Math.round(resizedBuffer.length / 1024)}KB`)
+      } catch (sharpErr) {
+        console.warn("[RemoveBG] Sharp recompression failed, using original:", sharpErr)
+      }
+    }
+
+    console.log("[RemoveBG] Calling Replicate rembg...")
+    const replicateController = new AbortController()
+    const replicateTimeout = setTimeout(() => replicateController.abort(), 90_000)
+    let response: Response
+    try {
+      response = await fetch("https://api.replicate.com/v1/models/lucataco/rembg/predictions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${replicateApiKey}`,
+          "Content-Type": "application/json",
+          Prefer: "wait",
+        },
+        body: JSON.stringify({
+          input: { image: imageDataUrl },
+        }),
+        signal: replicateController.signal,
+      })
+    } finally {
+      clearTimeout(replicateTimeout)
+    }
 
     if (!response.ok) {
       const errorText = await response.text()
-      console.error("[RemoveBG] Replicate API error:", errorText)
+      console.error(`[RemoveBG] Replicate API error (${response.status}):`, errorText)
       return NextResponse.json(
-        { error: `Replicate API error: ${response.status}` },
+        { error: `Replicate API error ${response.status}: ${errorText.slice(0, 200)}` },
         { status: response.status }
       )
     }

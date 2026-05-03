@@ -118,22 +118,21 @@ export async function POST(request: NextRequest): Promise<NextResponse<FusionRes
       }
     }
 
-    // 3. FLUX img2img (尚未实现)
-    const replicateApiKey = process.env.REPLICATE_API_KEY
-    if (replicateApiKey) {
-      console.log("[Fusion] Using FLUX img2img for fusion...")
-      return await fusionWithFlux(composite_image, fusionPrompt, replicateApiKey, startTime)
-    }
-
+    // 3. Graceful degradation: return the composite as-is so the client always gets a usable
+    //    image. FLUX img2img fusion is not yet implemented; we log the failure and pass through.
     const reason = failures.length > 0 ? failures.join("; ") : "no provider configured"
-    logStageEvent("error", {
+    logStageEvent("warn", {
       requestId,
       stage: "fusion",
-      error_code: "ALL_PROVIDERS_FAILED",
+      error_code: "ALL_PROVIDERS_FAILED_PASSTHROUGH",
       elapsed_ms: Date.now() - startTime,
-      message: reason,
+      message: `Fusion unavailable (${reason}), returning composite unchanged`,
     })
-    return NextResponse.json({ error: `AI fusion unavailable: ${reason}` }, { status: 502 })
+    console.warn("[Fusion] All providers failed — returning composite unchanged:", reason)
+    return NextResponse.json({
+      fused_image: composite_image,
+      meta: { model: "passthrough", duration_ms: Date.now() - startTime },
+    })
   } catch (error) {
     logStageEvent("error", {
       requestId,
@@ -421,18 +420,3 @@ async function fusionWithOpenRouter(
   return null
 }
 
-/**
- * 使用 FLUX img2img 进行融合 (尚未实现)
- */
-async function fusionWithFlux(
-  _composite_image: string,
-  _prompt: string,
-  _apiKey: string,
-  _startTime: number
-): Promise<NextResponse<{ error: string }>> {
-  console.warn("[Fusion] FLUX img2img fusion not yet implemented")
-  return NextResponse.json(
-    { error: "FLUX fusion fallback is not implemented" },
-    { status: 502 }
-  )
-}
