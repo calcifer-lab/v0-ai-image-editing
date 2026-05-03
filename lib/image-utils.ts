@@ -760,7 +760,8 @@ export async function compositeImages(
   referenceImageUrl: string,
   maskImageUrl: string,
   maskCoordinates: { x: number; y: number; width: number; height: number },
-  brushMaskCanvas?: HTMLCanvasElement
+  brushMaskCanvas?: HTMLCanvasElement,
+  options?: LocalFusionOptions
 ): Promise<string> {
   const [baseImg, refImg, maskImg] = await Promise.all([
     loadImage(baseImageUrl),
