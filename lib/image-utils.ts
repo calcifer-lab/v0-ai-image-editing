@@ -852,12 +852,37 @@ export async function compositeImages(
   const refData = refCtx.getImageData(0, 0, targetWidth, targetHeight)
   const baseData = ctx.getImageData(targetX, targetY, targetWidth, targetHeight)
 
+  // Pass 1 — clear mask region to surrounding ambient color.
+  // This removes old base content so it cannot bleed through transparent gaps
+  // in the new element (e.g. spaces between legs, internal holes of a white-bg product).
+  const fullBaseData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+  const surroundMargin = clamp(Math.round(Math.max(targetWidth, targetHeight) * 0.16), 12, 48)
+  const surroundStats = collectSurroundingStats(
+    fullBaseData.data,
+    canvas.width,
+    canvas.height,
+    { x: targetX, y: targetY, width: targetWidth, height: targetHeight },
+    surroundMargin
+  )
+  if (surroundStats.count > 0) {
+    for (let i = 0; i < maskData.data.length; i += 4) {
+      const maskBrightness = (maskData.data[i] + maskData.data[i + 1] + maskData.data[i + 2]) / 3
+      const fill = maskBrightness / 255
+      if (fill > 0.01) {
+        baseData.data[i]     = Math.round(surroundStats.r * fill + baseData.data[i]     * (1 - fill))
+        baseData.data[i + 1] = Math.round(surroundStats.g * fill + baseData.data[i + 1] * (1 - fill))
+        baseData.data[i + 2] = Math.round(surroundStats.b * fill + baseData.data[i + 2] * (1 - fill))
+      }
+    }
+  }
+
+  // Pass 2 — composite the new element over the already-cleared base.
   for (let i = 0; i < maskData.data.length; i += 4) {
     const maskBrightness = (maskData.data[i] + maskData.data[i + 1] + maskData.data[i + 2]) / 3
     const refAlpha = refData.data[i + 3] / 255
     const combinedAlpha = (maskBrightness / 255) * refAlpha * blendStrength
     if (combinedAlpha > 0.01) {
-      baseData.data[i] = Math.round(refData.data[i] * combinedAlpha + baseData.data[i] * (1 - combinedAlpha))
+      baseData.data[i]     = Math.round(refData.data[i]     * combinedAlpha + baseData.data[i]     * (1 - combinedAlpha))
       baseData.data[i + 1] = Math.round(refData.data[i + 1] * combinedAlpha + baseData.data[i + 1] * (1 - combinedAlpha))
       baseData.data[i + 2] = Math.round(refData.data[i + 2] * combinedAlpha + baseData.data[i + 2] * (1 - combinedAlpha))
       baseData.data[i + 3] = 255
