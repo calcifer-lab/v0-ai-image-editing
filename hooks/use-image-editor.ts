@@ -307,7 +307,8 @@ export function useImageEditor(): UseImageEditorReturn {
       ])
 
       const fusionController = new AbortController()
-      const fusionTimeout = setTimeout(() => fusionController.abort(), 120_000)
+      // 250 s gives Google (≤90s) + OpenRouter (≤90s) + passthrough response time to complete
+      const fusionTimeout = setTimeout(() => fusionController.abort(), 250_000)
       let fusionResponse: Response
       try {
         fusionResponse = await fetch("/api/fusion", {
@@ -338,7 +339,13 @@ export function useImageEditor(): UseImageEditorReturn {
       }
 
       if (fusionData.fused_image) {
-        console.log("[AI Editor] AI fusion complete:", fusionData.meta?.model)
+        if (fusionData.meta?.model === "passthrough") {
+          // All AI providers were unavailable; server returned the composite as-is.
+          // This is expected degraded behaviour — don't show an error to the user.
+          console.log("[AI Editor] AI fusion unavailable — using local composite (passthrough)")
+        } else {
+          console.log("[AI Editor] AI fusion complete:", fusionData.meta?.model)
+        }
         return fusionData.fused_image
       }
     } catch (fusionError) {
@@ -442,13 +449,11 @@ export function useImageEditor(): UseImageEditorReturn {
   }, [images, mask, elementCrop, runFusionPass, updateProgress])
 
   // 处理 AI 生成模式 (AI Compose)
-  // Strategy: ghost-overlay inpaint.
-  //   1. Remove background from reference.
-  //   2. Composite reference at 50 % opacity into the base ("ghost overlay") — this gives
-  //      Gemini a strong visual anchor for WHERE and WHAT to place, while still leaving the
-  //      AI free to generate natural integration.
-  //   3. Send ghost base + reference + mask to /api/inpaint so the AI generates a fully
-  //      integrated, naturally lit version rather than reusing the pixel-blend result.
+  // Strategy: clean-reference inpaint.
+  //   1. Crop + remove background from reference (same as Direct Patch).
+  //   2. Send the UNMODIFIED base image + cutout reference + mask to /api/inpaint.
+  //      Gemini sees a clean canvas — no ghost overlay noise — and uses the reference
+  //      image to understand WHAT to generate inside the masked area.
   // Falls back to processCompositeMode if inpaint fails.
   const processAIMode = useCallback(async (): Promise<string> => {
     if (!images.baseImage || !images.elementImage || !mask) {
@@ -467,7 +472,7 @@ export function useImageEditor(): UseImageEditorReturn {
       }
     }
 
-    // Remove background so only the subject is composited into the ghost
+    // Remove background so Gemini receives only the subject
     updateProgress("Removing background...", 20)
     try {
       const compressedForBg = await compressDataUrlForUpload(processedReference, { preserveTransparency: false })
@@ -495,34 +500,22 @@ export function useImageEditor(): UseImageEditorReturn {
       console.warn("[AI Editor] BG removal error, continuing:", bgError)
     }
 
-    // Ghost overlay: blend reference at 50% opacity so Gemini can see WHERE and WHAT to place
-    updateProgress("Creating reference overlay for AI...", 35)
-    const ghostBase = await compositeImages(
-      images.baseImage,
-      processedReference,
-      mask.dataUrl,
-      mask.coordinates,
-      undefined,
-      { toneMatchStrength: 0, blendStrength: 0.5 }
-    )
-
-    // Compress all inputs for upload
-    updateProgress("Compressing images for AI generation...", 45)
-    const [compressedGhostBase, compressedMask, compressedRef] = await Promise.all([
-      compressDataUrlForUpload(ghostBase),
+    // Compress inputs — send clean base (no ghost), reference cutout, and mask
+    updateProgress("Compressing images for AI generation...", 35)
+    const [compressedBase, compressedMask, compressedRef] = await Promise.all([
+      compressDataUrlForUpload(images.baseImage),
       compressDataUrlForUpload(mask.dataUrl),
       compressDataUrlForUpload(processedReference, { preserveTransparency: true }),
     ])
 
     const aiPrompt = params.prompt?.trim() ||
-      "The masked region contains a translucent ghost of the reference element (composited at 50% opacity). " +
-      "Generate a FULLY OPAQUE, naturally integrated version of this element. " +
-      "The element MUST match the reference image exactly — preserve its colors, shape, and details. " +
-      "Blend it seamlessly with the surrounding scene: match the lighting direction, color temperature, and art style. " +
+      "Integrate the reference element into the masked region of the base image. " +
+      "The reference image shows the exact object to place — preserve its colors, shape, and all details. " +
+      "Blend it naturally with the surrounding scene: match the lighting direction, shadows, color temperature, and art style. " +
       "The result must look as if the element was always part of this scene."
 
-    // Call inpaint — ghost base gives Gemini a clear visual context for what to generate
-    updateProgress("AI Compose: generating from reference...", 52, { driftTo: 78 })
+    // Call inpaint with clean base — Gemini gets an unambiguous canvas to work with
+    updateProgress("AI Compose: generating from reference...", 45, { driftTo: 80 })
     const inpaintController = new AbortController()
     const inpaintTimeout = setTimeout(() => inpaintController.abort(), 240_000)
     let response: Response
@@ -531,7 +524,7 @@ export function useImageEditor(): UseImageEditorReturn {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          base_image: compressedGhostBase,
+          base_image: compressedBase,
           mask_image: compressedMask,
           reference_image: compressedRef,
           prompt: aiPrompt,
@@ -548,7 +541,7 @@ export function useImageEditor(): UseImageEditorReturn {
       throw new Error(errorText || `Inpaint API error: ${response.status}`)
     }
 
-    updateProgress("AI model processing response...", 80, { driftTo: 85 })
+    updateProgress("AI model processing response...", 82, { driftTo: 88 })
     const data = await safeParseJSON(response) as { result_image?: string }
     if (!data.result_image) throw new Error("Inpainting API response missing result image")
 

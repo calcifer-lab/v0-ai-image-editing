@@ -825,12 +825,19 @@ export async function compositeImages(
   const opaqueBounds = findOpaqueBounds(sourceImageData.data, refImg.width, refImg.height)
 
   if (opaqueBounds && shouldPreserveTransparentCutout(opaqueBounds, refImg.width, refImg.height)) {
-    const containScale = Math.min(targetWidth / opaqueBounds.srcWidth, targetHeight / opaqueBounds.srcHeight)
-    const drawWidth = opaqueBounds.srcWidth * containScale
-    const drawHeight = opaqueBounds.srcHeight * containScale
-    const drawX = (targetWidth - drawWidth) / 2
-    const drawY = (targetHeight - drawHeight) / 2
-    refCtx.drawImage(refImg, opaqueBounds.srcX, opaqueBounds.srcY, opaqueBounds.srcWidth, opaqueBounds.srcHeight, drawX, drawY, drawWidth, drawHeight)
+    // Stretch the opaque subject to exactly fill the target — guarantees the entire
+    // element is visible within the mask region, no letterboxing or clipping.
+    refCtx.drawImage(
+      refImg,
+      opaqueBounds.srcX,
+      opaqueBounds.srcY,
+      opaqueBounds.srcWidth,
+      opaqueBounds.srcHeight,
+      0,
+      0,
+      targetWidth,
+      targetHeight
+    )
   } else {
     const { srcX, srcY, srcWidth, srcHeight } = fitReferenceToPlacement(refImg.width, refImg.height, targetWidth, targetHeight)
     refCtx.drawImage(refImg, srcX, srcY, srcWidth, srcHeight, 0, 0, targetWidth, targetHeight)
