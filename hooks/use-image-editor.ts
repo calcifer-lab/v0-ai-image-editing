@@ -441,12 +441,119 @@ export function useImageEditor(): UseImageEditorReturn {
     return fusedResult
   }, [images, mask, elementCrop, runFusionPass, updateProgress])
 
-  // 处理 AI 生成模式
-  // AI Compose = Direct Patch + AI Fusion (Gemini-based inpainting ignores the reference image,
-  // so we composite first and let the fusion pass handle lighting/style harmonization)
+  // 处理 AI 生成模式 (AI Compose)
+  // Strategy: ghost-overlay inpaint.
+  //   1. Remove background from reference.
+  //   2. Composite reference at 50 % opacity into the base ("ghost overlay") — this gives
+  //      Gemini a strong visual anchor for WHERE and WHAT to place, while still leaving the
+  //      AI free to generate natural integration.
+  //   3. Send ghost base + reference + mask to /api/inpaint so the AI generates a fully
+  //      integrated, naturally lit version rather than reusing the pixel-blend result.
+  // Falls back to processCompositeMode if inpaint fails.
   const processAIMode = useCallback(async (): Promise<string> => {
-    return processCompositeMode()
-  }, [processCompositeMode])
+    if (!images.baseImage || !images.elementImage || !mask) {
+      throw new Error("Missing required images or mask")
+    }
+
+    // Crop reference if user defined a crop region (same as Direct Patch)
+    updateProgress("Preparing reference image...", 10)
+    const hasExplicitCrop = !!(elementCrop && elementCrop.width > 0 && elementCrop.height > 0)
+    let processedReference = images.elementImage
+    if (hasExplicitCrop && elementCrop) {
+      try {
+        processedReference = await cropImageToDataUrl(images.elementImage, elementCrop, undefined)
+      } catch (cropError) {
+        console.warn("[AI Editor] Failed to crop reference, using original:", cropError)
+      }
+    }
+
+    // Remove background so only the subject is composited into the ghost
+    updateProgress("Removing background...", 20)
+    try {
+      const compressedForBg = await compressDataUrlForUpload(processedReference, { preserveTransparency: false })
+      const bgController = new AbortController()
+      const bgTimeout = setTimeout(() => bgController.abort(), 120_000)
+      let bgResponse: Response
+      try {
+        bgResponse = await fetch("/api/remove-background", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ image: compressedForBg }),
+          signal: bgController.signal,
+        })
+      } finally {
+        clearTimeout(bgTimeout)
+      }
+      if (bgResponse.ok) {
+        const bgData = await bgResponse.json()
+        if (bgData.result_image) processedReference = bgData.result_image
+        else console.warn("[AI Editor] BG removal: no result_image in response")
+      } else {
+        console.warn("[AI Editor] BG removal failed:", bgResponse.status, "— continuing with original")
+      }
+    } catch (bgError) {
+      console.warn("[AI Editor] BG removal error, continuing:", bgError)
+    }
+
+    // Ghost overlay: blend reference at 50% opacity so Gemini can see WHERE and WHAT to place
+    updateProgress("Creating reference overlay for AI...", 35)
+    const ghostBase = await compositeImages(
+      images.baseImage,
+      processedReference,
+      mask.dataUrl,
+      mask.coordinates,
+      undefined,
+      { toneMatchStrength: 0, blendStrength: 0.5 }
+    )
+
+    // Compress all inputs for upload
+    updateProgress("Compressing images for AI generation...", 45)
+    const [compressedGhostBase, compressedMask, compressedRef] = await Promise.all([
+      compressDataUrlForUpload(ghostBase),
+      compressDataUrlForUpload(mask.dataUrl),
+      compressDataUrlForUpload(processedReference, { preserveTransparency: true }),
+    ])
+
+    const aiPrompt = params.prompt?.trim() ||
+      "The masked region contains a translucent ghost of the reference element (composited at 50% opacity). " +
+      "Generate a FULLY OPAQUE, naturally integrated version of this element. " +
+      "The element MUST match the reference image exactly — preserve its colors, shape, and details. " +
+      "Blend it seamlessly with the surrounding scene: match the lighting direction, color temperature, and art style. " +
+      "The result must look as if the element was always part of this scene."
+
+    // Call inpaint — ghost base gives Gemini a clear visual context for what to generate
+    updateProgress("AI Compose: generating from reference...", 52, { driftTo: 78 })
+    const inpaintController = new AbortController()
+    const inpaintTimeout = setTimeout(() => inpaintController.abort(), 240_000)
+    let response: Response
+    try {
+      response = await fetch("/api/inpaint", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          base_image: compressedGhostBase,
+          mask_image: compressedMask,
+          reference_image: compressedRef,
+          prompt: aiPrompt,
+          options: { strength: params.strength, steps: 30, guidance_scale: params.guidance },
+        }),
+        signal: inpaintController.signal,
+      })
+    } finally {
+      clearTimeout(inpaintTimeout)
+    }
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => "")
+      throw new Error(errorText || `Inpaint API error: ${response.status}`)
+    }
+
+    updateProgress("AI model processing response...", 80, { driftTo: 85 })
+    const data = await safeParseJSON(response) as { result_image?: string }
+    if (!data.result_image) throw new Error("Inpainting API response missing result image")
+
+    return data.result_image
+  }, [images, mask, params, elementCrop, updateProgress])
 
   // 处理主流程
   const handleProcess = useCallback(async () => {

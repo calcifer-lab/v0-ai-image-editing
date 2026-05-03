@@ -25,6 +25,8 @@ export interface PatchPlacement {
 export interface LocalFusionOptions {
   featherPx?: number
   toneMatchStrength?: number
+  /** Overall blend opacity (0–1). Default 1.0 = full replacement; 0.5 = ghost overlay. */
+  blendStrength?: number
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -834,7 +836,8 @@ export async function compositeImages(
     refCtx.drawImage(refImg, srcX, srcY, srcWidth, srcHeight, 0, 0, targetWidth, targetHeight)
   }
 
-  // Pixel-by-pixel blend: combinedAlpha = maskBrightness × refAlpha
+  // Pixel-by-pixel blend: combinedAlpha = maskBrightness × refAlpha × blendStrength
+  const blendStrength = clamp(options?.blendStrength ?? 1.0, 0, 1)
   const maskData = fullMaskCtx.getImageData(targetX, targetY, targetWidth, targetHeight)
   const refData = refCtx.getImageData(0, 0, targetWidth, targetHeight)
   const baseData = ctx.getImageData(targetX, targetY, targetWidth, targetHeight)
@@ -842,7 +845,7 @@ export async function compositeImages(
   for (let i = 0; i < maskData.data.length; i += 4) {
     const maskBrightness = (maskData.data[i] + maskData.data[i + 1] + maskData.data[i + 2]) / 3
     const refAlpha = refData.data[i + 3] / 255
-    const combinedAlpha = (maskBrightness / 255) * refAlpha
+    const combinedAlpha = (maskBrightness / 255) * refAlpha * blendStrength
     if (combinedAlpha > 0.01) {
       baseData.data[i] = Math.round(refData.data[i] * combinedAlpha + baseData.data[i] * (1 - combinedAlpha))
       baseData.data[i + 1] = Math.round(refData.data[i + 1] * combinedAlpha + baseData.data[i + 1] * (1 - combinedAlpha))
