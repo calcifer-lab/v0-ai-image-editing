@@ -308,9 +308,10 @@ async function compositePatchOnBase(
   const opaqueBounds = findOpaqueBounds(sourceImageData.data, refImg.width, refImg.height)
 
   if (opaqueBounds && shouldPreserveTransparentCutout(opaqueBounds, refImg.width, refImg.height)) {
-    const containScale = Math.min(targetWidth / opaqueBounds.srcWidth, targetHeight / opaqueBounds.srcHeight)
-    const drawWidth = opaqueBounds.srcWidth * containScale
-    const drawHeight = opaqueBounds.srcHeight * containScale
+    // Cover-scale: fill the target area, crop the excess — element never appears smaller than target
+    const coverScale = Math.max(targetWidth / opaqueBounds.srcWidth, targetHeight / opaqueBounds.srcHeight)
+    const drawWidth = opaqueBounds.srcWidth * coverScale
+    const drawHeight = opaqueBounds.srcHeight * coverScale
     const drawX = (targetWidth - drawWidth) / 2
     const drawY = (targetHeight - drawHeight) / 2
 
@@ -795,14 +796,63 @@ export async function compositeImages(
   const targetHeight = Math.round(maskCoordinates.height * scaleY)
 
   console.log("[Composite] Target area:", targetX, targetY, targetWidth, targetHeight)
-  console.log("[Composite] Running local fusion blend")
+  // Scale full mask to base image dimensions with edge feathering
+  const fullMaskCanvas = document.createElement("canvas")
+  fullMaskCanvas.width = baseImg.width
+  fullMaskCanvas.height = baseImg.height
+  const fullMaskCtx = fullMaskCanvas.getContext("2d")
+  if (!fullMaskCtx) throw new Error("Failed to get full mask canvas context")
+  fullMaskCtx.filter = "blur(3px)"
+  fullMaskCtx.drawImage(maskImg, 0, 0, baseImg.width, baseImg.height)
+  fullMaskCtx.filter = "none"
 
-  return compositePatchOnBase(baseImageUrl, referenceImageUrl, {
-    x: targetX,
-    y: targetY,
-    width: targetWidth,
-    height: targetHeight,
-  }, options ?? {}, brushMaskCanvas)
+  // Scale reference image to fit target region
+  const refCanvas = document.createElement("canvas")
+  refCanvas.width = targetWidth
+  refCanvas.height = targetHeight
+  const refCtx = refCanvas.getContext("2d")
+  if (!refCtx) throw new Error("Failed to get ref canvas context")
+
+  const sourceCanvas = document.createElement("canvas")
+  sourceCanvas.width = refImg.width
+  sourceCanvas.height = refImg.height
+  const sourceCtx = sourceCanvas.getContext("2d")
+  if (!sourceCtx) throw new Error("Failed to get source canvas context")
+  sourceCtx.drawImage(refImg, 0, 0)
+  const sourceImageData = sourceCtx.getImageData(0, 0, refImg.width, refImg.height)
+  const opaqueBounds = findOpaqueBounds(sourceImageData.data, refImg.width, refImg.height)
+
+  if (opaqueBounds && shouldPreserveTransparentCutout(opaqueBounds, refImg.width, refImg.height)) {
+    const containScale = Math.min(targetWidth / opaqueBounds.srcWidth, targetHeight / opaqueBounds.srcHeight)
+    const drawWidth = opaqueBounds.srcWidth * containScale
+    const drawHeight = opaqueBounds.srcHeight * containScale
+    const drawX = (targetWidth - drawWidth) / 2
+    const drawY = (targetHeight - drawHeight) / 2
+    refCtx.drawImage(refImg, opaqueBounds.srcX, opaqueBounds.srcY, opaqueBounds.srcWidth, opaqueBounds.srcHeight, drawX, drawY, drawWidth, drawHeight)
+  } else {
+    const { srcX, srcY, srcWidth, srcHeight } = fitReferenceToPlacement(refImg.width, refImg.height, targetWidth, targetHeight)
+    refCtx.drawImage(refImg, srcX, srcY, srcWidth, srcHeight, 0, 0, targetWidth, targetHeight)
+  }
+
+  // Pixel-by-pixel blend: combinedAlpha = maskBrightness × refAlpha
+  const maskData = fullMaskCtx.getImageData(targetX, targetY, targetWidth, targetHeight)
+  const refData = refCtx.getImageData(0, 0, targetWidth, targetHeight)
+  const baseData = ctx.getImageData(targetX, targetY, targetWidth, targetHeight)
+
+  for (let i = 0; i < maskData.data.length; i += 4) {
+    const maskBrightness = (maskData.data[i] + maskData.data[i + 1] + maskData.data[i + 2]) / 3
+    const refAlpha = refData.data[i + 3] / 255
+    const combinedAlpha = (maskBrightness / 255) * refAlpha
+    if (combinedAlpha > 0.01) {
+      baseData.data[i] = Math.round(refData.data[i] * combinedAlpha + baseData.data[i] * (1 - combinedAlpha))
+      baseData.data[i + 1] = Math.round(refData.data[i + 1] * combinedAlpha + baseData.data[i + 1] * (1 - combinedAlpha))
+      baseData.data[i + 2] = Math.round(refData.data[i + 2] * combinedAlpha + baseData.data[i + 2] * (1 - combinedAlpha))
+      baseData.data[i + 3] = 255
+    }
+  }
+
+  ctx.putImageData(baseData, targetX, targetY)
+  return canvas.toDataURL("image/png")
 }
 
 export async function compositePatchWithLocalFusion(

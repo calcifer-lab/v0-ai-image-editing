@@ -25,6 +25,7 @@ export default function ImageEditor() {
     processingStatus,
     processingProgress,
     error,
+    warning,
     imageAnalysis,
     isAnalyzing,
     elementCrop,
@@ -98,6 +99,7 @@ export default function ImageEditor() {
             resultImage={resultImage!}
             onEdit={() => setStep("edit")}
             onReset={handleReset}
+            warning={warning}
           />
         )}
       </main>

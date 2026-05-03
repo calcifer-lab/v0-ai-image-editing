@@ -98,7 +98,7 @@ function EditModeSection({
             active={params.editMode === "ai"}
             onClick={() => onParamsChange({ ...params, editMode: "ai" })}
             icon={Wand2}
-            label="AI Generate"
+            label="AI Compose"
             description="AI reinterprets patch"
           />
         </div>
@@ -184,7 +184,7 @@ function AIGenerateSettings({
             <Wand2 className="h-5 w-5 text-primary" />
           </div>
           <div className="flex-1">
-            <h4 className="font-semibold">AI Generate Mode</h4>
+            <h4 className="font-semibold">AI Compose Mode</h4>
             <p className="mt-1 text-sm text-muted-foreground">
               Let AI reinterpret the patch reference so the fix matches the surrounding image, style, and context.
             </p>
