@@ -804,7 +804,9 @@ export async function compositeImages(
   fullMaskCanvas.height = baseImg.height
   const fullMaskCtx = fullMaskCanvas.getContext("2d")
   if (!fullMaskCtx) throw new Error("Failed to get full mask canvas context")
-  fullMaskCtx.filter = "blur(3px)"
+  // Proportional blur: larger images need more blur to achieve the same perceptual softness
+  const blurPx = Math.max(3, Math.min(8, Math.round(Math.min(baseImg.width, baseImg.height) / 150)))
+  fullMaskCtx.filter = `blur(${blurPx}px)`
   fullMaskCtx.drawImage(maskImg, 0, 0, baseImg.width, baseImg.height)
   fullMaskCtx.filter = "none"
 
@@ -824,9 +826,10 @@ export async function compositeImages(
   const sourceImageData = sourceCtx.getImageData(0, 0, refImg.width, refImg.height)
   const opaqueBounds = findOpaqueBounds(sourceImageData.data, refImg.width, refImg.height)
 
-  if (opaqueBounds && shouldPreserveTransparentCutout(opaqueBounds, refImg.width, refImg.height)) {
-    // Stretch the opaque subject to exactly fill the target — guarantees the entire
-    // element is visible within the mask region, no letterboxing or clipping.
+  if (opaqueBounds) {
+    // Always stretch the opaque subject to exactly fill the target.
+    // Whether the element has transparent edges (post bg-removal) or not,
+    // the visible content must fill the entire selected region — no letterboxing.
     refCtx.drawImage(
       refImg,
       opaqueBounds.srcX,
@@ -839,8 +842,8 @@ export async function compositeImages(
       targetHeight
     )
   } else {
-    const { srcX, srcY, srcWidth, srcHeight } = fitReferenceToPlacement(refImg.width, refImg.height, targetWidth, targetHeight)
-    refCtx.drawImage(refImg, srcX, srcY, srcWidth, srcHeight, 0, 0, targetWidth, targetHeight)
+    // No opaque pixels at all — stretch the whole image
+    refCtx.drawImage(refImg, 0, 0, refImg.width, refImg.height, 0, 0, targetWidth, targetHeight)
   }
 
   // Pixel-by-pixel blend: combinedAlpha = maskBrightness × refAlpha × blendStrength
@@ -849,12 +852,37 @@ export async function compositeImages(
   const refData = refCtx.getImageData(0, 0, targetWidth, targetHeight)
   const baseData = ctx.getImageData(targetX, targetY, targetWidth, targetHeight)
 
+  // Pass 1 — clear mask region to surrounding ambient color.
+  // This removes old base content so it cannot bleed through transparent gaps
+  // in the new element (e.g. spaces between legs, internal holes of a white-bg product).
+  const fullBaseData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+  const surroundMargin = clamp(Math.round(Math.max(targetWidth, targetHeight) * 0.16), 12, 48)
+  const surroundStats = collectSurroundingStats(
+    fullBaseData.data,
+    canvas.width,
+    canvas.height,
+    { x: targetX, y: targetY, width: targetWidth, height: targetHeight },
+    surroundMargin
+  )
+  if (surroundStats.count > 0) {
+    for (let i = 0; i < maskData.data.length; i += 4) {
+      const maskBrightness = (maskData.data[i] + maskData.data[i + 1] + maskData.data[i + 2]) / 3
+      const fill = maskBrightness / 255
+      if (fill > 0.01) {
+        baseData.data[i]     = Math.round(surroundStats.r * fill + baseData.data[i]     * (1 - fill))
+        baseData.data[i + 1] = Math.round(surroundStats.g * fill + baseData.data[i + 1] * (1 - fill))
+        baseData.data[i + 2] = Math.round(surroundStats.b * fill + baseData.data[i + 2] * (1 - fill))
+      }
+    }
+  }
+
+  // Pass 2 — composite the new element over the already-cleared base.
   for (let i = 0; i < maskData.data.length; i += 4) {
     const maskBrightness = (maskData.data[i] + maskData.data[i + 1] + maskData.data[i + 2]) / 3
     const refAlpha = refData.data[i + 3] / 255
     const combinedAlpha = (maskBrightness / 255) * refAlpha * blendStrength
     if (combinedAlpha > 0.01) {
-      baseData.data[i] = Math.round(refData.data[i] * combinedAlpha + baseData.data[i] * (1 - combinedAlpha))
+      baseData.data[i]     = Math.round(refData.data[i]     * combinedAlpha + baseData.data[i]     * (1 - combinedAlpha))
       baseData.data[i + 1] = Math.round(refData.data[i + 1] * combinedAlpha + baseData.data[i + 1] * (1 - combinedAlpha))
       baseData.data[i + 2] = Math.round(refData.data[i + 2] * combinedAlpha + baseData.data[i + 2] * (1 - combinedAlpha))
       baseData.data[i + 3] = 255
@@ -945,4 +973,55 @@ export async function resizeToAspectRatio(
     width: canvas.width,
     height: canvas.height,
   }
+}
+
+/**
+ * Client-side white background matte removal.
+ * Used as a fallback when Replicate bg-removal fails for images with a plain white background.
+ * Detects a white background by sampling the image edges; if found, fades white-ish pixels
+ * to transparent so they don't bleed into the composite.
+ */
+export async function removeWhiteMatteIfNeeded(imageDataUrl: string, threshold = 232): Promise<string> {
+  const img = await loadImage(imageDataUrl)
+  const canvas = document.createElement("canvas")
+  canvas.width = img.width
+  canvas.height = img.height
+  const ctx = canvas.getContext("2d")
+  if (!ctx) return imageDataUrl
+
+  ctx.drawImage(img, 0, 0)
+  const imageData = ctx.getImageData(0, 0, img.width, img.height)
+  const data = imageData.data
+
+  // Sample points along all four edges to detect white background
+  const samplePoints: [number, number][] = [
+    [0, 0], [img.width - 1, 0], [0, img.height - 1], [img.width - 1, img.height - 1],
+    [Math.floor(img.width / 2), 0], [Math.floor(img.width / 2), img.height - 1],
+    [0, Math.floor(img.height / 2)], [img.width - 1, Math.floor(img.height / 2)],
+  ]
+
+  let whiteCount = 0
+  for (const [x, y] of samplePoints) {
+    const i = (y * img.width + x) * 4
+    if (data[i] >= threshold && data[i + 1] >= threshold && data[i + 2] >= threshold && data[i + 3] >= 200) {
+      whiteCount++
+    }
+  }
+
+  // Need at least 5 of 8 edge samples to be white before applying removal
+  if (whiteCount < 5) return imageDataUrl
+
+  console.log(`[WhiteMatte] Detected white background (${whiteCount}/8 edge samples) — applying local removal`)
+
+  for (let i = 0; i < data.length; i += 4) {
+    if (data[i + 3] < 10) continue
+    const minChannel = Math.min(data[i], data[i + 1], data[i + 2])
+    if (minChannel >= threshold) {
+      const whiteness = (minChannel - threshold) / (255 - threshold)
+      data[i + 3] = Math.round(data[i + 3] * Math.max(0, 1 - whiteness * 1.6))
+    }
+  }
+
+  ctx.putImageData(imageData, 0, 0)
+  return canvas.toDataURL("image/png")
 }
