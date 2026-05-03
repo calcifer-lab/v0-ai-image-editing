@@ -94,7 +94,7 @@ function ResultsHeader({
             <>
               <h2 className="flex items-center gap-2 text-2xl font-bold text-amber-600">
                 <AlertTriangle className="h-6 w-6" />
-                Direct Composite Result
+                直接拼图结果
               </h2>
               <p className="text-amber-600/80">{warning}</p>
             </>
@@ -157,7 +157,7 @@ function SideBySideView({
         <div className={`border-b p-4 ${warning ? "bg-amber-50" : "bg-primary/10"}`}>
           <h3 className={`flex items-center gap-1.5 font-semibold ${warning ? "text-amber-700" : "text-primary"}`}>
             {warning && <AlertTriangle className="h-4 w-4" />}
-            {warning ? "Direct Composite (AI unavailable)" : "Fixed"}
+            {warning ? "直接拼图（AI 不可用）" : "Fixed"}
           </h3>
         </div>
         <div className="p-4">

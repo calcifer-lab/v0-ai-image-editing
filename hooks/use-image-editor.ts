@@ -541,7 +541,7 @@ export function useImageEditor(): UseImageEditorReturn {
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => "")
-      throw new Error(errorText || `Inpaint API error: ${response.status}`)
+      throw new Error(`Inpaint API ${response.status}: ${errorText}`)
     }
 
     updateProgress("AI model processing response...", 82, { driftTo: 88 })
