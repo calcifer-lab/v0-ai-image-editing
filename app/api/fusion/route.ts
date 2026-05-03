@@ -6,6 +6,7 @@ import {
   openRouterHeaders,
   type OpenRouterContentPart,
 } from "@/lib/api"
+import { logStageEvent, newRequestId } from "@/lib/observability/log-stage"
 
 /**
  * Normalize a data URI to always use PNG format.
@@ -53,6 +54,7 @@ interface FusionResponse {
  */
 export async function POST(request: NextRequest): Promise<NextResponse<FusionResponse | { error: string }>> {
   const startTime = Date.now()
+  const requestId = newRequestId()
 
   try {
     const body: FusionRequest = await request.json()
@@ -62,6 +64,13 @@ export async function POST(request: NextRequest): Promise<NextResponse<FusionRes
       return NextResponse.json({ error: "composite_image and original_base are required" }, { status: 400 })
     }
 
+    logStageEvent("info", {
+      requestId,
+      stage: "fusion",
+      mode: "composite",
+      input_meta: { width: mask_region?.width, height: mask_region?.height },
+      message: "fusion request received",
+    })
     console.log("[Fusion] Starting AI fusion post-processing...")
     console.log("[Fusion] Mask region:", mask_region)
 
@@ -75,11 +84,16 @@ export async function POST(request: NextRequest): Promise<NextResponse<FusionRes
       try {
         console.log("[Fusion] Using Google AI Studio (gemini-2.5-flash-image)...")
         const result = await fusionWithGoogle(fusionContent, googleApiKey, startTime)
-        if (result) return result
+        if (result) {
+          logStageEvent("info", { requestId, stage: "fusion", provider: "google", model: GOOGLE_IMAGE_MODEL, elapsed_ms: Date.now() - startTime })
+          return result
+        }
         failures.push("Google: no image in response")
+        logStageEvent("warn", { requestId, stage: "fusion", provider: "google", error_code: "NO_IMAGE_IN_RESPONSE", fallback_from: "google", fallback_to: "openrouter" })
       } catch (error) {
         const msg = error instanceof Error ? error.message : "Google call threw"
         failures.push(`Google: ${msg}`)
+        logStageEvent("warn", { requestId, stage: "fusion", provider: "google", error_code: "GOOGLE_CALL_THROW", fallback_from: "google", fallback_to: "openrouter", message: msg })
         console.warn("[Fusion] Google fusion failed:", error)
       }
     }
@@ -90,25 +104,43 @@ export async function POST(request: NextRequest): Promise<NextResponse<FusionRes
       try {
         console.log("[Fusion] Using OpenRouter Gemini 2.5 Flash for fusion...")
         const result = await fusionWithOpenRouter(fusionContent, openRouterApiKey, startTime)
-        if (result) return result
+        if (result) {
+          logStageEvent("info", { requestId, stage: "fusion", provider: "openrouter", model: "google/gemini-2.5-flash-image", elapsed_ms: Date.now() - startTime })
+          return result
+        }
         failures.push("OpenRouter: no image in response")
+        logStageEvent("warn", { requestId, stage: "fusion", provider: "openrouter", error_code: "NO_IMAGE_IN_RESPONSE", fallback_from: "openrouter", fallback_to: "flux" })
       } catch (error) {
         const msg = error instanceof Error ? error.message : "OpenRouter call threw"
         failures.push(`OpenRouter: ${msg}`)
+        logStageEvent("warn", { requestId, stage: "fusion", provider: "openrouter", error_code: "OPENROUTER_CALL_THROW", fallback_from: "openrouter", fallback_to: "flux", message: msg })
         console.warn("[Fusion] OpenRouter fusion failed:", error)
       }
     }
 
-    // 3. FLUX img2img (尚未实现)
-    const replicateApiKey = process.env.REPLICATE_API_KEY
-    if (replicateApiKey) {
-      console.log("[Fusion] Using FLUX img2img for fusion...")
-      return await fusionWithFlux(composite_image, fusionPrompt, replicateApiKey, startTime)
-    }
-
+    // 3. Graceful degradation: return the composite as-is so the client always gets a usable
+    //    image. FLUX img2img fusion is not yet implemented; we log the failure and pass through.
     const reason = failures.length > 0 ? failures.join("; ") : "no provider configured"
-    return NextResponse.json({ error: `AI fusion unavailable: ${reason}` }, { status: 502 })
+    logStageEvent("warn", {
+      requestId,
+      stage: "fusion",
+      error_code: "ALL_PROVIDERS_FAILED_PASSTHROUGH",
+      elapsed_ms: Date.now() - startTime,
+      message: `Fusion unavailable (${reason}), returning composite unchanged`,
+    })
+    console.warn("[Fusion] All providers failed — returning composite unchanged:", reason)
+    return NextResponse.json({
+      fused_image: composite_image,
+      meta: { model: "passthrough", duration_ms: Date.now() - startTime },
+    })
   } catch (error) {
+    logStageEvent("error", {
+      requestId,
+      stage: "fusion",
+      error_code: "UNHANDLED_EXCEPTION",
+      elapsed_ms: Date.now() - startTime,
+      message: error instanceof Error ? error.message : "unknown",
+    })
     console.error("[Fusion] Error:", error)
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Failed to process fusion request" },
@@ -388,18 +420,3 @@ async function fusionWithOpenRouter(
   return null
 }
 
-/**
- * 使用 FLUX img2img 进行融合 (尚未实现)
- */
-async function fusionWithFlux(
-  _composite_image: string,
-  _prompt: string,
-  _apiKey: string,
-  _startTime: number
-): Promise<NextResponse<{ error: string }>> {
-  console.warn("[Fusion] FLUX img2img fusion not yet implemented")
-  return NextResponse.json(
-    { error: "FLUX fusion fallback is not implemented" },
-    { status: 502 }
-  )
-}

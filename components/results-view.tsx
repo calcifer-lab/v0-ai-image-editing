@@ -20,23 +20,11 @@ export default function ResultsView({ originalImage, resultImage, onEdit, onRese
   const [view, setView] = useState<ViewMode>("side")
   const [sliderPosition, setSliderPosition] = useState(50)
   const sliderContainerRef = useRef<HTMLDivElement>(null)
-  const [containerWidth, setContainerWidth] = useState(0)
-
-  useEffect(() => {
-    const updateWidth = () => {
-      if (sliderContainerRef.current) {
-        setContainerWidth(sliderContainerRef.current.offsetWidth)
-      }
-    }
-    updateWidth()
-    window.addEventListener("resize", updateWidth)
-    return () => window.removeEventListener("resize", updateWidth)
-  }, [])
 
   const handleDownload = () => {
     const link = document.createElement("a")
     link.href = resultImage
-    link.download = "rediagram-fix.png"
+    link.download = "fix-result.png"
     link.click()
   }
 
@@ -78,7 +66,6 @@ export default function ResultsView({ originalImage, resultImage, onEdit, onRese
                 sliderPosition={sliderPosition}
                 onSliderChange={setSliderPosition}
                 containerRef={sliderContainerRef}
-                containerWidth={containerWidth}
               />
             </TabsContent>
           </Tabs>
@@ -195,23 +182,24 @@ function SliderCompareView({
   sliderPosition,
   onSliderChange,
   containerRef,
-  containerWidth,
 }: {
   originalImage: string
   resultImage: string
   sliderPosition: number
   onSliderChange: (value: number) => void
-  containerRef: React.RefObject<HTMLDivElement | null>
-  containerWidth: number
+  containerRef: ReturnType<typeof useRef<HTMLDivElement | null>>
 }) {
-  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!containerRef.current) return
-    const rect = containerRef.current.getBoundingClientRect()
-    const x = e.clientX - rect.left
-    const clampedX = Math.max(0, Math.min(x, containerWidth))
-    const percent = (clampedX / containerWidth) * 100
-    onSliderChange(percent)
-  }
+  const [aspectRatio, setAspectRatio] = useState<number | null>(null)
+
+  useEffect(() => {
+    const img = new Image()
+    img.onload = () => {
+      if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+        setAspectRatio(img.naturalHeight / img.naturalWidth)
+      }
+    }
+    img.src = resultImage
+  }, [resultImage])
 
   return (
     <Card className="overflow-hidden">
@@ -220,38 +208,31 @@ function SliderCompareView({
         <p className="text-sm text-muted-foreground">Drag the slider to compare images</p>
       </div>
       <div className="p-4">
+        {/* paddingBottom maintains the image's exact aspect ratio — no blank areas for slider to escape into */}
         <div
           ref={containerRef}
           className="relative overflow-hidden rounded-lg border"
-          style={{ width: "100%", minHeight: "300px", maxHeight: "70vh" }}
-          onMouseMove={handleMouseMove}
-          onMouseLeave={() => {}}
+          style={{
+            width: "100%",
+            paddingBottom: aspectRatio != null ? `${aspectRatio * 100}%` : "56.25%",
+          }}
         >
-          {/* Both images use position absolute with fixed pixel dimensions so slider only clips, never scales */}
           <img
             src={resultImage || "/placeholder.svg"}
             alt="Result"
-            className="pointer-events-none absolute object-contain"
-            style={{ top: 0, left: 0, width: containerWidth || "100%", height: "100%" }}
+            className="pointer-events-none absolute inset-0 w-full h-full object-fill"
             crossOrigin="anonymous"
             draggable={false}
           />
           <img
             src={originalImage || "/placeholder.svg"}
             alt="Original"
-            className="pointer-events-none absolute object-contain"
-            style={{
-              top: 0,
-              left: 0,
-              width: containerWidth || "100%",
-              height: "100%",
-              clipPath: `inset(0 ${100 - sliderPosition}% 0 0)`,
-            }}
+            className="pointer-events-none absolute inset-0 w-full h-full object-fill"
+            style={{ clipPath: `inset(0 ${100 - sliderPosition}% 0 0)` }}
             crossOrigin="anonymous"
             draggable={false}
           />
 
-          {/* Slider divider line */}
           <div
             className="absolute inset-y-0 z-10 w-1 bg-white shadow-lg"
             style={{ left: `${sliderPosition}%`, transform: "translateX(-50%)" }}
@@ -261,15 +242,12 @@ function SliderCompareView({
             </div>
           </div>
 
-          {/* Invisible range input for slider interaction */}
           <input
             type="range"
             min="0"
             max="100"
             value={sliderPosition}
-            onChange={(e) => {
-              onSliderChange(Number(e.target.value))
-            }}
+            onChange={(e) => onSliderChange(Number(e.target.value))}
             className="absolute inset-0 z-20 h-full w-full cursor-ew-resize opacity-0"
             style={{ touchAction: "pan-y" }}
             aria-label="Comparison slider"

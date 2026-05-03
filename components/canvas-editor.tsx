@@ -771,10 +771,10 @@ const getCanvasPoint = useCallback(
       <div className="flex items-center justify-center p-4">
         <div
           id="canvas-editor-container"
-          className="relative rounded-lg border shadow-lg overflow-auto"
+          className="relative rounded-lg border shadow-lg overflow-hidden"
           style={{
+            width: canvasSize.width > 0 ? canvasSize.width : "100%",
             maxWidth: "100%",
-            maxHeight: "60vh",
             cursor: isPanning ? "grabbing" : isSpacePanning ? "grab" : undefined,
             transform: `scale(${zoom}) translate(${pan.x / zoom}px, ${pan.y / zoom}px)`,
             transformOrigin: "center center",
@@ -826,7 +826,7 @@ const getCanvasPoint = useCallback(
                 }
               }
             }}
-            className="cursor-crosshair"
+            className="cursor-crosshair block w-full h-auto"
           />
           <canvas ref={maskCanvasRef} className="hidden" />
 
