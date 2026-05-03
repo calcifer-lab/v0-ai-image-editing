@@ -18,7 +18,6 @@ import {
   resizeImage,
   compressImage,
 } from "@/lib/image-utils"
-import { resizeImage as resizeImageBlob } from "@/utils/imageResize"
 import { safeParseJSON } from "@/utils/safeParse"
 
 // ============ 初始状态 ============
@@ -133,198 +132,10 @@ async function cropImageToDataUrl(imageUrl: string, crop: CropRegion, maskCanvas
   return canvas.toDataURL("image/png")
 }
 
-async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
-  const response = await fetch(dataUrl)
-  return response.blob()
-}
 
-function blobToDataUrl(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onloadend = () => resolve(reader.result as string)
-    reader.onerror = reject
-    reader.readAsDataURL(blob)
-  })
-}
 
-/**
- * Call the background removal API on a single image data URL.
- * Returns { image: cutout PNG, mask: alpha mask PNG }.
- * Shows real-time progress via the hook's updateProgress callback.
- */
-async function callRemoveBackground(
-  imageUrl: string,
-  onProgress: (msg: string) => void
-): Promise<{ image: string; mask: string }> {
-  onProgress("Analyzing image...")
-  const response = await fetch("/api/remove-background", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ image: imageUrl }),
-  })
-  if (!response.ok) {
-    throw new Error(await response.text() || `remove-background failed: ${response.status}`)
-  }
-  onProgress("Background removed")
-  return response.json()
-}
 
-async function removeMaskedRegionFromBase(baseDataUrl: string, maskDataUrl: string): Promise<string> {
-  const [baseImg, maskImg] = await Promise.all([loadImage(baseDataUrl), loadImage(maskDataUrl)])
 
-  const canvas = document.createElement("canvas")
-  canvas.width = baseImg.width
-  canvas.height = baseImg.height
-  const ctx = canvas.getContext("2d")
-  if (!ctx) throw new Error("Failed to get canvas context for base masking")
-
-  // ── Draw base at full resolution ───────────────────────────────────────
-  ctx.drawImage(baseImg, 0, 0, baseImg.width, baseImg.height)
-
-  // ── Build correct mask for the base ────────────────────────────────────
-  // Problem: maskCanvas and baseCanvas have SAME aspect ratio (both match
-  // original image). For portrait images: baseCanvas=450×600, base=1536×1152.
-  // The brush was painted at canvas coords; to cut the hole at the CORRECT
-  // position in the base, we must:
-  //   1. Draw the mask (with hole) at maskCanvas's native resolution
-  //   2. Scale it proportionally to cover the base canvas
-  //   3. The scaled hole position = canvas position × (base/maskCanvas) scale
-  //
-  // Step 1: create mask WITH HOLE at mask canvas resolution
-  //   hole = "not-selected" pixels of mask, on a white ("selected") background
-  const holeMask = document.createElement("canvas")
-  holeMask.width = maskImg.width
-  holeMask.height = maskImg.height
-  const holeCtx = holeMask.getContext("2d")
-  if (!holeCtx) throw new Error("Failed to get hole mask context")
-
-  // White base = entire region is "selected" (to be made transparent)
-  holeCtx.fillStyle = "white"
-  holeCtx.fillRect(0, 0, maskImg.width, maskImg.height)
-
-  // Cut the painted region (black/not-selected = keep) out of the white base
-  holeCtx.globalCompositeOperation = "destination-out"
-  holeCtx.drawImage(maskImg, 0, 0) // maskImg has black painted pixels
-  holeCtx.globalCompositeOperation = "source-over"
-  // Now holeMask has: hole (transparent) = painted brush, white = rest
-
-  // Step 2: proportional scale of holeMask to cover base canvas
-  const scaleX = baseImg.width / maskImg.width
-  const scaleY = baseImg.height / maskImg.height
-  const scaledW = Math.round(maskImg.width * scaleX)
-  const scaledH = Math.round(maskImg.height * scaleY)
-  const scaledMask = document.createElement("canvas")
-  scaledMask.width = scaledW
-  scaledMask.height = scaledH
-  const smCtx = scaledMask.getContext("2d")
-  if (!smCtx) throw new Error("Failed to get scaled mask context")
-  smCtx.drawImage(holeMask, 0, 0, scaledW, scaledH)
-  // scaledMask: hole region correctly scaled to base resolution
-
-  // Step 3: cut the hole in base using the correctly scaled mask
-  ctx.globalCompositeOperation = "destination-out"
-  ctx.drawImage(scaledMask, 0, 0, baseImg.width, baseImg.height)
-  ctx.globalCompositeOperation = "source-over"
-
-  return canvas.toDataURL("image/png")
-}
-
-function buildPromptFromAnalysis(imageAnalysis: string): string {
-  // 首先检测是否为裁剪区域分析格式 (新格式 - 带层级结构)
-  const selectedElementMatch = imageAnalysis.match(/Selected Element[^:]*:?\s*([^\n]+)/i)
-  
-  if (selectedElementMatch) {
-    // 新格式：裁剪区域分析
-    const selectedElement = selectedElementMatch[1].replace(/\*+/g, "").trim()
-    
-    // 提取 Layer Structure（新增的层级结构）
-    const layerStructureMatch = imageAnalysis.match(/Layer Structure[^:]*:?\s*([\s\S]*?)(?=\*\*Spatial|\*\*Visual|\*\*Style|$)/i)
-    const layers: string[] = []
-    if (layerStructureMatch) {
-      const layerText = layerStructureMatch[1]
-      const layerLines = layerText.split('\n').filter(l => l.trim().match(/Layer\s*\d|Top|Bottom/i))
-      layerLines.forEach(line => {
-        const cleaned = line.replace(/^[-\s*]+/, '').replace(/\*+/g, '').trim()
-        if (cleaned) layers.push(cleaned)
-      })
-    }
-    
-    // 提取 Spatial Relationships（空间关系）
-    const spatialMatch = imageAnalysis.match(/Spatial Relationships[^:]*:?\s*([\s\S]*?)(?=\*\*Visual|\*\*Style|$)/i)
-    const spatialRelations = spatialMatch 
-      ? spatialMatch[1].replace(/\*+/g, "").trim().split('\n').filter(l => l.trim()).slice(0, 3).join('; ')
-      : ""
-    
-    // 提取 Key Structural Details
-    const keyDetailsMatch = imageAnalysis.match(/Key Structural Details[^:]*:?\s*([\s\S]*?)(?=\*\*|$)/i)
-      || imageAnalysis.match(/Key Details[^:]*:?\s*([\s\S]*?)(?=\*\*|$)/i)
-    const keyDetails = keyDetailsMatch 
-      ? keyDetailsMatch[1].replace(/\*+/g, "").trim().split('\n').filter(l => l.trim()).slice(0, 3).join('; ')
-      : ""
-    
-    // 提取 Style
-    const styleMatch = imageAnalysis.match(/Style[^:]*:?\s*([^\n]+)/i)
-    const style = styleMatch ? styleMatch[1].replace(/\*+/g, "").trim() : ""
-    
-    // 构建包含层级结构的提示词
-    let finalPrompt = `COPY EXACTLY the ${selectedElement} from the reference image into the masked region. `
-    
-    // 添加层级结构描述
-    if (layers.length > 0) {
-      finalPrompt += `STRUCTURE (from top to bottom): ${layers.join(' → ')}. `
-    }
-    
-    // 添加空间关系
-    if (spatialRelations) {
-      finalPrompt += `Relationships: ${spatialRelations}. `
-    }
-    
-    if (keyDetails) {
-      finalPrompt += `Key details: ${keyDetails}. `
-    }
-    if (style) {
-      finalPrompt += `Match the ${style} style. `
-    }
-    finalPrompt += `PRESERVE the exact layer structure and spatial relationships. DO NOT invent new objects.`
-    
-    return finalPrompt
-  }
-  
-  // 旧格式：完整图片分析
-  let keyElements = ""
-  let specialItems = ""
-  
-  // Try to extract "Key Elements to Preserve" section
-  const keyElementsMatch = imageAnalysis.match(/Key Elements[^:]*:?\s*([\s\S]*?)(?=\*\*|$)/i)
-  if (keyElementsMatch) {
-    keyElements = keyElementsMatch[1].replace(/\*+/g, "").trim().split('\n').slice(0, 3).join('; ')
-  }
-  
-  // Try to extract "Special Items" section
-  const specialItemsMatch = imageAnalysis.match(/SPECIAL ITEMS[^:]*:?\s*([^\n]+)/i)
-  if (specialItemsMatch) {
-    specialItems = specialItemsMatch[1].replace(/\*+/g, "").trim()
-  }
-  
-  // Try to extract "LEGS/FEET" section
-  const feetMatch = imageAnalysis.match(/LEGS\/FEET[^:]*:?\s*([^\n]+)/i)
-  const feetDescription = feetMatch ? feetMatch[1].replace(/\*+/g, "").trim() : ""
-  
-  // Build comprehensive prompt
-  let finalPrompt = `COPY EXACTLY what you see in the reference image for the masked region. `
-  if (specialItems) {
-    finalPrompt += `The reference shows: ${specialItems}. `
-  }
-  if (feetDescription) {
-    finalPrompt += `Under the feet: ${feetDescription}. `
-  }
-  if (keyElements) {
-    finalPrompt += `Key elements to copy: ${keyElements}. `
-  }
-  finalPrompt += `DO NOT invent new objects. DO NOT create random decorations. Copy the EXACT visual elements from the reference image.`
-  
-  return finalPrompt
-}
 
 // Compress large data URLs before network upload to stay under server limits
 async function compressDataUrlForUpload(
@@ -570,7 +381,7 @@ export function useImageEditor(): UseImageEditorReturn {
     try {
       const compressedForBgRemoval = await compressDataUrlForUpload(processedReference, { preserveTransparency: false })
       const bgController = new AbortController()
-      const bgTimeout = setTimeout(() => bgController.abort(), 90_000)
+      const bgTimeout = setTimeout(() => bgController.abort(), 120_000)
       let bgResponse: Response
       try {
         bgResponse = await fetch("/api/remove-background", {
@@ -631,153 +442,11 @@ export function useImageEditor(): UseImageEditorReturn {
   }, [images, mask, elementCrop, runFusionPass, updateProgress])
 
   // 处理 AI 生成模式
+  // AI Compose = Direct Patch + AI Fusion (Gemini-based inpainting ignores the reference image,
+  // so we composite first and let the fusion pass handle lighting/style harmonization)
   const processAIMode = useCallback(async (): Promise<string> => {
-    if (!images.baseImage || !images.elementImage || !mask) {
-      throw new Error("Missing required images or mask")
-    }
-
-    updateProgress("Compressing images for upload...", 12, { driftTo: 18 })
-
-    // Downscale inputs to avoid oversized payloads before calling inpaint
-    const hasExplicitCrop = !!(elementCrop && elementCrop.width > 0 && elementCrop.height > 0)
-
-    const [baseBlob, maskBlob] = await Promise.all([
-      dataUrlToBlob(images.baseImage),
-      dataUrlToBlob(mask.dataUrl),
-    ])
-
-    const [compressedBase, compressedMask] = await Promise.all([
-      resizeImageBlob(baseBlob, 1536, 0.85),
-      // Keep mask aligned to the same dimensions as the base to avoid misalignment
-      resizeImageBlob(maskBlob, 1536, 0.95),
-    ])
-
-    let processedBaseImage = await blobToDataUrl(compressedBase)
-    const processedMaskImage = await blobToDataUrl(compressedMask)
-
-    // Always punch a hole in the masked region so the AI model is forced to fill it from the
-    // reference image rather than preserving the original content. This matches the 4d7bdb1
-    // behavior that produced reliable results.
-    updateProgress("Cleaning masked region...", 20, { driftTo: 28 })
-    processedBaseImage = await removeMaskedRegionFromBase(processedBaseImage, processedMaskImage)
-
-    // 使用局部变量跟踪分析结果，避免闭包捕获的状态值过时问题
-    // 关键：只有当 (1) 已有分析 AND (2) 没有新的 elementCrop AND (3) 没有自定义 prompt 时才复用
-    const hasNewCrop = elementCrop && elementCrop.width > 0 && elementCrop.height > 0
-    let currentAnalysis = (!hasNewCrop && !params.prompt.trim()) ? imageAnalysis : null
-
-    // 当有新裁剪区域或无分析结果时，重新分析当前选中的区域
-    if (!currentAnalysis && !params.prompt.trim()) {
-      updateProgress("Analyzing selected element region...", 28, { driftTo: 36 })
-      const freshAnalysis = await analyzeImage(images.elementImage, elementCrop)
-      // 立即使用新鲜的分析结果
-      currentAnalysis = freshAnalysis
-      // 分析完成后同步到状态（供下次使用）
-      if (freshAnalysis) {
-        setImageAnalysis(freshAnalysis)
-      }
-    }
-
-    // 裁剪参考图片（如果用户有选择裁剪区域）
-    updateProgress("Preparing reference image...", 38, { driftTo: 44 })
-    let processedReference: string
-    const cropperRef = elementCropperRef.current
-    const maskCanvasForCrop = cropperRef?.maskCanvas ?? undefined
-    if (hasExplicitCrop && elementCrop) {
-      try {
-        const croppedReference = await cropImageToDataUrl(images.elementImage, elementCrop, maskCanvasForCrop)
-        const resizedReference = await resizeImage(croppedReference, 768, 768)
-        processedReference = await compressImage(resizedReference.dataUrl, 0.85)
-        console.log(
-          "[AI Editor] Applied user crop to reference image for AI mode:",
-          elementCrop.width,
-          "x",
-          elementCrop.height
-        )
-      } catch (cropError) {
-        console.warn("[AI Editor] Failed to crop reference image, using original:", cropError)
-        const referenceBlob = await dataUrlToBlob(images.elementImage)
-        const compressedReference = await resizeImageBlob(referenceBlob, 768, 0.85)
-        processedReference = await blobToDataUrl(compressedReference)
-      }
-    } else {
-      const referenceBlob = await dataUrlToBlob(images.elementImage)
-      const compressedReference = await resizeImageBlob(referenceBlob, 768, 0.85)
-      processedReference = await blobToDataUrl(compressedReference)
-    }
-
-    updateProgress("Sending request to AI model...", 48, { driftTo: 62 })
-
-    // 构建提示词
-    let finalPrompt: string
-    if (params.prompt && params.prompt.trim()) {
-      finalPrompt = params.prompt.trim()
-      console.log("[AI Editor] Using user-provided prompt:", finalPrompt)
-    } else if (currentAnalysis) {
-      finalPrompt = buildPromptFromAnalysis(currentAnalysis)
-      console.log("[AI Editor] Using AI analysis for prompt")
-      console.log("[AI Editor] Analysis:", currentAnalysis)
-      console.log("[AI Editor] Built prompt:", finalPrompt)
-    } else {
-      // 如果分析失败，使用通用提示词作为后备
-      // 当用户有裁剪区域时，明确告知 AI 只用裁剪出来的那个元素
-      if (elementCrop && elementCrop.width > 0 && elementCrop.height > 0) {
-        finalPrompt = `COPY EXACTLY the ${elementCrop.width}×${elementCrop.height} cropped region from the reference image — do not use any area outside this selection. ` +
-          `Place it precisely into the masked region. DO NOT invent new objects. ` +
-          `DO NOT create decorations. Reproduce only what you see inside the cropped reference region.`
-        console.warn("[AI Editor] No analysis — using crop-aware fallback prompt, elementCrop:", elementCrop)
-      } else {
-        finalPrompt = "COPY the EXACT elements from the reference image into the masked region. Do NOT create new objects. Do NOT invent decorations. Only reproduce what you SEE in the reference."
-        console.warn("[AI Editor] No analysis available, using fallback prompt")
-      }
-    }
-
-    console.log("[AI Editor] Final prompt being sent:", finalPrompt)
-    console.log("[AI Editor] Has elementCrop:", !!elementCrop, elementCrop)
-
-    // Send hole-punched base + reference to AI — the model generates the inpainted content
-    // directly from the reference image. This matches the 4d7bdb1 approach that worked well.
-    updateProgress("Sending request to AI model...", 50, { driftTo: 70 })
-
-    const inpaintController = new AbortController()
-    const inpaintTimeout = setTimeout(() => inpaintController.abort(), 240_000)
-    let response: Response
-    try {
-      response = await fetch("/api/inpaint", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          base_image: processedBaseImage,
-          mask_image: processedMaskImage,
-          reference_image: processedReference,
-          prompt: finalPrompt,
-          options: {
-            strength: params.strength,
-            steps: 30,
-            guidance_scale: params.guidance,
-          },
-        }),
-        signal: inpaintController.signal,
-      })
-    } finally {
-      clearTimeout(inpaintTimeout)
-    }
-
-    if (!response.ok) {
-      const errorText = await response.text().catch(() => "")
-      console.warn("[AI Editor] Inpaint API failed:", errorText)
-      throw new Error(errorText || `Inpaint API error: ${response.status}`)
-    }
-
-    updateProgress("AI model processing response...", 75, { driftTo: 80 })
-    const data = await safeParseJSON(response) as { result_image?: string }
-
-    if (!data.result_image) {
-      throw new Error("Inpainting API response missing result image")
-    }
-
-    return data.result_image
-  }, [images, mask, params, imageAnalysis, analyzeImage, elementCrop, updateProgress, setError])
+    return processCompositeMode()
+  }, [processCompositeMode])
 
   // 处理主流程
   const handleProcess = useCallback(async () => {

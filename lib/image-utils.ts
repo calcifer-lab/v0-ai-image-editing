@@ -308,9 +308,10 @@ async function compositePatchOnBase(
   const opaqueBounds = findOpaqueBounds(sourceImageData.data, refImg.width, refImg.height)
 
   if (opaqueBounds && shouldPreserveTransparentCutout(opaqueBounds, refImg.width, refImg.height)) {
-    const containScale = Math.min(targetWidth / opaqueBounds.srcWidth, targetHeight / opaqueBounds.srcHeight)
-    const drawWidth = opaqueBounds.srcWidth * containScale
-    const drawHeight = opaqueBounds.srcHeight * containScale
+    // Cover-scale: fill the target area, crop the excess — element never appears smaller than target
+    const coverScale = Math.max(targetWidth / opaqueBounds.srcWidth, targetHeight / opaqueBounds.srcHeight)
+    const drawWidth = opaqueBounds.srcWidth * coverScale
+    const drawHeight = opaqueBounds.srcHeight * coverScale
     const drawX = (targetWidth - drawWidth) / 2
     const drawY = (targetHeight - drawHeight) / 2
 
