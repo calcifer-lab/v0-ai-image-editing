@@ -52,25 +52,17 @@ export async function POST(
     }
 
     console.log("[RemoveBG] Calling Replicate rembg...")
-    const replicateController = new AbortController()
-    const replicateTimeout = setTimeout(() => replicateController.abort(), 90_000)
-    let response: Response
-    try {
-      response = await fetch("https://api.replicate.com/v1/models/lucataco/rembg/predictions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${replicateApiKey}`,
-          "Content-Type": "application/json",
-          Prefer: "wait",
-        },
-        body: JSON.stringify({
-          input: { image: imageDataUrl },
-        }),
-        signal: replicateController.signal,
-      })
-    } finally {
-      clearTimeout(replicateTimeout)
-    }
+    const response = await fetch("https://api.replicate.com/v1/models/lucataco/rembg/predictions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${replicateApiKey}`,
+        "Content-Type": "application/json",
+        Prefer: "wait",
+      },
+      body: JSON.stringify({
+        input: { image: imageDataUrl },
+      }),
+    })
 
     if (!response.ok) {
       const errorText = await response.text()
