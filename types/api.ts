@@ -3,10 +3,23 @@
  */
 
 // ============ Inpaint API ============
+export interface MaskBboxNorm {
+  x0: number
+  y0: number
+  x1: number
+  y1: number
+}
+
 export interface InpaintRequest {
   base_image: string
   mask_image: string
   reference_image?: string
+  /** Local pre-composited preview anchoring element placement (composite-first AI Compose). */
+  composite_image?: string
+  /** Element analysis text from /api/analyze-image, injected into the model prompt. */
+  element_analysis?: string
+  /** Normalized bbox of the white mask region (in base image coords). */
+  mask_bbox_norm?: MaskBboxNorm
   prompt: string
   options?: InpaintOptions
 }
@@ -23,6 +36,10 @@ export interface InpaintResponse {
     model: string
     duration_ms: number
     reference_used?: boolean
+    /** True when reference_image was provided but the serving model could not consume it (e.g. FLUX fallback). */
+    reference_dropped?: boolean
+    /** True when composite_image was provided and used as the placement anchor. */
+    composite_used?: boolean
   }
 }
 
