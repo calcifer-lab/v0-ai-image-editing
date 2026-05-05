@@ -51,6 +51,7 @@ export interface UseImageEditorReturn {
   processingStatus: string
   processingProgress: number // 0-100 百分比
   error: string | null
+  warning: string | null
   imageAnalysis: string | null
   isAnalyzing: boolean
   elementCrop: CropRegion | null
@@ -138,14 +139,16 @@ async function cropImageToDataUrl(imageUrl: string, crop: CropRegion, maskCanvas
 
 
 
-// Compress large data URLs before network upload to stay under server limits
+// Compress large data URLs before network upload to stay under server limits.
+// isMask: keep PNG and use a larger cap so binary edges aren't softened by JPEG/quantization.
 async function compressDataUrlForUpload(
   imageDataUrl: string,
-  options?: { preserveTransparency?: boolean }
+  options?: { preserveTransparency?: boolean; isMask?: boolean }
 ): Promise<string> {
   try {
-    const { dataUrl } = await resizeImage(imageDataUrl, 1536, 1536)
-    if (options?.preserveTransparency) {
+    const cap = options?.isMask ? 2048 : 2048
+    const { dataUrl } = await resizeImage(imageDataUrl, cap, cap)
+    if (options?.preserveTransparency || options?.isMask) {
       return dataUrl
     }
 
@@ -153,6 +156,45 @@ async function compressDataUrlForUpload(
   } catch (error) {
     console.warn("[AI Editor] Image compression failed, using original", error)
     return imageDataUrl
+  }
+}
+
+// Compute the normalized bounding box of the white region in a mask data URL.
+// Returns { x0, y0, x1, y1 } in [0,1] coordinates, or null if the mask is empty/unreadable.
+async function computeMaskBboxNorm(maskDataUrl: string): Promise<{
+  x0: number; y0: number; x1: number; y1: number
+} | null> {
+  try {
+    const img = await loadImage(maskDataUrl)
+    const canvas = document.createElement("canvas")
+    canvas.width = img.width
+    canvas.height = img.height
+    const ctx = canvas.getContext("2d")
+    if (!ctx) return null
+    ctx.drawImage(img, 0, 0)
+    const { data } = ctx.getImageData(0, 0, img.width, img.height)
+    let minX = img.width, minY = img.height, maxX = -1, maxY = -1
+    for (let y = 0; y < img.height; y += 1) {
+      for (let x = 0; x < img.width; x += 1) {
+        const i = (y * img.width + x) * 4
+        const luma = (data[i] + data[i + 1] + data[i + 2]) / 3
+        if (luma > 32) {
+          if (x < minX) minX = x
+          if (y < minY) minY = y
+          if (x > maxX) maxX = x
+          if (y > maxY) maxY = y
+        }
+      }
+    }
+    if (maxX < minX || maxY < minY) return null
+    return {
+      x0: minX / img.width,
+      y0: minY / img.height,
+      x1: (maxX + 1) / img.width,
+      y1: (maxY + 1) / img.height,
+    }
+  } catch {
+    return null
   }
 }
 
@@ -450,11 +492,14 @@ export function useImageEditor(): UseImageEditorReturn {
   }, [images, mask, elementCrop, runFusionPass, updateProgress])
 
   // 处理 AI 生成模式 (AI Compose)
-  // Strategy: clean-reference inpaint.
-  //   1. Crop + remove background from reference (same as Direct Patch).
-  //   2. Send the UNMODIFIED base image + cutout reference + mask to /api/inpaint.
-  //      Gemini sees a clean canvas — no ghost overlay noise — and uses the reference
-  //      image to understand WHAT to generate inside the masked area.
+  // Strategy: composite-first harmonization.
+  //   1. Crop + bg-removal on reference (same as Direct Patch).
+  //   2. Local compositeImages places the cutout into the masked region — provides
+  //      Gemini a strong geometric prior (where, how big, what orientation).
+  //   3. Send composite preview + clean base + reference cutout + binary mask + element analysis
+  //      to /api/inpaint. Gemini's task becomes "regenerate textures inside the mask
+  //      to harmonize lighting/shadows/style while preserving the element's shape and details",
+  //      rather than "guess placement from scratch".
   // Falls back to processCompositeMode if inpaint fails.
   const processAIMode = useCallback(async (): Promise<string> => {
     if (!images.baseImage || !images.elementImage || !mask) {
@@ -462,7 +507,7 @@ export function useImageEditor(): UseImageEditorReturn {
     }
 
     // Crop reference if user defined a crop region (same as Direct Patch)
-    updateProgress("Preparing reference image...", 10)
+    updateProgress("Preparing reference image...", 8)
     const hasExplicitCrop = !!(elementCrop && elementCrop.width > 0 && elementCrop.height > 0)
     let processedReference = images.elementImage
     if (hasExplicitCrop && elementCrop) {
@@ -474,7 +519,7 @@ export function useImageEditor(): UseImageEditorReturn {
     }
 
     // Remove background so Gemini receives only the subject
-    updateProgress("Removing background...", 20)
+    updateProgress("Removing background...", 18)
     try {
       const compressedForBg = await compressDataUrlForUpload(processedReference, { preserveTransparency: false })
       const bgController = new AbortController()
@@ -503,22 +548,54 @@ export function useImageEditor(): UseImageEditorReturn {
       processedReference = await removeWhiteMatteIfNeeded(processedReference)
     }
 
-    // Compress inputs — send clean base (no ghost), reference cutout, and mask
-    updateProgress("Compressing images for AI generation...", 35)
-    const [compressedBase, compressedMask, compressedRef] = await Promise.all([
+    // Build local composite to anchor placement (geometric prior for Gemini)
+    updateProgress("Placing element into scene...", 32)
+    const canvasEditorMaskCanvas = canvasEditorRef.current?.maskCanvas ?? undefined
+    let compositePreview: string | null = null
+    try {
+      compositePreview = await compositeImages(
+        images.baseImage,
+        processedReference,
+        mask.dataUrl,
+        mask.coordinates,
+        canvasEditorMaskCanvas,
+        { toneMatchStrength: 0 }
+      )
+    } catch (compositeError) {
+      console.warn("[AI Editor] Local composite for AI prior failed; will send clean base:", compositeError)
+    }
+
+    // Trigger element analysis on demand if not already cached — fidelity anchor for Gemini
+    let elementAnalysis = imageAnalysis
+    if (!elementAnalysis) {
+      try {
+        elementAnalysis = await analyzeImage(images.elementImage, hasExplicitCrop ? elementCrop : null)
+      } catch (analysisError) {
+        console.warn("[AI Editor] Element analysis skipped:", analysisError)
+      }
+    }
+
+    // Compress inputs. Mask stays as PNG to preserve binary edges.
+    updateProgress("Compressing images for AI generation...", 40)
+    const [compressedBase, compressedMask, compressedRef, compressedComposite, maskBboxNorm] = await Promise.all([
       compressDataUrlForUpload(images.baseImage),
-      compressDataUrlForUpload(mask.dataUrl),
+      compressDataUrlForUpload(mask.dataUrl, { isMask: true }),
       compressDataUrlForUpload(processedReference, { preserveTransparency: true }),
+      compositePreview
+        ? compressDataUrlForUpload(compositePreview)
+        : Promise.resolve(null as string | null),
+      computeMaskBboxNorm(mask.dataUrl),
     ])
 
     const aiPrompt = params.prompt?.trim() ||
-      "Integrate the reference element into the masked region of the base image. " +
-      "The reference image shows the exact object to place — preserve its colors, shape, and all details. " +
-      "Blend it naturally with the surrounding scene: match the lighting direction, shadows, color temperature, and art style. " +
-      "The result must look as if the element was always part of this scene."
+      "Reproduce the reference element inside the masked region. " +
+      "Preserve its colors, shape, layered structure, and key details EXACTLY. " +
+      "Regenerate only the textures/lighting/shadows so it matches the surrounding scene's " +
+      "lighting direction, color temperature, perspective, and art style. " +
+      "Do not invent new objects, do not change the element's identity, do not move it outside the mask."
 
-    // Call inpaint with clean base — Gemini gets an unambiguous canvas to work with
-    updateProgress("AI Compose: generating from reference...", 45, { driftTo: 80 })
+    // Call inpaint with composite-preview anchoring
+    updateProgress("AI Compose: harmonizing element into scene...", 48, { driftTo: 80 })
     const inpaintController = new AbortController()
     const inpaintTimeout = setTimeout(() => inpaintController.abort(), 240_000)
     let response: Response
@@ -530,6 +607,9 @@ export function useImageEditor(): UseImageEditorReturn {
           base_image: compressedBase,
           mask_image: compressedMask,
           reference_image: compressedRef,
+          composite_image: compressedComposite ?? undefined,
+          element_analysis: elementAnalysis ?? undefined,
+          mask_bbox_norm: maskBboxNorm ?? undefined,
           prompt: aiPrompt,
           options: { strength: params.strength, steps: 30, guidance_scale: params.guidance },
         }),
@@ -545,11 +625,19 @@ export function useImageEditor(): UseImageEditorReturn {
     }
 
     updateProgress("AI model processing response...", 82, { driftTo: 88 })
-    const data = await safeParseJSON(response) as { result_image?: string }
+    const data = await safeParseJSON(response) as {
+      result_image?: string
+      meta?: { model?: string; reference_dropped?: boolean }
+    }
     if (!data.result_image) throw new Error("Inpainting API response missing result image")
 
+    if (data.meta?.reference_dropped) {
+      console.warn("[AI Editor] AI Compose degraded: reference element was not preserved by fallback model")
+      setWarning("AI 主模型不可用，降级模型不支持参考元素 — 元素细节可能未保留。建议重试或切换 Direct Patch。")
+    }
+
     return data.result_image
-  }, [images, mask, params, elementCrop, updateProgress])
+  }, [images, mask, params, elementCrop, imageAnalysis, analyzeImage, updateProgress])
 
   // 处理主流程
   const handleProcess = useCallback(async () => {

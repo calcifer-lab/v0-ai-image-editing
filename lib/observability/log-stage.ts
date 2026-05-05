@@ -23,6 +23,14 @@ export interface StageEvent {
   fallback_from?: string
   fallback_to?: string
   message?: string
+  /** AI Compose: whether a local composite preview was supplied as placement anchor. */
+  composite_used?: boolean
+  /** AI Compose: whether element analysis text was injected into the prompt. */
+  analysis_used?: boolean
+  /** AI Compose: normalized mask bounding box, x0/y0/x1/y1 in [0,1]. */
+  mask_bbox?: { x0: number; y0: number; x1: number; y1: number }
+  /** Inpaint fallback: reference_image was provided but the serving model could not consume it. */
+  reference_dropped?: boolean
 }
 
 export function newRequestId(): string {
