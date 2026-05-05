@@ -121,6 +121,50 @@ EXAMPLE for food on a tray:
 REMEMBER: Accurately identifying layers and their relationships is ESSENTIAL for faithful reproduction.`
 
 /**
+ * AI Compose harmonization prompt (composite-first flow).
+ * Used when a pre-composited preview is available — Gemini's job is to regenerate
+ * textures inside the mask so the already-positioned element matches scene lighting,
+ * NOT to figure out placement from scratch.
+ */
+export function buildGeminiComposeHarmonizationPrompt(
+  userPrompt: string,
+  options?: {
+    elementAnalysis?: string | null
+    maskBboxNorm?: { x0: number; y0: number; x1: number; y1: number } | null
+  }
+): string {
+  const analysisBlock = options?.elementAnalysis
+    ? `\n\nREFERENCE ELEMENT ANALYSIS (these details MUST appear in your output):\n${options.elementAnalysis.trim()}`
+    : ""
+  const bboxBlock = options?.maskBboxNorm
+    ? `\n\nMASK BOUNDING BOX (normalized 0..1 in IMAGE 1):\nx0=${options.maskBboxNorm.x0.toFixed(3)} y0=${options.maskBboxNorm.y0.toFixed(3)} x1=${options.maskBboxNorm.x1.toFixed(3)} y1=${options.maskBboxNorm.y1.toFixed(3)}\nEdit ONLY pixels inside this region. Pixels outside MUST be byte-identical to IMAGE 1.`
+    : ""
+
+  return `You are performing reference-guided HARMONIZATION inpainting.
+
+You will receive FOUR images:
+- IMAGE 1 — BASE: the original scene (must be preserved outside the mask)
+- IMAGE 2 — COMPOSITE PREVIEW: IMAGE 1 with the reference element already placed at the correct position and scale. Use this as the geometric ground truth — do NOT reposition or rescale.
+- IMAGE 3 — REFERENCE: a clean cutout of the element. Use this to verify exact colors, materials, layered structure, and small details that the composite preview may have softened.
+- IMAGE 4 — MASK: white = the editable region, black = preserve IMAGE 1 unchanged.
+
+YOUR TASK:
+Generate a single image that equals IMAGE 1 outside the white mask, and inside the white mask shows the reference element from IMAGE 3 sitting in IMAGE 1's scene with naturally matching lighting, shadows, color temperature, perspective, and grain.
+
+HARD CONSTRAINTS (failure if violated):
+1. Element identity is fixed — the object inside the mask must be the same object as IMAGE 3. Do not substitute or invent a similar-looking thing.
+2. Element geometry is fixed — keep the position, scale, orientation, and silhouette from IMAGE 2.
+3. Outside the mask: IMAGE 1 unchanged. No global recoloring, no recropping, no aspect change.
+4. Inside the mask: regenerate only what is needed to make the element belong — re-light, cast contact shadows, integrate edges, match film/render style. Keep the element's own colors, textures, and layered structure recognizable.
+5. Do not add new objects, decorations, text, or watermarks anywhere.
+
+USER INTENT:
+${userPrompt}${analysisBlock}${bboxBlock}
+
+Return only the final composited image.`
+}
+
+/**
  * FLUX 增强提示词
  */
 export function buildFluxEnhancedPrompt(basePrompt: string): string {
