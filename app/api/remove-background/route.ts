@@ -31,25 +31,12 @@ export async function POST(
     const imageBytes = validatedImage.image.bytes
     console.log(`[RemoveBG] Image size: ${Math.round(imageBytes / 1024)}KB`)
 
-    // Replicate's synchronous endpoint is unreliable above ~1.5 MB decoded.
-    // If the image is larger, recompress it with sharp before sending.
-    let imageDataUrl = validatedImage.image.dataUrl
-    if (imageBytes > 1.5 * 1024 * 1024) {
-      try {
-        console.log("[RemoveBG] Image too large — recompressing with sharp...")
-        const sharp = (await import("sharp")).default
-        const base64Data = imageDataUrl.replace(/^data:[^;]+;base64,/, "")
-        const buffer = Buffer.from(base64Data, "base64")
-        const resizedBuffer = await sharp(buffer)
-          .resize(1024, 1024, { fit: "inside", withoutEnlargement: true })
-          .jpeg({ quality: 80 })
-          .toBuffer()
-        imageDataUrl = `data:image/jpeg;base64,${resizedBuffer.toString("base64")}`
-        console.log(`[RemoveBG] Recompressed to ${Math.round(resizedBuffer.length / 1024)}KB`)
-      } catch (sharpErr) {
-        console.warn("[RemoveBG] Sharp recompression failed, using original:", sharpErr)
-      }
-    }
+    // Client-side compressDataUrlForUpload already caps uploads at 2048×2048 / JPEG 0.85,
+    // so server-side sharp recompression is redundant. Skipping it lets this serverless
+    // function stay under Vercel's 50MB bundle limit (sharp's native binaries push it over).
+    // If a payload still arrives oversized, Replicate's async endpoint will handle it
+    // via the polling path below.
+    const imageDataUrl = validatedImage.image.dataUrl
 
     console.log("[RemoveBG] Calling Replicate rembg...")
     const response = await fetch("https://api.replicate.com/v1/models/lucataco/rembg/predictions", {

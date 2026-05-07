@@ -5,10 +5,10 @@ import {
   urlToBase64,
   isValidImage,
   getImageDimensions,
-  resizeMaskToMatchImage,
   extractOutputUrl,
   validateImageDataUrl,
 } from "@/lib/api"
+import { resizeMaskToMatchImage } from "@/lib/api/resize-mask"
 import {
   buildGeminiInpaintPrompt,
   buildGeminiComposeHarmonizationPrompt,
