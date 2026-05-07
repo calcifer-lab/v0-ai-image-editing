@@ -6,68 +6,77 @@ export const runtime = "nodejs"
 export const maxDuration = 120
 const MAX_REMOVE_BACKGROUND_BYTES = 12 * 1024 * 1024
 
-// Replicate model chain. Primary uses BiRefNet (cleaner edges, fewer artifacts).
-// Fallback is the faster rembg variant. The previous "lucataco/rembg" path was
-// a stale model slug that returned 404 from Replicate.
-const PRIMARY_MODEL = "851-labs/background-remover"
-const FALLBACK_MODEL = "lucataco/remove-bg"
+// Replicate model chain.
+// `api: "official"` uses /v1/models/{slug}/predictions (works only for models the
+//   owner has marked as official models API — saves one round-trip).
+// `api: "versioned"` looks up latest_version then POSTs to /v1/predictions (works
+//   for any published model, +1 API call).
+//
+// 851-labs/background-remover (BiRefNet, cleaner edges) — no official API → versioned.
+// lucataco/remove-bg (faster fallback) — has official API.
+type ModelApi = "official" | "versioned"
+interface ModelConfig {
+  slug: string
+  api: ModelApi
+}
+const MODEL_CHAIN: ModelConfig[] = [
+  { slug: "851-labs/background-remover", api: "versioned" },
+  { slug: "lucataco/remove-bg", api: "official" },
+]
 
-interface ModelAttempt {
+interface ModelSuccess {
   ok: true
   resultImage: string
   model: string
+  api: ModelApi
 }
-
 interface ModelFailure {
   ok: false
   model: string
+  api: ModelApi
   status: number
   message: string
 }
+type ModelResult = ModelSuccess | ModelFailure
 
-type ModelResult = ModelAttempt | ModelFailure
+async function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
 
-async function callReplicateModel(
-  model: string,
-  imageDataUrl: string,
-  apiKey: string
-): Promise<ModelResult> {
-  const response = await fetch(`https://api.replicate.com/v1/models/${model}/predictions`, {
+async function postPrediction(
+  url: string,
+  apiKey: string,
+  body: object
+): Promise<{ ok: true; prediction: any } | { ok: false; status: number; message: string }> {
+  const response = await fetch(url, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
       Prefer: "wait",
     },
-    body: JSON.stringify({
-      input: { image: imageDataUrl },
-    }),
+    body: JSON.stringify(body),
   })
 
   if (!response.ok) {
     const errorText = await response.text().catch(() => "")
-    console.error(`[RemoveBG] ${model} API error (${response.status}):`, errorText.slice(0, 200))
-    return {
-      ok: false,
-      model,
-      status: response.status,
-      message: errorText.slice(0, 200) || `HTTP ${response.status}`,
-    }
+    return { ok: false, status: response.status, message: errorText.slice(0, 200) || `HTTP ${response.status}` }
   }
 
   const prediction = await response.json()
-  console.log(`[RemoveBG] ${model} prediction status:`, prediction.status)
+  return { ok: true, prediction }
+}
 
-  // Sync path — Prefer:wait may have completed inline
+async function resolvePrediction(
+  prediction: any,
+  apiKey: string
+): Promise<{ ok: true; outputUrl: string } | { ok: false; status: number; message: string }> {
+  // Sync inline result (Prefer: wait sometimes returns output immediately)
   if (prediction.output) {
     const outputUrl = extractOutputUrl(prediction.output)
-    if (outputUrl) {
-      const resultImage = await urlToBase64(outputUrl)
-      return { ok: true, resultImage, model }
-    }
+    if (outputUrl) return { ok: true, outputUrl }
   }
 
-  // Async path — poll
   const result = await pollReplicatePrediction(
     prediction.urls?.get || `https://api.replicate.com/v1/predictions/${prediction.id}`,
     apiKey,
@@ -76,21 +85,103 @@ async function callReplicateModel(
   )
 
   if (result.status !== "succeeded" || !result.output) {
-    return {
-      ok: false,
-      model,
-      status: 502,
-      message: result.error || "Prediction did not succeed",
-    }
+    return { ok: false, status: 502, message: result.error || "Prediction did not succeed" }
   }
 
   const outputUrl = extractOutputUrl(result.output)
-  if (!outputUrl) {
-    return { ok: false, model, status: 502, message: "No output URL in prediction result" }
+  if (!outputUrl) return { ok: false, status: 502, message: "No output URL in prediction result" }
+  return { ok: true, outputUrl }
+}
+
+async function callOfficialModel(
+  slug: string,
+  imageDataUrl: string,
+  apiKey: string
+): Promise<ModelResult> {
+  const post = await postPrediction(
+    `https://api.replicate.com/v1/models/${slug}/predictions`,
+    apiKey,
+    { input: { image: imageDataUrl } }
+  )
+  if (!post.ok) {
+    return { ok: false, model: slug, api: "official", status: post.status, message: post.message }
   }
 
-  const resultImage = await urlToBase64(outputUrl)
-  return { ok: true, resultImage, model }
+  const resolved = await resolvePrediction(post.prediction, apiKey)
+  if (!resolved.ok) {
+    return { ok: false, model: slug, api: "official", status: resolved.status, message: resolved.message }
+  }
+
+  const resultImage = await urlToBase64(resolved.outputUrl)
+  return { ok: true, resultImage, model: slug, api: "official" }
+}
+
+async function callVersionedModel(
+  slug: string,
+  imageDataUrl: string,
+  apiKey: string
+): Promise<ModelResult> {
+  // 1. Look up latest version of the model
+  const modelInfoRes = await fetch(`https://api.replicate.com/v1/models/${slug}`, {
+    headers: { Authorization: `Bearer ${apiKey}` },
+  })
+  if (!modelInfoRes.ok) {
+    const errorText = await modelInfoRes.text().catch(() => "")
+    return {
+      ok: false,
+      model: slug,
+      api: "versioned",
+      status: modelInfoRes.status,
+      message: `model lookup failed: ${errorText.slice(0, 200) || modelInfoRes.status}`,
+    }
+  }
+  const modelInfo = await modelInfoRes.json()
+  const versionId: string | undefined = modelInfo?.latest_version?.id
+  if (!versionId) {
+    return {
+      ok: false,
+      model: slug,
+      api: "versioned",
+      status: 502,
+      message: "model has no latest_version",
+    }
+  }
+
+  // 2. Create prediction against that version
+  const post = await postPrediction(
+    "https://api.replicate.com/v1/predictions",
+    apiKey,
+    { version: versionId, input: { image: imageDataUrl } }
+  )
+  if (!post.ok) {
+    return { ok: false, model: slug, api: "versioned", status: post.status, message: post.message }
+  }
+
+  const resolved = await resolvePrediction(post.prediction, apiKey)
+  if (!resolved.ok) {
+    return { ok: false, model: slug, api: "versioned", status: resolved.status, message: resolved.message }
+  }
+
+  const resultImage = await urlToBase64(resolved.outputUrl)
+  return { ok: true, resultImage, model: slug, api: "versioned" }
+}
+
+async function callModelWithRetry(
+  config: ModelConfig,
+  imageDataUrl: string,
+  apiKey: string
+): Promise<ModelResult> {
+  const invoke = config.api === "official" ? callOfficialModel : callVersionedModel
+  let attempt = await invoke(config.slug, imageDataUrl, apiKey)
+  // Retry once on 429 with brief backoff — covers transient bursty rate limits.
+  // Persistent 429 indicates the account quota is genuinely exhausted; surfacing
+  // it upstream is the right move (no amount of looping helps).
+  if (!attempt.ok && attempt.status === 429) {
+    console.warn(`[RemoveBG] ${config.slug} 429 — retrying after 1.5s backoff`)
+    await sleep(1500)
+    attempt = await invoke(config.slug, imageDataUrl, apiKey)
+  }
+  return attempt
 }
 
 export async function POST(
@@ -117,40 +208,34 @@ export async function POST(
 
     const imageBytes = validatedImage.image.bytes
     console.log(`[RemoveBG] Image size: ${Math.round(imageBytes / 1024)}KB`)
-
-    // Client-side compressDataUrlForUpload caps uploads at 2048×2048 / JPEG 0.85,
-    // so server-side recompression isn't needed. Oversized payloads naturally
-    // fall through to Replicate's async polling path below.
     const imageDataUrl = validatedImage.image.dataUrl
 
     const failures: ModelFailure[] = []
 
-    // Try primary model
-    const primary = await callReplicateModel(PRIMARY_MODEL, imageDataUrl, replicateApiKey)
-    if (primary.ok) {
-      return NextResponse.json({
-        result_image: primary.resultImage,
-        meta: { model: primary.model, duration_ms: Date.now() - startTime },
-      })
+    for (const config of MODEL_CHAIN) {
+      const attempt = await callModelWithRetry(config, imageDataUrl, replicateApiKey)
+      if (attempt.ok) {
+        console.log(`[RemoveBG] Success via ${attempt.model} (${attempt.api})`)
+        return NextResponse.json({
+          result_image: attempt.resultImage,
+          meta: { model: `${attempt.model}/${attempt.api}`, duration_ms: Date.now() - startTime },
+        })
+      }
+      console.warn(
+        `[RemoveBG] ${attempt.model} (${attempt.api}) failed: ${attempt.status} — ${attempt.message}`
+      )
+      failures.push(attempt)
     }
-    failures.push(primary)
-    console.warn(`[RemoveBG] Primary ${PRIMARY_MODEL} failed (${primary.status}); trying fallback ${FALLBACK_MODEL}`)
 
-    // Fall back
-    const fallback = await callReplicateModel(FALLBACK_MODEL, imageDataUrl, replicateApiKey)
-    if (fallback.ok) {
-      return NextResponse.json({
-        result_image: fallback.resultImage,
-        meta: { model: fallback.model, duration_ms: Date.now() - startTime },
-      })
-    }
-    failures.push(fallback)
-
-    const summary = failures.map((f) => `${f.model}:${f.status}`).join("; ")
+    const summary = failures.map((f) => `${f.model}(${f.api}):${f.status}`).join("; ")
     console.error(`[RemoveBG] All models failed: ${summary}`)
+    // If every model returned a rate limit, surface 429 so the client can show
+    // a "quota exhausted" message rather than a generic failure.
+    const allRateLimited = failures.every((f) => f.status === 429)
+    const upstreamStatus = allRateLimited ? 429 : 502
     return NextResponse.json(
       { error: `Background removal failed: ${summary}` },
-      { status: failures[failures.length - 1].status === 404 ? 502 : failures[failures.length - 1].status }
+      { status: upstreamStatus }
     )
   } catch (error) {
     console.error("[RemoveBG] Error:", error)
