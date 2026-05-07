@@ -13,7 +13,6 @@ import {
   buildGeminiInpaintPrompt,
   buildGeminiComposeHarmonizationPrompt,
   buildFluxEnhancedPrompt,
-  openRouterHeaders,
   callGoogleGenerate,
   extractGoogleImage,
   GOOGLE_IMAGE_MODEL,
@@ -153,83 +152,6 @@ async function inpaintWithGoogle(
       },
     }),
   }
-}
-
-async function inpaintWithOpenRouter(
-  content: OpenRouterContentPart[],
-  apiKey: string,
-  startTime: number,
-  composite_used: boolean
-): Promise<InpaintAttempt> {
-  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-    method: "POST",
-    headers: openRouterHeaders(apiKey),
-    body: JSON.stringify({
-      model: "google/gemini-2.5-flash-image",
-      messages: [{ role: "user", content }],
-    }),
-  })
-
-  if (!response.ok) {
-    const errorText = await response.text()
-    console.error("[Inpaint] OpenRouter Gemini API error:", errorText)
-    return { ok: false, error_code: `HTTP_${response.status}`, message: errorText }
-  }
-
-  const data = await response.json()
-  const message = data.choices?.[0]?.message
-
-  const okResponse = (resultImage: string): InpaintAttempt => ({
-    ok: true,
-    response: NextResponse.json({
-      result_image: resultImage,
-      meta: {
-        model: "openrouter-gemini-2.5-flash-image",
-        duration_ms: Date.now() - startTime,
-        reference_used: true,
-        composite_used,
-      },
-    }),
-  })
-
-  if (message?.images && Array.isArray(message.images) && message.images.length > 0) {
-    const imageData = message.images[0]
-    let resultImage: string
-
-    if (typeof imageData === "string") {
-      resultImage = imageData.startsWith("data:") ? normalizeDataUri(imageData) : `data:image/png;base64,${imageData}`
-    } else if (imageData?.image_url?.url) {
-      resultImage = normalizeDataUri(imageData.image_url.url)
-    } else if (imageData?.b64_json) {
-      resultImage = `data:image/png;base64,${imageData.b64_json}`
-    } else {
-      console.error("[Inpaint] Unexpected image format in message.images:", imageData)
-      return { ok: false, error_code: "UNEXPECTED_IMAGE_FORMAT" }
-    }
-
-    console.log("[Inpaint] Successfully got image from OpenRouter message.images")
-    return okResponse(resultImage)
-  }
-
-  const contentArray = message?.content
-  if (Array.isArray(contentArray)) {
-    for (const part of contentArray) {
-      if (part.type === "image" && part.image?.base64) {
-        console.log("[Inpaint] Successfully got image from OpenRouter content array")
-        return okResponse(`data:image/png;base64,${part.image.base64}`)
-      }
-    }
-  }
-
-  const contentText = typeof message?.content === "string" ? message.content : ""
-  const base64Match = contentText.match(/data:image\/[^;]+;base64,[A-Za-z0-9+/=]+/)
-  if (base64Match) {
-    console.log("[Inpaint] Successfully extracted base64 image from OpenRouter content text")
-    return okResponse(normalizeDataUri(base64Match[0]))
-  }
-
-  console.error("[Inpaint] No image found in OpenRouter response:", JSON.stringify(data).substring(0, 1000))
-  return { ok: false, error_code: "NO_IMAGE_IN_RESPONSE" }
 }
 
 // ============ FLUX Fill Pro ============
@@ -507,7 +429,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<InpaintRe
 
     const failures: InpaintFailure[] = []
 
-    // Reference-guided Gemini path: Google direct → OpenRouter
+    // Reference-guided Gemini path: Google direct (OpenRouter retired)
     if (validatedReference) {
       const inputs = await prepareInpaintInputs(
         validatedBase.image.dataUrl,
@@ -543,7 +465,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<InpaintRe
             provider: "google",
             error_code: attempt.error_code,
             fallback_from: "google",
-            fallback_to: "openrouter",
+            fallback_to: "replicate-flux",
             message: attempt.message,
           })
         } catch (error) {
@@ -555,54 +477,15 @@ export async function POST(request: NextRequest): Promise<NextResponse<InpaintRe
             provider: "google",
             error_code: "GOOGLE_CALL_THROW",
             fallback_from: "google",
-            fallback_to: "openrouter",
+            fallback_to: "replicate-flux",
             message: msg,
           })
           console.error("[Inpaint] Google direct error:", error)
         }
       }
 
-      // 2. OpenRouter
-      const openRouterApiKey = process.env.OPENROUTER_API_KEY
-      if (openRouterApiKey) {
-        const openRouterStartedAt = Date.now()
-        try {
-          const attempt = await inpaintWithOpenRouter(content, openRouterApiKey, startTime, !!validatedComposite)
-          if (attempt.ok) {
-            logStageEvent("info", {
-              requestId,
-              stage: "inpaint",
-              provider: "openrouter",
-              model: "google/gemini-2.5-flash-image",
-              elapsed_ms: Date.now() - openRouterStartedAt,
-            })
-            return attempt.response
-          }
-          failures.push({ provider: "openrouter", error_code: attempt.error_code, message: attempt.message })
-          logStageEvent("warn", {
-            requestId,
-            stage: "inpaint",
-            provider: "openrouter",
-            error_code: attempt.error_code,
-            fallback_from: "openrouter",
-            fallback_to: "replicate-flux",
-            message: attempt.message,
-          })
-        } catch (error) {
-          const msg = error instanceof Error ? error.message : "OpenRouter call threw"
-          failures.push({ provider: "openrouter", error_code: "OPENROUTER_CALL_THROW", message: msg })
-          logStageEvent("warn", {
-            requestId,
-            stage: "inpaint",
-            provider: "openrouter",
-            error_code: "OPENROUTER_CALL_THROW",
-            fallback_from: "openrouter",
-            fallback_to: "replicate-flux",
-            message: msg,
-          })
-          console.error("[Inpaint] OpenRouter error:", error)
-        }
-      }
+      // OpenRouter Gemini path retired — the proxy account no longer serves
+      // OpenAI/Google models. Falls through to Replicate FLUX directly.
     }
 
     // 3. Replicate FLUX
@@ -625,7 +508,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<InpaintRe
       requestId,
       stage: "inpaint",
       provider: "replicate",
-      fallback_from: validatedReference ? "openrouter" : undefined,
+      fallback_from: validatedReference ? "google" : undefined,
       fallback_to: "replicate-flux",
       message: "Falling through to FLUX Fill Pro",
     })

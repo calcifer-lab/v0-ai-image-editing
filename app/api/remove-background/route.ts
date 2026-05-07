@@ -166,6 +166,16 @@ async function callVersionedModel(
   return { ok: true, resultImage, model: slug, api: "versioned" }
 }
 
+function parseRetryAfter(message: string): number | null {
+  // Replicate puts the recommended wait inside the JSON body, e.g.
+  // {"detail":"...","status":429,"retry_after":4}
+  const match = message.match(/"retry_after"\s*:\s*(\d+(?:\.\d+)?)/)
+  if (!match) return null
+  const seconds = Number(match[1])
+  if (!Number.isFinite(seconds) || seconds <= 0) return null
+  return seconds
+}
+
 async function callModelWithRetry(
   config: ModelConfig,
   imageDataUrl: string,
@@ -173,12 +183,14 @@ async function callModelWithRetry(
 ): Promise<ModelResult> {
   const invoke = config.api === "official" ? callOfficialModel : callVersionedModel
   let attempt = await invoke(config.slug, imageDataUrl, apiKey)
-  // Retry once on 429 with brief backoff — covers transient bursty rate limits.
-  // Persistent 429 indicates the account quota is genuinely exhausted; surfacing
-  // it upstream is the right move (no amount of looping helps).
+  // Retry once on 429, honoring upstream `retry_after` (in seconds) when provided
+  // (with a small jitter buffer); fall back to a 2s backoff. Persistent 429 means
+  // the account is genuinely throttled and looping won't help — return upstream.
   if (!attempt.ok && attempt.status === 429) {
-    console.warn(`[RemoveBG] ${config.slug} 429 — retrying after 1.5s backoff`)
-    await sleep(1500)
+    const retryAfter = parseRetryAfter(attempt.message)
+    const waitMs = retryAfter ? Math.ceil(retryAfter * 1000 + 250) : 2000
+    console.warn(`[RemoveBG] ${config.slug} 429 — retrying after ${waitMs}ms backoff`)
+    await sleep(waitMs)
     attempt = await invoke(config.slug, imageDataUrl, apiKey)
   }
   return attempt

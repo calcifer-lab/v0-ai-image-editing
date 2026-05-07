@@ -3,7 +3,6 @@ import {
   callGoogleGenerate,
   extractGoogleImage,
   GOOGLE_IMAGE_MODEL,
-  openRouterHeaders,
   type OpenRouterContentPart,
 } from "@/lib/api"
 import { logStageEvent, newRequestId } from "@/lib/observability/log-stage"
@@ -78,7 +77,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<FusionRes
     const fusionContent = buildFusionContent(composite_image, original_base, reference_image, fusionPrompt)
     const failures: string[] = []
 
-    // 1. Google AI Studio direct (preferred — bypasses OpenRouter content routing)
+    // 1. Google AI Studio direct
     const googleApiKey = process.env.GOOGLE_API_KEY
     if (googleApiKey) {
       try {
@@ -89,37 +88,20 @@ export async function POST(request: NextRequest): Promise<NextResponse<FusionRes
           return result
         }
         failures.push("Google: no image in response")
-        logStageEvent("warn", { requestId, stage: "fusion", provider: "google", error_code: "NO_IMAGE_IN_RESPONSE", fallback_from: "google", fallback_to: "openrouter" })
+        logStageEvent("warn", { requestId, stage: "fusion", provider: "google", error_code: "NO_IMAGE_IN_RESPONSE", fallback_from: "google", fallback_to: "passthrough" })
       } catch (error) {
         const msg = error instanceof Error ? error.message : "Google call threw"
         failures.push(`Google: ${msg}`)
-        logStageEvent("warn", { requestId, stage: "fusion", provider: "google", error_code: "GOOGLE_CALL_THROW", fallback_from: "google", fallback_to: "openrouter", message: msg })
+        logStageEvent("warn", { requestId, stage: "fusion", provider: "google", error_code: "GOOGLE_CALL_THROW", fallback_from: "google", fallback_to: "passthrough", message: msg })
         console.warn("[Fusion] Google fusion failed:", error)
       }
     }
 
-    // 2. OpenRouter (fallback)
-    const openRouterApiKey = process.env.OPENROUTER_API_KEY
-    if (openRouterApiKey) {
-      try {
-        console.log("[Fusion] Using OpenRouter Gemini 2.5 Flash for fusion...")
-        const result = await fusionWithOpenRouter(fusionContent, openRouterApiKey, startTime)
-        if (result) {
-          logStageEvent("info", { requestId, stage: "fusion", provider: "openrouter", model: "google/gemini-2.5-flash-image", elapsed_ms: Date.now() - startTime })
-          return result
-        }
-        failures.push("OpenRouter: no image in response")
-        logStageEvent("warn", { requestId, stage: "fusion", provider: "openrouter", error_code: "NO_IMAGE_IN_RESPONSE", fallback_from: "openrouter", fallback_to: "flux" })
-      } catch (error) {
-        const msg = error instanceof Error ? error.message : "OpenRouter call threw"
-        failures.push(`OpenRouter: ${msg}`)
-        logStageEvent("warn", { requestId, stage: "fusion", provider: "openrouter", error_code: "OPENROUTER_CALL_THROW", fallback_from: "openrouter", fallback_to: "flux", message: msg })
-        console.warn("[Fusion] OpenRouter fusion failed:", error)
-      }
-    }
+    // OpenRouter Gemini path retired — proxy account no longer serves OpenAI/Google models.
+    // No FLUX img2img fallback implemented; degrade to passthrough below.
 
-    // 3. Graceful degradation: return the composite as-is so the client always gets a usable
-    //    image. FLUX img2img fusion is not yet implemented; we log the failure and pass through.
+    // 2. Graceful degradation: return the composite as-is so the client always gets a usable
+    //    image when Google fusion is unavailable.
     const reason = failures.length > 0 ? failures.join("; ") : "no provider configured"
     logStageEvent("warn", {
       requestId,
@@ -366,57 +348,5 @@ async function fusionWithGoogle(
     fused_image: normalizeDataUri(image),
     meta: { model: "google-gemini-2.5-flash-image", duration_ms: Date.now() - startTime },
   })
-}
-
-/**
- * 通过 OpenRouter 调用 Gemini 进行融合（fallback）
- */
-async function fusionWithOpenRouter(
-  content: OpenRouterContentPart[],
-  apiKey: string,
-  startTime: number
-): Promise<NextResponse<FusionResponse> | null> {
-  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-    method: "POST",
-    headers: openRouterHeaders(apiKey),
-    body: JSON.stringify({
-      model: "google/gemini-2.5-flash-image",
-      messages: [{ role: "user", content }],
-    }),
-  })
-
-  if (!response.ok) {
-    const errorText = await response.text()
-    console.error("[Fusion] OpenRouter Gemini API error:", errorText)
-    return null
-  }
-
-  const data = await response.json()
-  const message = data.choices?.[0]?.message
-
-  if (message?.images && Array.isArray(message.images) && message.images.length > 0) {
-    const imageData = message.images[0]
-    let resultImage: string
-
-    if (typeof imageData === "string") {
-      resultImage = imageData.startsWith("data:") ? normalizeDataUri(imageData) : `data:image/png;base64,${imageData}`
-    } else if (imageData?.image_url?.url) {
-      resultImage = normalizeDataUri(imageData.image_url.url)
-    } else if (imageData?.b64_json) {
-      resultImage = `data:image/png;base64,${imageData.b64_json}`
-    } else {
-      console.error("[Fusion] Unexpected image format in OpenRouter response")
-      return null
-    }
-
-    console.log("[Fusion] Successfully fused image with OpenRouter")
-    return NextResponse.json({
-      fused_image: resultImage,
-      meta: { model: "openrouter-gemini-2.5-flash-image", duration_ms: Date.now() - startTime },
-    })
-  }
-
-  console.error("[Fusion] No image found in OpenRouter response")
-  return null
 }
 
