@@ -976,6 +976,55 @@ export async function resizeToAspectRatio(
 }
 
 /**
+ * Resize an AI-generated output to match the base image's exact dimensions.
+ *
+ * Gemini's image-gen model doesn't strictly preserve input dimensions —
+ * outputs often come back at the model's preferred canonical resolution
+ * (e.g. ~1024×1024 even when the base was 1672×901). For inpaint use cases
+ * the user expects output dimensions to equal base dimensions, so we
+ * normalize after the model call.
+ *
+ * Uses a "cover" strategy: scale the output to fill base dimensions while
+ * maintaining aspect ratio, then center-crop the excess. Preserves visual
+ * quality (no stretch/distortion) at the cost of clipping a sliver of the
+ * model's output if aspect ratios disagree. In practice Gemini's output
+ * aspect is usually within a few percent of the input, so the clipped
+ * region is negligible.
+ */
+export async function fitOutputToBase(
+  outputDataUrl: string,
+  baseDataUrl: string
+): Promise<string> {
+  const [output, base] = await Promise.all([
+    loadImage(outputDataUrl),
+    loadImage(baseDataUrl),
+  ])
+
+  if (output.width === base.width && output.height === base.height) {
+    return outputDataUrl
+  }
+
+  console.log(
+    `[ImageUtils] Resizing AI output to match base: ${output.width}×${output.height} → ${base.width}×${base.height}`
+  )
+
+  const canvas = document.createElement("canvas")
+  canvas.width = base.width
+  canvas.height = base.height
+  const ctx = canvas.getContext("2d")
+  if (!ctx) return outputDataUrl
+
+  const scale = Math.max(base.width / output.width, base.height / output.height)
+  const drawWidth = output.width * scale
+  const drawHeight = output.height * scale
+  const drawX = (base.width - drawWidth) / 2
+  const drawY = (base.height - drawHeight) / 2
+  ctx.drawImage(output, drawX, drawY, drawWidth, drawHeight)
+
+  return canvas.toDataURL("image/png")
+}
+
+/**
  * Sample-based pixel similarity check inside the masked region.
  *
  * Detects "model degeneration" — when an image-generation model returns

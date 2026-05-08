@@ -19,6 +19,7 @@ import {
   compressImage,
   removeWhiteMatteIfNeeded,
   isOutputTooSimilarToBase,
+  fitOutputToBase,
 } from "@/lib/image-utils"
 import { safeParseJSON } from "@/utils/safeParse"
 
@@ -387,10 +388,11 @@ export function useImageEditor(): UseImageEditorReturn {
           // All AI providers were unavailable; server returned the composite as-is.
           // This is expected degraded behaviour — don't show an error to the user.
           console.log("[AI Editor] AI fusion unavailable — using local composite (passthrough)")
-        } else {
-          console.log("[AI Editor] AI fusion complete:", fusionData.meta?.model)
+          return fusionData.fused_image
         }
-        return fusionData.fused_image
+        console.log("[AI Editor] AI fusion complete:", fusionData.meta?.model)
+        // Gemini doesn't preserve input dimensions; normalize back to base size.
+        return await fitOutputToBase(fusionData.fused_image, images.baseImage!)
       }
     } catch (fusionError) {
       console.warn("[AI Editor] AI fusion error:", fusionError)
@@ -632,10 +634,15 @@ export function useImageEditor(): UseImageEditorReturn {
     }
     if (!data.result_image) throw new Error("Inpainting API response missing result image")
 
+    // Normalize output dimensions: Gemini's image model returns at its own canonical
+    // resolution (e.g. 1024×1024), so we resize the result back to base dims using
+    // a cover-style fit. Done before similarity check so meanDiff samples align.
+    const normalizedResult = await fitOutputToBase(data.result_image, images.baseImage)
+
     if (data.meta?.reference_dropped) {
       console.warn("[AI Editor] AI Compose degraded: reference element was not preserved by fallback model")
       setWarning("AI 主模型不可用，降级模型不支持参考元素 — 元素细节可能未保留。建议重试或切换 Direct Patch。")
-      return data.result_image
+      return normalizedResult
     }
 
     // Degeneration check: when base already contains a similar object, Gemini sometimes
@@ -643,7 +650,7 @@ export function useImageEditor(): UseImageEditorReturn {
     // pixel diff in the mask region; if too similar, throw to trigger Direct Patch fallback.
     // Only run on the Gemini path (skip when reference was already dropped to FLUX).
     try {
-      const similarity = await isOutputTooSimilarToBase(data.result_image, images.baseImage, mask.dataUrl)
+      const similarity = await isOutputTooSimilarToBase(normalizedResult, images.baseImage, mask.dataUrl)
       console.log(
         `[AI Editor] Output-vs-base diff in mask: meanDiff=${similarity.meanDiff.toFixed(1)}/255 ` +
           `(samples=${similarity.sampleCount}, threshold=10)`
@@ -663,7 +670,7 @@ export function useImageEditor(): UseImageEditorReturn {
       console.warn("[AI Editor] Degeneration check failed (non-blocking):", similarityError)
     }
 
-    return data.result_image
+    return normalizedResult
   }, [images, mask, params, elementCrop, imageAnalysis, analyzeImage, updateProgress])
 
   // 处理主流程
@@ -688,7 +695,7 @@ export function useImageEditor(): UseImageEditorReturn {
           updateProgress("AI inpaint failed, using direct composite fallback...", 65)
           finalImage = await processCompositeMode()
           console.log("[AI Editor] Fallback composite complete")
-          setWarning("AI 不可用，显示的是直接拼图")
+          setWarning("AI Compose 主路径未通过质量检测，已切换到直接拼图模式（仍包含 AI 光影协调）")
         }
       }
 
