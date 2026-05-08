@@ -854,11 +854,10 @@ export async function compositeImages(
   const refData = refCtx.getImageData(0, 0, targetWidth, targetHeight)
   const baseData = ctx.getImageData(targetX, targetY, targetWidth, targetHeight)
 
-  // Pass 1 — replace old content with surrounding ambient colour across the full mask.
-  // Uses smoothstep(0.08, 0.65) so the very edge stays untouched (fill=0) while the
-  // mid-feather and core are progressively cleared (fill→1 at brightness ≥ 0.65).
-  // This prevents old content from ghosting through transparent gaps in the new element
-  // (e.g. the space between grill legs that has refAlpha=0 in Pass 2).
+  // Pass 1 — clear the core mask area with surrounding ambient colour.
+  // Threshold 0.40: feather zone (maskBrightness < 0.40) is untouched so it keeps its
+  // original texture.  The ambient-shift in Pass 2 (blendBase lerp) handles old-content
+  // ghosting in the feather zone without creating a flat-colour ring.
   const fullBaseData = ctx.getImageData(0, 0, canvas.width, canvas.height)
   const surroundMargin = clamp(Math.round(Math.max(targetWidth, targetHeight) * 0.20), 16, 64)
   const surroundStats = collectSurroundingStats(
@@ -871,7 +870,7 @@ export async function compositeImages(
   if (surroundStats.count > 0) {
     for (let i = 0; i < maskData.data.length; i += 4) {
       const maskBrightness = (maskData.data[i] + maskData.data[i + 1] + maskData.data[i + 2]) / 3 / 255
-      const fill = smoothstep(0.08, 0.65, maskBrightness)
+      const fill = Math.max(0, (maskBrightness - 0.40) / 0.60)
       if (fill > 0.01) {
         baseData.data[i]     = Math.round(surroundStats.r * fill + baseData.data[i]     * (1 - fill))
         baseData.data[i + 1] = Math.round(surroundStats.g * fill + baseData.data[i + 1] * (1 - fill))
