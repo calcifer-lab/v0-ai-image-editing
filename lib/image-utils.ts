@@ -976,12 +976,13 @@ export async function resizeToAspectRatio(
 }
 
 /**
- * Client-side white background matte removal.
- * Used as a fallback when Replicate bg-removal fails for images with a plain white background.
- * Detects a white background by sampling the image edges; if found, fades white-ish pixels
- * to transparent so they don't bleed into the composite.
+ * Client-side uniform background matte removal.
+ * Fallback when Replicate bg-removal fails. Samples all four image edges to detect
+ * the background color (works for white, beige, gray, pale-blue — any solid color).
+ * If the edges show low color variance (uniform background), pixels close to that
+ * color are faded to transparent so they don't bleed into the composite.
  */
-export async function removeWhiteMatteIfNeeded(imageDataUrl: string, threshold = 232): Promise<string> {
+export async function removeWhiteMatteIfNeeded(imageDataUrl: string): Promise<string> {
   const img = await loadImage(imageDataUrl)
   const canvas = document.createElement("canvas")
   canvas.width = img.width
@@ -992,33 +993,56 @@ export async function removeWhiteMatteIfNeeded(imageDataUrl: string, threshold =
   ctx.drawImage(img, 0, 0)
   const imageData = ctx.getImageData(0, 0, img.width, img.height)
   const data = imageData.data
+  const { width, height } = img
 
-  // Sample points along all four edges to detect white background
-  const samplePoints: [number, number][] = [
-    [0, 0], [img.width - 1, 0], [0, img.height - 1], [img.width - 1, img.height - 1],
-    [Math.floor(img.width / 2), 0], [Math.floor(img.width / 2), img.height - 1],
-    [0, Math.floor(img.height / 2)], [img.width - 1, Math.floor(img.height / 2)],
-  ]
-
-  let whiteCount = 0
-  for (const [x, y] of samplePoints) {
-    const i = (y * img.width + x) * 4
-    if (data[i] >= threshold && data[i + 1] >= threshold && data[i + 2] >= threshold && data[i + 3] >= 200) {
-      whiteCount++
-    }
+  // Dense edge sampling — every `step` pixels along all four sides
+  const step = Math.max(1, Math.floor(Math.min(width, height) / 20))
+  const edgeSamples: Array<[number, number]> = []
+  for (let x = 0; x < width; x += step) {
+    edgeSamples.push([x, 0], [x, height - 1])
+  }
+  for (let y = step; y < height - step; y += step) {
+    edgeSamples.push([0, y], [width - 1, y])
   }
 
-  // Need at least 5 of 8 edge samples to be white before applying removal
-  if (whiteCount < 5) return imageDataUrl
+  // Compute mean background colour from opaque edge pixels
+  let sumR = 0, sumG = 0, sumB = 0, n = 0
+  for (const [x, y] of edgeSamples) {
+    const i = (y * width + x) * 4
+    if (data[i + 3] < 200) continue
+    sumR += data[i]; sumG += data[i + 1]; sumB += data[i + 2]
+    n++
+  }
+  if (n === 0) return imageDataUrl
 
-  console.log(`[WhiteMatte] Detected white background (${whiteCount}/8 edge samples) — applying local removal`)
+  const bgR = sumR / n, bgG = sumG / n, bgB = sumB / n
 
+  // Reject if edge colours are not uniform — this is a photograph background, not a solid colour
+  let variance = 0
+  for (const [x, y] of edgeSamples) {
+    const i = (y * width + x) * 4
+    if (data[i + 3] < 200) continue
+    const dr = data[i] - bgR, dg = data[i + 1] - bgG, db = data[i + 2] - bgB
+    variance += dr * dr + dg * dg + db * db
+  }
+  variance /= n
+
+  if (variance > 1500) {
+    console.log(`[BgMatte] Edge variance ${Math.round(variance)} > 1500 — background not uniform, skipping`)
+    return imageDataUrl
+  }
+
+  console.log(`[BgMatte] Uniform background rgb(${Math.round(bgR)},${Math.round(bgG)},${Math.round(bgB)}) variance=${Math.round(variance)} — removing`)
+
+  // Fade out pixels close to the detected background colour
+  const removeThreshold = 45 // Euclidean RGB distance
   for (let i = 0; i < data.length; i += 4) {
     if (data[i + 3] < 10) continue
-    const minChannel = Math.min(data[i], data[i + 1], data[i + 2])
-    if (minChannel >= threshold) {
-      const whiteness = (minChannel - threshold) / (255 - threshold)
-      data[i + 3] = Math.round(data[i + 3] * Math.max(0, 1 - whiteness * 1.6))
+    const dr = data[i] - bgR, dg = data[i + 1] - bgG, db = data[i + 2] - bgB
+    const dist = Math.sqrt(dr * dr + dg * dg + db * db)
+    if (dist < removeThreshold) {
+      const t = dist / removeThreshold
+      data[i + 3] = Math.round(data[i + 3] * t * t) // quadratic falloff toward transparency
     }
   }
 
