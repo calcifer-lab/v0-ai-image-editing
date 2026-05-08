@@ -22,7 +22,10 @@ export type OpenRouterContentPart =
 
 interface GooglePart {
   text?: string
-  inline_data?: { mime_type: string; data: string }
+  // v1beta REST sometimes returns camelCase (inlineData), sometimes snake_case
+  // (inline_data) depending on accept-encoding / model. Accept both on read.
+  inline_data?: { mime_type?: string; mimeType?: string; data: string }
+  inlineData?: { mime_type?: string; mimeType?: string; data: string }
 }
 
 /**
@@ -105,6 +108,9 @@ export async function callGoogleGenerate(
 /**
  * Extract a generated image (as a `data:image/png;base64,...` URL) from a
  * Google generateContent response. Returns null if no image part is found.
+ *
+ * Tolerant of both `inline_data` (snake_case) and `inlineData` (camelCase)
+ * because Google v1beta REST returns either depending on routing layer.
  */
 export function extractGoogleImage(data: unknown): string | null {
   const candidates = (data as { candidates?: Array<{ content?: { parts?: GooglePart[] } }> }).candidates
@@ -112,13 +118,44 @@ export function extractGoogleImage(data: unknown): string | null {
   for (const candidate of candidates) {
     const parts = candidate.content?.parts ?? []
     for (const part of parts) {
-      if (part.inline_data?.data) {
-        const mime = part.inline_data.mime_type || "image/png"
-        return `data:${mime};base64,${part.inline_data.data}`
+      const inline = part.inline_data || part.inlineData
+      if (inline?.data) {
+        const mime = inline.mime_type || inline.mimeType || "image/png"
+        return `data:${mime};base64,${inline.data}`
       }
     }
   }
   return null
+}
+
+/**
+ * Produce a redacted, log-safe summary of a Google generateContent response.
+ * Replaces any inline base64 image data with "<base64:N bytes>" so logs aren't
+ * flooded with image payload, while still showing the response structure.
+ */
+export function summarizeGoogleResponse(data: unknown, maxChars = 1500): string {
+  try {
+    const cloned = JSON.parse(JSON.stringify(data))
+    const visit = (node: any): void => {
+      if (!node || typeof node !== "object") return
+      if (Array.isArray(node)) {
+        for (const item of node) visit(item)
+        return
+      }
+      for (const key of Object.keys(node)) {
+        if (key === "data" && typeof node[key] === "string" && node[key].length > 200) {
+          node[key] = `<base64:${node[key].length} chars>`
+        } else {
+          visit(node[key])
+        }
+      }
+    }
+    visit(cloned)
+    const json = JSON.stringify(cloned)
+    return json.length > maxChars ? json.slice(0, maxChars) + "...<truncated>" : json
+  } catch {
+    return "<failed to summarize>"
+  }
 }
 
 /**

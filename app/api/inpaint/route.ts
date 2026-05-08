@@ -16,6 +16,7 @@ import {
   callGoogleGenerate,
   extractGoogleImage,
   extractGoogleText,
+  summarizeGoogleResponse,
   GOOGLE_IMAGE_MODEL,
   type OpenRouterContentPart,
 } from "@/lib/api"
@@ -139,12 +140,14 @@ async function inpaintWithGoogle(
     const text = extractGoogleText(result.data)
     const finishReason = (result.data as any)?.candidates?.[0]?.finishReason
     const promptFeedback = JSON.stringify((result.data as any)?.promptFeedback ?? {})
+    const rawSummary = summarizeGoogleResponse(result.data)
     console.error(
       "[Inpaint] Google returned 200 but no image. " +
         `finishReason=${finishReason ?? "<none>"}, ` +
         `promptFeedback=${promptFeedback}, ` +
-        `text=${(text || "<empty>").slice(0, 800)}`
+        `text=${(text || "<empty>").slice(0, 400)}`
     )
+    console.error("[Inpaint] Google raw response (redacted):", rawSummary)
     return {
       ok: false,
       error_code: "NO_IMAGE_IN_RESPONSE",
