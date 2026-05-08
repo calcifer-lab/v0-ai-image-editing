@@ -1190,8 +1190,16 @@ export async function applyInpaintOutput(
  *
  * Strategy: random-sample N points inside the mask's white region, compute
  * the mean per-channel absolute pixel difference between output and base.
- * Returns true when the diff is below `threshold` (default 10/255), meaning
+ * Returns true when the diff is below `threshold` (default 25/255), meaning
  * the output is suspiciously close to the unmodified base.
+ *
+ * Threshold calibration (per-channel mean abs diff out of 255):
+ *   <10  : Gemini didn't alter the masked region at all (clear snap-to-base)
+ *   10-25: Gemini did surface tweaks (lighting/color polish) but did NOT
+ *          replace the element's identity — visually still indistinguishable
+ *          from base for the user. This is the "fake success" zone.
+ *   25-35: Partial identity replacement; some reference details visible.
+ *   >35  : Substantial identity replacement (target zone).
  *
  * Returns false on any error (e.g. tiny mask, decode failure) — the check
  * is best-effort and must not block the main flow.
@@ -1202,7 +1210,7 @@ export async function isOutputTooSimilarToBase(
   maskDataUrl: string,
   options?: { threshold?: number; sampleCount?: number }
 ): Promise<{ tooSimilar: boolean; meanDiff: number; sampleCount: number }> {
-  const threshold = options?.threshold ?? 10
+  const threshold = options?.threshold ?? 25
   const targetSamples = options?.sampleCount ?? 256
 
   try {
