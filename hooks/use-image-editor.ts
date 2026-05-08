@@ -18,6 +18,7 @@ import {
   resizeImage,
   compressImage,
   removeWhiteMatteIfNeeded,
+  isOutputTooSimilarToBase,
 } from "@/lib/image-utils"
 import { safeParseJSON } from "@/utils/safeParse"
 
@@ -627,13 +628,39 @@ export function useImageEditor(): UseImageEditorReturn {
     updateProgress("AI model processing response...", 82, { driftTo: 88 })
     const data = await safeParseJSON(response) as {
       result_image?: string
-      meta?: { model?: string; reference_dropped?: boolean }
+      meta?: { model?: string; reference_dropped?: boolean; composite_used?: boolean }
     }
     if (!data.result_image) throw new Error("Inpainting API response missing result image")
 
     if (data.meta?.reference_dropped) {
       console.warn("[AI Editor] AI Compose degraded: reference element was not preserved by fallback model")
       setWarning("AI 主模型不可用，降级模型不支持参考元素 — 元素细节可能未保留。建议重试或切换 Direct Patch。")
+      return data.result_image
+    }
+
+    // Degeneration check: when base already contains a similar object, Gemini sometimes
+    // returns the base virtually unchanged (snap-to-base failure). Detect by sampling
+    // pixel diff in the mask region; if too similar, throw to trigger Direct Patch fallback.
+    // Only run on the Gemini path (skip when reference was already dropped to FLUX).
+    try {
+      const similarity = await isOutputTooSimilarToBase(data.result_image, images.baseImage, mask.dataUrl)
+      console.log(
+        `[AI Editor] Output-vs-base diff in mask: meanDiff=${similarity.meanDiff.toFixed(1)}/255 ` +
+          `(samples=${similarity.sampleCount}, threshold=10)`
+      )
+      if (similarity.tooSimilar) {
+        throw new Error(
+          `AI Compose degenerate output: model returned an image too close to the base ` +
+            `(meanDiff=${similarity.meanDiff.toFixed(1)} < 10/255). Falling back to Direct Patch.`
+        )
+      }
+    } catch (similarityError) {
+      // Re-throw the degeneration error to trigger the outer fallback in handleProcess.
+      // Other detection errors (decode failure, etc.) are non-blocking — log and continue.
+      if (similarityError instanceof Error && similarityError.message.startsWith("AI Compose degenerate")) {
+        throw similarityError
+      }
+      console.warn("[AI Editor] Degeneration check failed (non-blocking):", similarityError)
     }
 
     return data.result_image

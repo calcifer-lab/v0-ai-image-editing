@@ -976,6 +976,93 @@ export async function resizeToAspectRatio(
 }
 
 /**
+ * Sample-based pixel similarity check inside the masked region.
+ *
+ * Detects "model degeneration" — when an image-generation model returns
+ * something visually almost identical to the base image inside the mask
+ * (i.e. it ignored the reference and just preserved what was already there).
+ * Gemini exhibits this failure mode when the base already contains an object
+ * similar to the reference; we use this to trigger a Direct Patch fallback
+ * rather than show the user a "fake success" output.
+ *
+ * Strategy: random-sample N points inside the mask's white region, compute
+ * the mean per-channel absolute pixel difference between output and base.
+ * Returns true when the diff is below `threshold` (default 10/255), meaning
+ * the output is suspiciously close to the unmodified base.
+ *
+ * Returns false on any error (e.g. tiny mask, decode failure) — the check
+ * is best-effort and must not block the main flow.
+ */
+export async function isOutputTooSimilarToBase(
+  outputDataUrl: string,
+  baseDataUrl: string,
+  maskDataUrl: string,
+  options?: { threshold?: number; sampleCount?: number }
+): Promise<{ tooSimilar: boolean; meanDiff: number; sampleCount: number }> {
+  const threshold = options?.threshold ?? 10
+  const targetSamples = options?.sampleCount ?? 256
+
+  try {
+    const [output, base, mask] = await Promise.all([
+      loadImage(outputDataUrl),
+      loadImage(baseDataUrl),
+      loadImage(maskDataUrl),
+    ])
+
+    const w = base.width
+    const h = base.height
+
+    const drawTo = (img: HTMLImageElement): ImageData | null => {
+      const c = document.createElement("canvas")
+      c.width = w
+      c.height = h
+      const ctx = c.getContext("2d")
+      if (!ctx) return null
+      ctx.drawImage(img, 0, 0, w, h)
+      return ctx.getImageData(0, 0, w, h)
+    }
+
+    const outData = drawTo(output)
+    const baseData = drawTo(base)
+    const maskData = drawTo(mask)
+    if (!outData || !baseData || !maskData) {
+      return { tooSimilar: false, meanDiff: -1, sampleCount: 0 }
+    }
+
+    const samples: number[] = []
+    let attempts = 0
+    const maxAttempts = targetSamples * 12
+    while (samples.length < targetSamples && attempts < maxAttempts) {
+      attempts += 1
+      const x = Math.floor(Math.random() * w)
+      const y = Math.floor(Math.random() * h)
+      const i = (y * w + x) * 4
+      const maskLuma = (maskData.data[i] + maskData.data[i + 1] + maskData.data[i + 2]) / 3
+      if (maskLuma > 128) {
+        samples.push(i)
+      }
+    }
+
+    if (samples.length < 16) {
+      return { tooSimilar: false, meanDiff: -1, sampleCount: samples.length }
+    }
+
+    let totalDiff = 0
+    for (const i of samples) {
+      const dr = Math.abs(outData.data[i] - baseData.data[i])
+      const dg = Math.abs(outData.data[i + 1] - baseData.data[i + 1])
+      const db = Math.abs(outData.data[i + 2] - baseData.data[i + 2])
+      totalDiff += (dr + dg + db) / 3
+    }
+    const meanDiff = totalDiff / samples.length
+    return { tooSimilar: meanDiff < threshold, meanDiff, sampleCount: samples.length }
+  } catch (error) {
+    console.warn("[ImageUtils] isOutputTooSimilarToBase failed:", error)
+    return { tooSimilar: false, meanDiff: -1, sampleCount: 0 }
+  }
+}
+
+/**
  * Client-side white background matte removal.
  * Used as a fallback when Replicate bg-removal fails for images with a plain white background.
  * Detects a white background by sampling the image edges; if found, fades white-ish pixels

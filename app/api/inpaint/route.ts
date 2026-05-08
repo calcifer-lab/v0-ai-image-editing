@@ -85,17 +85,22 @@ function buildInpaintContent(inputs: InpaintInputs): OpenRouterContentPart[] {
       elementAnalysis: inputs.element_analysis,
       maskBboxNorm: inputs.mask_bbox_norm,
     })
+    // Image order: REFERENCE first, then COMPOSITE PREVIEW, then BASE, then MASK.
+    // Putting REFERENCE first biases Gemini's attention toward identity preservation —
+    // Gemini's image-gen model weights early-listed inputs more heavily.
+    // BASE is third because we want it understood as "the canvas to preserve outside
+    // the mask" rather than "the reference for what should appear in the mask".
     return [
       { type: "text", text: systemPrompt },
-      { type: "text", text: "\nIMAGE 1 — BASE (preserve outside the mask exactly):" },
-      { type: "image_url", image_url: { url: inputs.base_image } },
-      { type: "text", text: "\nIMAGE 2 — COMPOSITE PREVIEW (geometric ground truth — keep this position/scale/orientation):" },
-      { type: "image_url", image_url: { url: inputs.composite_image } },
-      { type: "text", text: "\nIMAGE 3 — REFERENCE CUTOUT (use to verify exact colors, materials, and layered structure):" },
+      { type: "text", text: "\nIMAGE 1 — REFERENCE (the EXACT element to insert; identity is non-negotiable):" },
       { type: "image_url", image_url: { url: inputs.reference_image } },
-      { type: "text", text: "\nIMAGE 4 — MASK (white = editable region, black = preserve IMAGE 1):" },
+      { type: "text", text: "\nIMAGE 2 — COMPOSITE PREVIEW (geometric ground truth — preserve this position/scale/orientation):" },
+      { type: "image_url", image_url: { url: inputs.composite_image } },
+      { type: "text", text: "\nIMAGE 3 — BASE SCENE (preserve outside the mask; DELETE whatever is inside the masked region):" },
+      { type: "image_url", image_url: { url: inputs.base_image } },
+      { type: "text", text: "\nIMAGE 4 — MASK (white = region to edit, black = keep IMAGE 3 exactly):" },
       { type: "image_url", image_url: { url: inputs.alignedMask } },
-      { type: "text", text: "\nGenerate the final harmonized image now. Output the image only." },
+      { type: "text", text: "\nGenerate the final image now. The masked region must show IMAGE 1's element, NOT what IMAGE 3 had there. Output the image only." },
     ]
   }
 
