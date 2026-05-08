@@ -25,7 +25,7 @@ export interface PatchPlacement {
 export interface LocalFusionOptions {
   featherPx?: number
   toneMatchStrength?: number
-  /** Overall blend opacity (0–1). Default 1.0 = full replacement; 0.5 = ghost overlay. */
+  /** Overall blend opacity (0-1). Default 1.0 = full replacement; 0.5 = ghost overlay. */
   blendStrength?: number
 }
 
@@ -310,7 +310,6 @@ async function compositePatchOnBase(
   const opaqueBounds = findOpaqueBounds(sourceImageData.data, refImg.width, refImg.height)
 
   if (opaqueBounds && shouldPreserveTransparentCutout(opaqueBounds, refImg.width, refImg.height)) {
-    // Cover-scale: fill the target area, crop the excess — element never appears smaller than target
     const coverScale = Math.max(targetWidth / opaqueBounds.srcWidth, targetHeight / opaqueBounds.srcHeight)
     const drawWidth = opaqueBounds.srcWidth * coverScale
     const drawHeight = opaqueBounds.srcHeight * coverScale
@@ -353,13 +352,11 @@ async function compositePatchOnBase(
   const baseData = ctx.getImageData(targetX, targetY, targetWidth, targetHeight)
   const fullBaseData = ctx.getImageData(0, 0, canvas.width, canvas.height)
 
-  // Extract brush mask region if provided (canvas mask from the editor brush/eraser tool)
   let brushMaskData: Uint8ClampedArray | null = null
   if (brushMaskCanvas) {
     const maskCtx = brushMaskCanvas.getContext("2d")
     if (maskCtx) {
       const maskImageData = maskCtx.getImageData(0, 0, brushMaskCanvas.width, brushMaskCanvas.height)
-      // Scale mask coordinates from canvas space to target space
       const maskScaleX = brushMaskCanvas.width / targetWidth
       const maskScaleY = brushMaskCanvas.height / targetHeight
       brushMaskData = new Uint8ClampedArray(targetWidth * targetHeight)
@@ -368,7 +365,6 @@ async function compositePatchOnBase(
           const maskX = Math.floor(x * maskScaleX)
           const maskY = Math.floor(y * maskScaleY)
           const maskI = (maskY * brushMaskCanvas.width + maskX) * 4
-          // White pixels in brush mask = selected (255) = use reference pixel
           brushMaskData[y * targetWidth + x] = maskImageData.data[maskI]
         }
       }
@@ -387,7 +383,6 @@ async function compositePatchOnBase(
     clamp(Math.round(Math.max(targetWidth, targetHeight) * 0.16), 12, 48)
   )
 
-  // Use brush mask data for feather mask when available, otherwise fall back to reference alpha
   const maskDataForFeather = brushMaskData || refData.data
   const mask = buildAlphaAwareFeatherMask(maskDataForFeather, targetWidth, targetHeight, featherPx)
   const scaleR = sourceStats.count > 0 && targetStats.count > 0 ? clamp(targetStats.r / Math.max(1, sourceStats.r), 0.78, 1.22) : 1
@@ -400,7 +395,6 @@ async function compositePatchOnBase(
   for (let y = 0; y < targetHeight; y += 1) {
     for (let x = 0; x < targetWidth; x += 1) {
       const pixelIndex = (y * targetWidth + x) * 4
-      // Use brush mask alpha when available, otherwise reference image alpha
       const alpha = brushMaskData ? brushMaskData[y * targetWidth + x] / 255 : refData.data[pixelIndex + 3] / 255
       if (alpha < 0.02) continue
 
@@ -477,7 +471,6 @@ export async function resizeImage(
 
   let { width, height } = img
 
-  // Calculate new dimensions
   if (width > maxWidth) {
     height = (height * maxWidth) / width
     width = maxWidth
@@ -487,12 +480,10 @@ export async function resizeImage(
     height = maxHeight
   }
 
-  // If no resize needed, return original
   if (width === img.width && height === img.height) {
     return { dataUrl, width, height }
   }
 
-  // Resize using canvas
   const canvas = document.createElement("canvas")
   canvas.width = width
   canvas.height = height
@@ -522,33 +513,21 @@ export async function resizeMaskToMatch(maskDataUrl: string, targetWidth: number
   const ctx = canvas.getContext("2d")
   if (!ctx) throw new Error("Failed to get canvas context")
 
-  // Fill with black first (unselected)
   ctx.fillStyle = "black"
   ctx.fillRect(0, 0, targetWidth, targetHeight)
-
-  // Draw mask image scaled
   ctx.drawImage(img, 0, 0, targetWidth, targetHeight)
 
   return canvas.toDataURL("image/png")
 }
 
-/**
- * Validate file is an image
- */
 export function isImageFile(file: File): boolean {
   return file.type.startsWith("image/")
 }
 
-/**
- * Validate file size (in MB)
- */
 export function isFileSizeValid(file: File, maxSizeMB: number): boolean {
   return file.size <= maxSizeMB * 1024 * 1024
 }
 
-/**
- * Convert File to data URL
- */
 export function fileToDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
@@ -558,9 +537,6 @@ export function fileToDataUrl(file: File): Promise<string> {
   })
 }
 
-/**
- * Download data URL as file
- */
 export function downloadDataUrl(dataUrl: string, filename: string): void {
   const link = document.createElement("a")
   link.href = dataUrl
@@ -568,17 +544,11 @@ export function downloadDataUrl(dataUrl: string, filename: string): void {
   link.click()
 }
 
-/**
- * Extract file extension from data URL
- */
 export function getDataUrlExtension(dataUrl: string): string {
   const match = dataUrl.match(/^data:image\/(\w+);base64,/)
   return match ? match[1] : "png"
 }
 
-/**
- * Apply edge smoothing to mask (simple blur)
- */
 export async function smoothMaskEdges(maskDataUrl: string, blurRadius: number = 5): Promise<string> {
   const img = await loadImage(maskDataUrl)
 
@@ -589,16 +559,12 @@ export async function smoothMaskEdges(maskDataUrl: string, blurRadius: number = 
   const ctx = canvas.getContext("2d")
   if (!ctx) throw new Error("Failed to get canvas context")
 
-  // Apply blur filter
   ctx.filter = `blur(${blurRadius}px)`
   ctx.drawImage(img, 0, 0)
 
   return canvas.toDataURL("image/png")
 }
 
-/**
- * Compress image quality
- */
 export async function compressImage(dataUrl: string, quality: number = 0.8): Promise<string> {
   const img = await loadImage(dataUrl)
 
@@ -611,19 +577,12 @@ export async function compressImage(dataUrl: string, quality: number = 0.8): Pro
 
   ctx.drawImage(img, 0, 0)
 
-  // Use JPEG compression if quality < 1
   return canvas.toDataURL("image/jpeg", quality)
 }
 
-/**
- * Remove AI watermark from image by cropping the bottom area
- * Common watermarks: "由**AI生成", "Created by AI", etc.
- * These typically appear at the bottom of AI-generated images
- */
 export async function removeWatermark(dataUrl: string, cropHeight: number = 40): Promise<string> {
   const img = await loadImage(dataUrl)
 
-  // Only crop if image is large enough
   if (img.height <= cropHeight * 2) {
     return dataUrl
   }
@@ -635,24 +594,18 @@ export async function removeWatermark(dataUrl: string, cropHeight: number = 40):
   const ctx = canvas.getContext("2d")
   if (!ctx) throw new Error("Failed to get canvas context")
 
-  // Draw image without the bottom watermark area
   ctx.drawImage(
     img,
-    0, 0, img.width, img.height - cropHeight, // source: full width, height minus watermark
-    0, 0, img.width, img.height - cropHeight  // destination: same size
+    0, 0, img.width, img.height - cropHeight,
+    0, 0, img.width, img.height - cropHeight
   )
 
   return canvas.toDataURL("image/png")
 }
 
-/**
- * Detect if image likely has AI watermark at bottom
- * Checks for common watermark patterns by analyzing the bottom region
- */
 export async function detectWatermark(dataUrl: string): Promise<boolean> {
   const img = await loadImage(dataUrl)
 
-  // Only check images larger than a minimum size
   if (img.height < 200) return false
 
   const canvas = document.createElement("canvas")
@@ -663,7 +616,6 @@ export async function detectWatermark(dataUrl: string): Promise<boolean> {
   const ctx = canvas.getContext("2d")
   if (!ctx) return false
 
-  // Draw only the bottom portion
   ctx.drawImage(
     img,
     0, img.height - checkHeight, img.width, checkHeight,
@@ -673,8 +625,6 @@ export async function detectWatermark(dataUrl: string): Promise<boolean> {
   const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
   const data = imageData.data
 
-  // Check for semi-transparent overlay (common in watermarks)
-  // or high contrast text area at the bottom
   let whitePixels = 0
   let totalPixels = data.length / 4
 
@@ -683,19 +633,14 @@ export async function detectWatermark(dataUrl: string): Promise<boolean> {
     const g = data[i + 1]
     const b = data[i + 2]
 
-    // Count light/white pixels (potential watermark background)
     if (r > 200 && g > 200 && b > 200) {
       whitePixels++
     }
   }
 
-  // If more than 30% of bottom area is white/light, likely has watermark
   return (whitePixels / totalPixels) > 0.3
 }
 
-/**
- * Aspect ratio configurations
- */
 export const ASPECT_RATIOS = {
   "original": { ratio: null, label: "Original", description: "Keep original dimensions" },
   "1:1": { ratio: 1, label: "1:1", description: "Square (Instagram)" },
@@ -708,9 +653,6 @@ export const ASPECT_RATIOS = {
 
 export type AspectRatioKey = keyof typeof ASPECT_RATIOS
 
-/**
- * Calculate target dimensions based on aspect ratio
- */
 export function calculateAspectRatioDimensions(
   originalWidth: number,
   originalHeight: number,
@@ -734,14 +676,11 @@ export function calculateAspectRatioDimensions(
   const targetRatio = ratioConfig.ratio
   const originalRatio = originalWidth / originalHeight
 
-  // Maintain the larger dimension, adjust the other
   if (targetRatio > originalRatio) {
-    // Target is wider
     const width = originalWidth
     const height = Math.round(width / targetRatio)
     return { width, height }
   } else {
-    // Target is taller
     const height = originalHeight
     const width = Math.round(height * targetRatio)
     return { width, height }
@@ -749,14 +688,8 @@ export function calculateAspectRatioDimensions(
 }
 
 /**
- * Resize image to target aspect ratio with different scale modes
- */
-/**
  * Composite reference image onto base image using mask
  * This is a direct "paste" operation without AI generation
- * 
- * The reference image is scaled to fit the mask area while maintaining aspect ratio,
- * then only the pixels within the mask are composited onto the base image.
  */
 export async function compositeImages(
   baseImageUrl: string,
@@ -777,41 +710,34 @@ export async function compositeImages(
   console.log("[Composite] Mask image:", maskImg.width, "x", maskImg.height)
   console.log("[Composite] Mask coordinates:", maskCoordinates)
 
-  // Create canvas with base image dimensions
   const canvas = document.createElement("canvas")
   canvas.width = baseImg.width
   canvas.height = baseImg.height
   const ctx = canvas.getContext("2d")
   if (!ctx) throw new Error("Failed to get canvas context")
 
-  // Draw base image first
   ctx.drawImage(baseImg, 0, 0)
 
-  // Calculate scale factors between mask canvas and actual base image
   const scaleX = baseImg.width / maskImg.width
   const scaleY = baseImg.height / maskImg.height
 
-  // Scale mask coordinates to actual base image dimensions
   const targetX = Math.round(maskCoordinates.x * scaleX)
   const targetY = Math.round(maskCoordinates.y * scaleY)
   const targetWidth = Math.round(maskCoordinates.width * scaleX)
   const targetHeight = Math.round(maskCoordinates.height * scaleY)
 
   console.log("[Composite] Target area:", targetX, targetY, targetWidth, targetHeight)
-  // Scale full mask to base image dimensions with edge feathering
+
   const fullMaskCanvas = document.createElement("canvas")
   fullMaskCanvas.width = baseImg.width
   fullMaskCanvas.height = baseImg.height
   const fullMaskCtx = fullMaskCanvas.getContext("2d")
   if (!fullMaskCtx) throw new Error("Failed to get full mask canvas context")
-  // Feather radius proportional to MASK dimensions (not image dimensions).
-  // A mask covering 400 px needs ~56 px of blur to look naturally feathered.
   const blurPx = Math.max(15, Math.min(80, Math.round(Math.min(targetWidth, targetHeight) * 0.14)))
   fullMaskCtx.filter = `blur(${blurPx}px)`
   fullMaskCtx.drawImage(maskImg, 0, 0, baseImg.width, baseImg.height)
   fullMaskCtx.filter = "none"
 
-  // Scale reference image to fit target region
   const refCanvas = document.createElement("canvas")
   refCanvas.width = targetWidth
   refCanvas.height = targetHeight
@@ -828,9 +754,6 @@ export async function compositeImages(
   const opaqueBounds = findOpaqueBounds(sourceImageData.data, refImg.width, refImg.height)
 
   if (opaqueBounds) {
-    // Always stretch the opaque subject to exactly fill the target.
-    // Whether the element has transparent edges (post bg-removal) or not,
-    // the visible content must fill the entire selected region — no letterboxing.
     refCtx.drawImage(
       refImg,
       opaqueBounds.srcX,
@@ -843,20 +766,17 @@ export async function compositeImages(
       targetHeight
     )
   } else {
-    // No opaque pixels at all — stretch the whole image
     refCtx.drawImage(refImg, 0, 0, refImg.width, refImg.height, 0, 0, targetWidth, targetHeight)
   }
 
-  // Pixel-by-pixel blend: combinedAlpha = maskBrightness x refAlpha x blendStrength
   const blendStrength = clamp(options?.blendStrength ?? 1.0, 0, 1)
   const maskData = fullMaskCtx.getImageData(targetX, targetY, targetWidth, targetHeight)
   const refData = refCtx.getImageData(0, 0, targetWidth, targetHeight)
   const baseData = ctx.getImageData(targetX, targetY, targetWidth, targetHeight)
 
-  // Pass 1 — clear the core mask area with surrounding ambient colour.
-  // Threshold 0.40: feather zone (maskBrightness < 0.40) is untouched so it keeps its
-  // original texture.  The ambient-shift in Pass 2 (blendBase lerp) handles old-content
-  // ghosting in the feather zone without creating a flat-colour ring.
+  // Pass 1: clear only the extreme centre (brightness > 0.85) with surrounding ambient.
+  // Only clear where the element is guaranteed to be fully opaque so the flat ambient
+  // colour does not create a visible rectangle in transparent gap areas.
   const fullBaseData = ctx.getImageData(0, 0, canvas.width, canvas.height)
   const surroundMargin = clamp(Math.round(Math.max(targetWidth, targetHeight) * 0.20), 16, 64)
   const surroundStats = collectSurroundingStats(
@@ -869,10 +789,10 @@ export async function compositeImages(
   if (surroundStats.count > 0) {
     for (let i = 0; i < maskData.data.length; i += 4) {
       const maskBrightness = (maskData.data[i] + maskData.data[i + 1] + maskData.data[i + 2]) / 3 / 255
-      // Steep ramp 0.40 to 0.70: fully clears the core (fill=1 at brightness >= 0.70)
-      // so that high-contrast original content (annotation boxes, text) cannot leak
-      // through transparent gaps in the new element where refAlpha=0 in Pass 2.
-      const fill = clamp((maskBrightness - 0.40) / 0.30, 0, 1)
+      // Only clear the very centre (brightness > 0.85) where the element is guaranteed
+      // to cover. A wide fill range creates a visible flat-colour rectangle because
+      // surroundStats is a mean that does not match local texture.
+      const fill = clamp((maskBrightness - 0.85) / 0.15, 0, 1)
       if (fill > 0.01) {
         baseData.data[i]     = Math.round(surroundStats.r * fill + baseData.data[i]     * (1 - fill))
         baseData.data[i + 1] = Math.round(surroundStats.g * fill + baseData.data[i + 1] * (1 - fill))
@@ -882,18 +802,15 @@ export async function compositeImages(
   }
 
   // Tone matching: shift element colour toward surrounding scene colour.
-  // Samples the element's overall mean and the base's surrounding mean,
-  // then applies a per-channel scale + luma shift that is strongest at the
-  // feathered edge (where the seam is most visible) and weakest at the centre.
   const refStats = collectReferenceStats(refData.data)
-  const toneMatchStrength = 0.65
+  const toneMatchStrength = 0.50
   const scaleR = refStats.count > 0 && surroundStats.count > 0 ? clamp(surroundStats.r / Math.max(1, refStats.r), 0.72, 1.32) : 1
   const scaleG = refStats.count > 0 && surroundStats.count > 0 ? clamp(surroundStats.g / Math.max(1, refStats.g), 0.72, 1.32) : 1
   const scaleB = refStats.count > 0 && surroundStats.count > 0 ? clamp(surroundStats.b / Math.max(1, refStats.b), 0.72, 1.32) : 1
   const lumaShift = refStats.count > 0 && surroundStats.count > 0
     ? clamp(surroundStats.luma - refStats.luma, -25, 25) : 0
 
-  // Pass 2 — composite the new element over the already-cleared base.
+  // Pass 2: composite the new element over the already-cleared base.
   for (let i = 0; i < maskData.data.length; i += 4) {
     const maskBrightness = (maskData.data[i] + maskData.data[i + 1] + maskData.data[i + 2]) / 3
     const refAlpha = refData.data[i + 3] / 255
@@ -911,25 +828,22 @@ export async function compositeImages(
       const correctedG = clamp(origG * scaleG + lumaShift, 0, 255)
       const correctedB = clamp(origB * scaleB + lumaShift, 0, 255)
 
-      // Lerp between original element colour and tone-corrected colour
       let fusedR = lerp(origR, correctedR, corrStrength)
       let fusedG = lerp(origG, correctedG, corrStrength)
       let fusedB = lerp(origB, correctedB, corrStrength)
 
-      // At edges, tint the element toward the surrounding base colour
-      const edgeTintStrength = edgeFactor * 0.18
+      // Very subtle tint toward surrounding colour at edges
+      const edgeTintStrength = edgeFactor * 0.08
       fusedR = lerp(fusedR, surroundStats.r, edgeTintStrength)
       fusedG = lerp(fusedG, surroundStats.g, edgeTintStrength)
       fusedB = lerp(fusedB, surroundStats.b, edgeTintStrength)
 
-      // In the feather zone the blend-out target is shifted from old content toward
-      // the surrounding ambient colour.  Without this, (1 - combinedAlpha) recovers
-      // the old element content at the mask edge.
-      // Factor 0.82: at full edge the old content is reduced to ~18%; at core (edgeFactor=0)
-      // the original base is used unchanged so fine detail outside the mask is preserved.
-      const blendBaseR = lerp(baseData.data[i],     surroundStats.r, edgeFactor * 0.82)
-      const blendBaseG = lerp(baseData.data[i + 1], surroundStats.g, edgeFactor * 0.82)
-      const blendBaseB = lerp(baseData.data[i + 2], surroundStats.b, edgeFactor * 0.82)
+      // Blend-out target: use the actual base pixel (preserves natural scene texture).
+      // A small nudge toward surroundStats (15%) at the extreme edge softens the ghost
+      // without producing the visible flat-colour rectangle that higher values create.
+      const blendBaseR = lerp(baseData.data[i],     surroundStats.r, edgeFactor * 0.15)
+      const blendBaseG = lerp(baseData.data[i + 1], surroundStats.g, edgeFactor * 0.15)
+      const blendBaseB = lerp(baseData.data[i + 2], surroundStats.b, edgeFactor * 0.15)
 
       baseData.data[i]     = Math.round(fusedR * combinedAlpha + blendBaseR * (1 - combinedAlpha))
       baseData.data[i + 1] = Math.round(fusedG * combinedAlpha + blendBaseG * (1 - combinedAlpha))
@@ -975,13 +889,11 @@ export async function resizeToAspectRatio(
   const ctx = canvas.getContext("2d")
   if (!ctx) throw new Error("Failed to get canvas context")
 
-  // Fill with white background
   ctx.fillStyle = "#FFFFFF"
   ctx.fillRect(0, 0, canvas.width, canvas.height)
 
   switch (scaleMode) {
     case "fit": {
-      // Fit: maintain aspect ratio, may have borders
       const scale = Math.min(
         targetDimensions.width / img.width,
         targetDimensions.height / img.height
@@ -990,13 +902,10 @@ export async function resizeToAspectRatio(
       const scaledHeight = img.height * scale
       const x = (targetDimensions.width - scaledWidth) / 2
       const y = (targetDimensions.height - scaledHeight) / 2
-
       ctx.drawImage(img, x, y, scaledWidth, scaledHeight)
       break
     }
-
     case "fill": {
-      // Fill: crop to fill entire canvas
       const scale = Math.max(
         targetDimensions.width / img.width,
         targetDimensions.height / img.height
@@ -1005,13 +914,10 @@ export async function resizeToAspectRatio(
       const scaledHeight = img.height * scale
       const x = (targetDimensions.width - scaledWidth) / 2
       const y = (targetDimensions.height - scaledHeight) / 2
-
       ctx.drawImage(img, x, y, scaledWidth, scaledHeight)
       break
     }
-
     case "stretch": {
-      // Stretch: ignore aspect ratio, stretch to fill
       ctx.drawImage(img, 0, 0, targetDimensions.width, targetDimensions.height)
       break
     }
@@ -1026,11 +932,7 @@ export async function resizeToAspectRatio(
 
 /**
  * Client-side uniform background matte removal.
- * Fallback when Replicate bg-removal fails. Samples all four image edges to detect
- * the background color (works for white, beige, gray, pale-blue — any solid color).
- * Robust to subject contamination at edges: only the brightest 60% of edge samples
- * are used as background candidates, so a subject extending to some edges does not
- * skew detection.
+ * Fallback when Replicate bg-removal fails.
  */
 export async function removeWhiteMatteIfNeeded(imageDataUrl: string): Promise<string> {
   const img = await loadImage(imageDataUrl)
@@ -1045,7 +947,6 @@ export async function removeWhiteMatteIfNeeded(imageDataUrl: string): Promise<st
   const data = imageData.data
   const { width, height } = img
 
-  // Dense edge sampling — every `step` pixels along all four sides
   const step = Math.max(1, Math.floor(Math.min(width, height) / 20))
   const edgeSamples: Array<{ r: number; g: number; b: number; brightness: number }> = []
   const collect = (x: number, y: number) => {
@@ -1069,9 +970,6 @@ export async function removeWhiteMatteIfNeeded(imageDataUrl: string): Promise<st
 
   if (edgeSamples.length < 8) return imageDataUrl
 
-  // Robust background estimation: use only the brightest 60% of edge samples.
-  // This is robust to subject contamination — a dark subject extending to some
-  // edges populates the bottom of the brightness sort and is excluded.
   edgeSamples.sort((a, b) => b.brightness - a.brightness)
   const cutoff = Math.max(8, Math.ceil(edgeSamples.length * 0.6))
   const candidates = edgeSamples.slice(0, cutoff)
@@ -1084,7 +982,6 @@ export async function removeWhiteMatteIfNeeded(imageDataUrl: string): Promise<st
   const bgG = sumG / candidates.length
   const bgB = sumB / candidates.length
 
-  // Variance check — if even the brightest 60% is non-uniform, the bg is not solid
   let variance = 0
   for (const s of candidates) {
     const dr = s.r - bgR, dg = s.g - bgG, db = s.b - bgB
@@ -1093,14 +990,12 @@ export async function removeWhiteMatteIfNeeded(imageDataUrl: string): Promise<st
   variance /= candidates.length
 
   if (variance > 2500) {
-    console.log(`[BgMatte] Top-60% variance ${Math.round(variance)} > 2500 — background not uniform, skipping`)
+    console.log(`[BgMatte] Top-60% variance ${Math.round(variance)} > 2500 -- background not uniform, skipping`)
     return imageDataUrl
   }
 
-  console.log(`[BgMatte] Uniform background rgb(${Math.round(bgR)},${Math.round(bgG)},${Math.round(bgB)}) variance=${Math.round(variance)} from top-60% of ${edgeSamples.length} edge samples — removing`)
+  console.log(`[BgMatte] Uniform background rgb(${Math.round(bgR)},${Math.round(bgG)},${Math.round(bgB)}) variance=${Math.round(variance)} from top-60% of ${edgeSamples.length} edge samples -- removing`)
 
-  // Fade out pixels close to the detected background colour.
-  // 60 px Euclidean distance catches anti-aliased and JPEG-compressed near-bg pixels.
   const removeThreshold = 60
   for (let i = 0; i < data.length; i += 4) {
     if (data[i + 3] < 10) continue
@@ -1108,7 +1003,7 @@ export async function removeWhiteMatteIfNeeded(imageDataUrl: string): Promise<st
     const dist = Math.sqrt(dr * dr + dg * dg + db * db)
     if (dist < removeThreshold) {
       const t = dist / removeThreshold
-      data[i + 3] = Math.round(data[i + 3] * t * t) // quadratic falloff toward transparency
+      data[i + 3] = Math.round(data[i + 3] * t * t)
     }
   }
 
