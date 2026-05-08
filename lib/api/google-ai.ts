@@ -3,16 +3,15 @@
  *
  * We support two models:
  *   - `gemini-2.5-flash-image`  → image generation / fusion (a.k.a. "Nano Banana", GA)
- *   - `gemini-2.0-flash`        → vision analysis (text-out)
+ *   - `gemini-2.5-flash`        → vision analysis (text-out)
+ *
+ * Note: `gemini-2.0-flash` was deprecated for new users in 2026 (Google returns
+ * 404 "no longer available to new users" for fresh billing accounts). Always
+ * use `gemini-2.5-flash` for vision/text tasks.
  *
  * Note: the previous preview alias `gemini-2.5-flash-image-preview` was
  * retired by Google and now returns 404 from v1beta `generateContent`. Always
- * use the GA model id below.
- *
- * Why this exists: OpenRouter started rejecting our account at the Google
- * provider routing layer (403 "Terms Of Service violation" with
- * `provider_name: null`, no entry in their Activity/Logs). Direct calls to
- * Google bypass that and let the product keep working.
+ * use the GA model id below for image generation.
  */
 
 const GOOGLE_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
@@ -23,7 +22,10 @@ export type OpenRouterContentPart =
 
 interface GooglePart {
   text?: string
-  inline_data?: { mime_type: string; data: string }
+  // v1beta REST sometimes returns camelCase (inlineData), sometimes snake_case
+  // (inline_data) depending on accept-encoding / model. Accept both on read.
+  inline_data?: { mime_type?: string; mimeType?: string; data: string }
+  inlineData?: { mime_type?: string; mimeType?: string; data: string }
 }
 
 /**
@@ -44,6 +46,8 @@ function partToGoogle(part: OpenRouterContentPart): GooglePart {
 
 interface GoogleGenerateOptions {
   responseModalities?: Array<"TEXT" | "IMAGE">
+  /** Sampling temperature, 0..2. Lower = more deterministic. Default ~1.0. */
+  temperature?: number
 }
 
 interface GoogleGenerateResult {
@@ -81,8 +85,15 @@ export async function callGoogleGenerate(
   const body: Record<string, unknown> = {
     contents: [{ role: "user", parts }],
   }
+  const generationConfig: Record<string, unknown> = {}
   if (options.responseModalities && options.responseModalities.length > 0) {
-    body.generationConfig = { responseModalities: options.responseModalities }
+    generationConfig.responseModalities = options.responseModalities
+  }
+  if (typeof options.temperature === "number") {
+    generationConfig.temperature = options.temperature
+  }
+  if (Object.keys(generationConfig).length > 0) {
+    body.generationConfig = generationConfig
   }
 
   const response = await fetch(url, {
@@ -106,6 +117,9 @@ export async function callGoogleGenerate(
 /**
  * Extract a generated image (as a `data:image/png;base64,...` URL) from a
  * Google generateContent response. Returns null if no image part is found.
+ *
+ * Tolerant of both `inline_data` (snake_case) and `inlineData` (camelCase)
+ * because Google v1beta REST returns either depending on routing layer.
  */
 export function extractGoogleImage(data: unknown): string | null {
   const candidates = (data as { candidates?: Array<{ content?: { parts?: GooglePart[] } }> }).candidates
@@ -113,13 +127,44 @@ export function extractGoogleImage(data: unknown): string | null {
   for (const candidate of candidates) {
     const parts = candidate.content?.parts ?? []
     for (const part of parts) {
-      if (part.inline_data?.data) {
-        const mime = part.inline_data.mime_type || "image/png"
-        return `data:${mime};base64,${part.inline_data.data}`
+      const inline = part.inline_data || part.inlineData
+      if (inline?.data) {
+        const mime = inline.mime_type || inline.mimeType || "image/png"
+        return `data:${mime};base64,${inline.data}`
       }
     }
   }
   return null
+}
+
+/**
+ * Produce a redacted, log-safe summary of a Google generateContent response.
+ * Replaces any inline base64 image data with "<base64:N bytes>" so logs aren't
+ * flooded with image payload, while still showing the response structure.
+ */
+export function summarizeGoogleResponse(data: unknown, maxChars = 1500): string {
+  try {
+    const cloned = JSON.parse(JSON.stringify(data))
+    const visit = (node: any): void => {
+      if (!node || typeof node !== "object") return
+      if (Array.isArray(node)) {
+        for (const item of node) visit(item)
+        return
+      }
+      for (const key of Object.keys(node)) {
+        if (key === "data" && typeof node[key] === "string" && node[key].length > 200) {
+          node[key] = `<base64:${node[key].length} chars>`
+        } else {
+          visit(node[key])
+        }
+      }
+    }
+    visit(cloned)
+    const json = JSON.stringify(cloned)
+    return json.length > maxChars ? json.slice(0, maxChars) + "...<truncated>" : json
+  } catch {
+    return "<failed to summarize>"
+  }
 }
 
 /**
@@ -139,4 +184,4 @@ export function extractGoogleText(data: unknown): string {
 }
 
 export const GOOGLE_IMAGE_MODEL = "gemini-2.5-flash-image"
-export const GOOGLE_VISION_MODEL = "gemini-2.0-flash"
+export const GOOGLE_VISION_MODEL = "gemini-2.5-flash"

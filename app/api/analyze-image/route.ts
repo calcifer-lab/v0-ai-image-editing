@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server"
 import type { AnalyzeImageRequest, AnalyzeImageResponse, ApiErrorResponse } from "@/types"
 import {
   IMAGE_ANALYSIS_PROMPT,
-  openRouterHeaders,
   validateImageDataUrl,
   callGoogleGenerate,
   extractGoogleText,
@@ -83,8 +82,6 @@ export async function POST(
           stage: "analyze",
           provider: "google",
           error_code: `HTTP_${result.status}`,
-          fallback_from: "google",
-          fallback_to: "openrouter",
           message: result.error,
         })
         console.error("[AnalyzeImage] Google API error:", result.status, result.error)
@@ -96,54 +93,13 @@ export async function POST(
           stage: "analyze",
           provider: "google",
           error_code: "GOOGLE_CALL_THROW",
-          fallback_from: "google",
-          fallback_to: "openrouter",
           message: msg,
         })
         console.error("[AnalyzeImage] Google direct error:", error)
       }
     }
 
-    // 2. OpenRouter (gpt-4o-mini) fallback
-    const openRouterApiKey = process.env.OPENROUTER_API_KEY
-    if (openRouterApiKey) {
-      const openRouterStartedAt = Date.now()
-      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        headers: openRouterHeaders(openRouterApiKey),
-        body: JSON.stringify({
-          model: "openai/gpt-4o-mini",
-          messages: [{ role: "user", content }],
-        }),
-      })
-
-      if (response.ok) {
-        const data = await response.json()
-        const analysis = data.choices?.[0]?.message?.content || "No analysis available"
-        logStageEvent("info", {
-          requestId,
-          stage: "analyze",
-          provider: "openrouter",
-          model: "openai/gpt-4o-mini",
-          elapsed_ms: Date.now() - openRouterStartedAt,
-        })
-        return NextResponse.json({
-          analysis,
-          meta: { model: "openai/gpt-4o-mini", usage: data.usage },
-        })
-      }
-
-      const errorText = await response.text()
-      failures.push(`OpenRouter: ${response.status} ${errorText}`)
-      logStageEvent("error", {
-        requestId,
-        stage: "analyze",
-        provider: "openrouter",
-        error_code: `HTTP_${response.status}`,
-        message: errorText,
-      })
-      console.error("OpenRouter API error:", errorText)
-    }
+    // OpenRouter fallback retired — proxy account no longer serves OpenAI/Google models.
 
     const reason = failures.length > 0 ? failures.join("; ") : "no provider configured"
     logStageEvent("error", {
