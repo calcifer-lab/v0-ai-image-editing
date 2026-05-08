@@ -1,20 +1,22 @@
 import { NextRequest, NextResponse } from "next/server"
-import type { InpaintRequest, InpaintResponse, ApiErrorResponse } from "@/types"
+import type { InpaintRequest, InpaintResponse, ApiErrorResponse, MaskBboxNorm } from "@/types"
 import {
   pollReplicatePrediction,
   urlToBase64,
   isValidImage,
   getImageDimensions,
-  resizeMaskToMatchImage,
   extractOutputUrl,
   validateImageDataUrl,
 } from "@/lib/api"
+import { resizeMaskToMatchImage } from "@/lib/api/resize-mask"
 import {
   buildGeminiInpaintPrompt,
+  buildGeminiComposeHarmonizationPrompt,
   buildFluxEnhancedPrompt,
-  openRouterHeaders,
   callGoogleGenerate,
   extractGoogleImage,
+  extractGoogleText,
+  summarizeGoogleResponse,
   GOOGLE_IMAGE_MODEL,
   type OpenRouterContentPart,
 } from "@/lib/api"
@@ -48,22 +50,60 @@ function normalizeDataUri(uri: string): string {
 interface InpaintInputs {
   base_image: string
   reference_image: string
+  composite_image?: string
   alignedMask: string
   prompt: string
+  element_analysis?: string
+  mask_bbox_norm?: MaskBboxNorm
 }
 
 async function prepareInpaintInputs(
   base_image: string,
   mask_image: string,
   reference_image: string,
-  prompt: string
+  prompt: string,
+  composite_image?: string,
+  element_analysis?: string,
+  mask_bbox_norm?: MaskBboxNorm
 ): Promise<InpaintInputs> {
   const baseDims = await getImageDimensions(base_image)
   const alignedMask = await resizeMaskToMatchImage(mask_image, baseDims.width, baseDims.height)
-  return { base_image, reference_image, alignedMask, prompt }
+  return {
+    base_image,
+    reference_image,
+    composite_image,
+    alignedMask,
+    prompt,
+    element_analysis,
+    mask_bbox_norm,
+  }
 }
 
 function buildInpaintContent(inputs: InpaintInputs): OpenRouterContentPart[] {
+  if (inputs.composite_image) {
+    const systemPrompt = buildGeminiComposeHarmonizationPrompt(inputs.prompt, {
+      elementAnalysis: inputs.element_analysis,
+      maskBboxNorm: inputs.mask_bbox_norm,
+    })
+    // Image order: REFERENCE first, then COMPOSITE PREVIEW, then BASE, then MASK.
+    // Putting REFERENCE first biases Gemini's attention toward identity preservation —
+    // Gemini's image-gen model weights early-listed inputs more heavily.
+    // BASE is third because we want it understood as "the canvas to preserve outside
+    // the mask" rather than "the reference for what should appear in the mask".
+    return [
+      { type: "text", text: systemPrompt },
+      { type: "text", text: "\nIMAGE 1 — REFERENCE (the EXACT element to insert; identity is non-negotiable):" },
+      { type: "image_url", image_url: { url: inputs.reference_image } },
+      { type: "text", text: "\nIMAGE 2 — COMPOSITE PREVIEW (geometric ground truth — preserve this position/scale/orientation):" },
+      { type: "image_url", image_url: { url: inputs.composite_image } },
+      { type: "text", text: "\nIMAGE 3 — BASE SCENE (preserve outside the mask; DELETE whatever is inside the masked region):" },
+      { type: "image_url", image_url: { url: inputs.base_image } },
+      { type: "text", text: "\nIMAGE 4 — MASK (white = region to edit, black = keep IMAGE 3 exactly):" },
+      { type: "image_url", image_url: { url: inputs.alignedMask } },
+      { type: "text", text: "\nGenerate the final image now. The masked region must show IMAGE 1's element, NOT what IMAGE 3 had there. Output the image only." },
+    ]
+  }
+
   const systemPrompt = buildGeminiInpaintPrompt(inputs.prompt)
   return [
     { type: "text", text: systemPrompt },
@@ -88,10 +128,15 @@ function buildInpaintContent(inputs: InpaintInputs): OpenRouterContentPart[] {
 async function inpaintWithGoogle(
   content: OpenRouterContentPart[],
   apiKey: string,
-  startTime: number
+  startTime: number,
+  composite_used: boolean
 ): Promise<InpaintAttempt> {
+  // Lower temperature for more deterministic inpaint outputs. Element identity
+  // and geometry are non-negotiable here, so we suppress sampling variability
+  // at the cost of slightly less "creative" lighting harmonization.
   const result = await callGoogleGenerate(GOOGLE_IMAGE_MODEL, content, apiKey, {
     responseModalities: ["TEXT", "IMAGE"],
+    temperature: 0.4,
   })
 
   if (!result.ok) {
@@ -101,8 +146,22 @@ async function inpaintWithGoogle(
 
   const image = extractGoogleImage(result.data)
   if (!image) {
-    console.error("[Inpaint] No image found in Google response")
-    return { ok: false, error_code: "NO_IMAGE_IN_RESPONSE" }
+    const text = extractGoogleText(result.data)
+    const finishReason = (result.data as any)?.candidates?.[0]?.finishReason
+    const promptFeedback = JSON.stringify((result.data as any)?.promptFeedback ?? {})
+    const rawSummary = summarizeGoogleResponse(result.data)
+    console.error(
+      "[Inpaint] Google returned 200 but no image. " +
+        `finishReason=${finishReason ?? "<none>"}, ` +
+        `promptFeedback=${promptFeedback}, ` +
+        `text=${(text || "<empty>").slice(0, 400)}`
+    )
+    console.error("[Inpaint] Google raw response (redacted):", rawSummary)
+    return {
+      ok: false,
+      error_code: "NO_IMAGE_IN_RESPONSE",
+      message: `finishReason=${finishReason}; text=${(text || "").slice(0, 200)}`,
+    }
   }
 
   console.log("[Inpaint] Successfully generated image via Google direct API")
@@ -110,80 +169,15 @@ async function inpaintWithGoogle(
     ok: true,
     response: NextResponse.json({
       result_image: normalizeDataUri(image),
-      meta: { model: "google-gemini-2.5-flash-image", duration_ms: Date.now() - startTime },
+      meta: {
+        model: "google-gemini-2.5-flash-image",
+        duration_ms: Date.now() - startTime,
+        reference_used: true,
+        composite_used,
+      },
+
     }),
   }
-}
-
-async function inpaintWithOpenRouter(
-  content: OpenRouterContentPart[],
-  apiKey: string,
-  startTime: number
-): Promise<InpaintAttempt> {
-  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-    method: "POST",
-    headers: openRouterHeaders(apiKey),
-    body: JSON.stringify({
-      model: "google/gemini-2.5-flash-image",
-      messages: [{ role: "user", content }],
-    }),
-  })
-
-  if (!response.ok) {
-    const errorText = await response.text()
-    console.error("[Inpaint] OpenRouter Gemini API error:", errorText)
-    return { ok: false, error_code: `HTTP_${response.status}`, message: errorText }
-  }
-
-  const data = await response.json()
-  const message = data.choices?.[0]?.message
-
-  const okResponse = (resultImage: string): InpaintAttempt => ({
-    ok: true,
-    response: NextResponse.json({
-      result_image: resultImage,
-      meta: { model: "openrouter-gemini-2.5-flash-image", duration_ms: Date.now() - startTime },
-    }),
-  })
-
-  if (message?.images && Array.isArray(message.images) && message.images.length > 0) {
-    const imageData = message.images[0]
-    let resultImage: string
-
-    if (typeof imageData === "string") {
-      resultImage = imageData.startsWith("data:") ? normalizeDataUri(imageData) : `data:image/png;base64,${imageData}`
-    } else if (imageData?.image_url?.url) {
-      resultImage = normalizeDataUri(imageData.image_url.url)
-    } else if (imageData?.b64_json) {
-      resultImage = `data:image/png;base64,${imageData.b64_json}`
-    } else {
-      console.error("[Inpaint] Unexpected image format in message.images:", imageData)
-      return { ok: false, error_code: "UNEXPECTED_IMAGE_FORMAT" }
-    }
-
-    console.log("[Inpaint] Successfully got image from OpenRouter message.images")
-    return okResponse(resultImage)
-  }
-
-  const contentArray = message?.content
-  if (Array.isArray(contentArray)) {
-    for (const part of contentArray) {
-      if (part.type === "image" && part.image?.base64) {
-        console.log("[Inpaint] Successfully got image from OpenRouter content array")
-        return okResponse(`data:image/png;base64,${part.image.base64}`)
-      }
-    }
-  }
-
-  const contentText = typeof message?.content === "string" ? message.content : ""
-  const base64Match = contentText.match(/data:image\/[^;]+;base64,[A-Za-z0-9+/=]+/)
-  if (base64Match) {
-    console.log("[Inpaint] Successfully extracted base64 image from OpenRouter content text")
-    return okResponse(normalizeDataUri(base64Match[0]))
-  }
-
-  console.error("[Inpaint] No image found in OpenRouter response:", JSON.stringify(data).substring(0, 1000))
-  return { ok: false, error_code: "NO_IMAGE_IN_RESPONSE" }
 }
 
 // ============ FLUX Fill Pro ============
@@ -245,7 +239,12 @@ async function tryFluxFillPro(
       const resultImage = await urlToBase64(outputUrl)
       return NextResponse.json({
         result_image: resultImage,
-        meta: { model: "flux-fill-pro", duration_ms: Date.now() - startTime, reference_used: false },
+        meta: {
+        model: "flux-fill-pro",
+        duration_ms: Date.now() - startTime,
+        reference_used: false,
+        reference_dropped: !!reference_image,
+      },
       })
     }
   }
@@ -328,7 +327,12 @@ async function tryFluxFillDev(
       const resultImage = await urlToBase64(outputUrl)
       return NextResponse.json({
         result_image: resultImage,
-        meta: { model: "flux-fill-dev", duration_ms: Date.now() - startTime, reference_used: false },
+        meta: {
+        model: "flux-fill-dev",
+        duration_ms: Date.now() - startTime,
+        reference_used: false,
+        reference_dropped: !!reference_image,
+      },
       })
     }
   }
@@ -363,7 +367,16 @@ export async function POST(request: NextRequest): Promise<NextResponse<InpaintRe
 
   try {
     const body: InpaintRequest = await request.json()
-    const { base_image, mask_image, reference_image, prompt, options = {} } = body
+    const {
+      base_image,
+      mask_image,
+      reference_image,
+      composite_image,
+      element_analysis,
+      mask_bbox_norm,
+      prompt,
+      options = {},
+    } = body
 
     // 验证输入
     if (!base_image || !mask_image || !prompt) {
@@ -401,6 +414,25 @@ export async function POST(request: NextRequest): Promise<NextResponse<InpaintRe
       validatedReference = referenceCheck.image.dataUrl
     }
 
+    let validatedComposite: string | undefined
+    if (composite_image) {
+      const compositeCheck = validateImageDataUrl(composite_image, {
+        fieldName: "composite_image",
+        maxBytes: MAX_INPAINT_IMAGE_BYTES,
+      })
+      if (!compositeCheck.ok) {
+        return NextResponse.json({ error: compositeCheck.error }, { status: compositeCheck.status })
+      }
+      validatedComposite = compositeCheck.image.dataUrl
+    }
+
+    const safeBbox: MaskBboxNorm | undefined = mask_bbox_norm &&
+      [mask_bbox_norm.x0, mask_bbox_norm.y0, mask_bbox_norm.x1, mask_bbox_norm.y1].every(
+        (v) => typeof v === "number" && v >= 0 && v <= 1 && Number.isFinite(v)
+      ) && mask_bbox_norm.x1 > mask_bbox_norm.x0 && mask_bbox_norm.y1 > mask_bbox_norm.y0
+        ? mask_bbox_norm
+        : undefined
+
     const requestId = newRequestId()
     const baseDims = await getImageDimensions(validatedBase.image.dataUrl)
 
@@ -413,20 +445,26 @@ export async function POST(request: NextRequest): Promise<NextResponse<InpaintRe
         height: baseDims.height,
         bytes: validatedBase.image.bytes,
       },
-      message: `inpaint request received (has_reference=${!!validatedReference})`,
+      composite_used: !!validatedComposite,
+      analysis_used: !!element_analysis,
+      mask_bbox: safeBbox,
+      message: `inpaint request received (has_reference=${!!validatedReference}, has_composite=${!!validatedComposite}, has_analysis=${!!element_analysis})`,
     })
     console.log("[Inpaint] Prompt:", prompt)
     console.log("[Inpaint] Options:", JSON.stringify(options))
 
     const failures: InpaintFailure[] = []
 
-    // Reference-guided Gemini path: Google direct → OpenRouter
+    // Reference-guided Gemini path: Google direct (OpenRouter retired)
     if (validatedReference) {
       const inputs = await prepareInpaintInputs(
         validatedBase.image.dataUrl,
         validatedMask.image.dataUrl,
         validatedReference,
-        prompt
+        prompt,
+        validatedComposite,
+        element_analysis,
+        safeBbox
       )
       const content = buildInpaintContent(inputs)
 
@@ -435,7 +473,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<InpaintRe
       if (googleApiKey) {
         const googleStartedAt = Date.now()
         try {
-          const attempt = await inpaintWithGoogle(content, googleApiKey, startTime)
+          const attempt = await inpaintWithGoogle(content, googleApiKey, startTime, !!validatedComposite)
           if (attempt.ok) {
             logStageEvent("info", {
               requestId,
@@ -453,7 +491,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<InpaintRe
             provider: "google",
             error_code: attempt.error_code,
             fallback_from: "google",
-            fallback_to: "openrouter",
+            fallback_to: "replicate-flux",
             message: attempt.message,
           })
         } catch (error) {
@@ -465,54 +503,17 @@ export async function POST(request: NextRequest): Promise<NextResponse<InpaintRe
             provider: "google",
             error_code: "GOOGLE_CALL_THROW",
             fallback_from: "google",
-            fallback_to: "openrouter",
+            fallback_to: "replicate-flux",
             message: msg,
           })
           console.error("[Inpaint] Google direct error:", error)
         }
       }
 
-      // 2. OpenRouter
-      const openRouterApiKey = process.env.OPENROUTER_API_KEY
-      if (openRouterApiKey) {
-        const openRouterStartedAt = Date.now()
-        try {
-          const attempt = await inpaintWithOpenRouter(content, openRouterApiKey, startTime)
-          if (attempt.ok) {
-            logStageEvent("info", {
-              requestId,
-              stage: "inpaint",
-              provider: "openrouter",
-              model: "google/gemini-2.5-flash-image",
-              elapsed_ms: Date.now() - openRouterStartedAt,
-            })
-            return attempt.response
-          }
-          failures.push({ provider: "openrouter", error_code: attempt.error_code, message: attempt.message })
-          logStageEvent("warn", {
-            requestId,
-            stage: "inpaint",
-            provider: "openrouter",
-            error_code: attempt.error_code,
-            fallback_from: "openrouter",
-            fallback_to: "replicate-flux",
-            message: attempt.message,
-          })
-        } catch (error) {
-          const msg = error instanceof Error ? error.message : "OpenRouter call threw"
-          failures.push({ provider: "openrouter", error_code: "OPENROUTER_CALL_THROW", message: msg })
-          logStageEvent("warn", {
-            requestId,
-            stage: "inpaint",
-            provider: "openrouter",
-            error_code: "OPENROUTER_CALL_THROW",
-            fallback_from: "openrouter",
-            fallback_to: "replicate-flux",
-            message: msg,
-          })
-          console.error("[Inpaint] OpenRouter error:", error)
-        }
-      }
+
+      // OpenRouter Gemini path retired — the proxy account no longer serves
+      // OpenAI/Google models. Falls through to Replicate FLUX directly.
+
     }
 
     // 3. Replicate FLUX
@@ -535,7 +536,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<InpaintRe
       requestId,
       stage: "inpaint",
       provider: "replicate",
-      fallback_from: validatedReference ? "openrouter" : undefined,
+      fallback_from: validatedReference ? "google" : undefined,
       fallback_to: "replicate-flux",
       message: "Falling through to FLUX Fill Pro",
     })
