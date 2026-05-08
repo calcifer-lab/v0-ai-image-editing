@@ -673,23 +673,23 @@ export function useImageEditor(): UseImageEditorReturn {
       return normalizedResult
     }
 
-    // Degeneration check: when base already contains a similar object, Gemini sometimes
-    // returns the base virtually unchanged (snap-to-base failure) or only does
-    // surface-level tweaks without replacing element identity. Threshold 25/255
-    // separates "fake success" (Gemini polished but didn't replace) from real
-    // identity replacement. Falling back to Direct Patch+fusion gives the user a
-    // pixel-precise paste of the reference instead.
+    // Degeneration check: when base already contains a similar object, Gemini
+    // often returns either the base unchanged or with surface-level "polish"
+    // (lighting tweaks, minor structural detail) WITHOUT swapping the element's
+    // identity. Empirical calibration from preview runs: meanDiff <35/255 is
+    // the polish-only zone; >=35 indicates actual identity replacement. Below
+    // 35 we fall back to Direct Patch+fusion which pixel-pastes the reference.
     // Only run on the Gemini path (skip when reference was already dropped to FLUX).
     try {
       const similarity = await isOutputTooSimilarToBase(normalizedResult, images.baseImage, mask.dataUrl)
       console.log(
         `[AI Editor] Output-vs-base diff in mask: meanDiff=${similarity.meanDiff.toFixed(1)}/255 ` +
-          `(samples=${similarity.sampleCount}, threshold=25)`
+          `(samples=${similarity.sampleCount}, threshold=35)`
       )
       if (similarity.tooSimilar) {
         throw new Error(
           `AI Compose degenerate output: model returned an image too close to the base ` +
-            `(meanDiff=${similarity.meanDiff.toFixed(1)} < 25/255). Falling back to Direct Patch.`
+            `(meanDiff=${similarity.meanDiff.toFixed(1)} < 35/255). Falling back to Direct Patch.`
         )
       }
     } catch (similarityError) {
