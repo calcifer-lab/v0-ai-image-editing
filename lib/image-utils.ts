@@ -984,8 +984,9 @@ export async function resizeToAspectRatio(
  * Client-side uniform background matte removal.
  * Fallback when Replicate bg-removal fails. Samples all four image edges to detect
  * the background color (works for white, beige, gray, pale-blue — any solid color).
- * If the edges show low color variance (uniform background), pixels close to that
- * color are faded to transparent so they don't bleed into the composite.
+ * Robust to subject contamination at edges: only the brightest 60% of edge samples
+ * are used as background candidates, so a subject extending to some edges does not
+ * skew detection.
  */
 export async function removeWhiteMatteIfNeeded(imageDataUrl: string): Promise<string> {
   const img = await loadImage(imageDataUrl)
@@ -1002,45 +1003,61 @@ export async function removeWhiteMatteIfNeeded(imageDataUrl: string): Promise<st
 
   // Dense edge sampling — every `step` pixels along all four sides
   const step = Math.max(1, Math.floor(Math.min(width, height) / 20))
-  const edgeSamples: Array<[number, number]> = []
+  const edgeSamples: Array<{ r: number; g: number; b: number; brightness: number }> = []
+  const collect = (x: number, y: number) => {
+    const i = (y * width + x) * 4
+    if (data[i + 3] < 200) return
+    edgeSamples.push({
+      r: data[i],
+      g: data[i + 1],
+      b: data[i + 2],
+      brightness: data[i] + data[i + 1] + data[i + 2],
+    })
+  }
   for (let x = 0; x < width; x += step) {
-    edgeSamples.push([x, 0], [x, height - 1])
+    collect(x, 0)
+    collect(x, height - 1)
   }
   for (let y = step; y < height - step; y += step) {
-    edgeSamples.push([0, y], [width - 1, y])
+    collect(0, y)
+    collect(width - 1, y)
   }
 
-  // Compute mean background colour from opaque edge pixels
-  let sumR = 0, sumG = 0, sumB = 0, n = 0
-  for (const [x, y] of edgeSamples) {
-    const i = (y * width + x) * 4
-    if (data[i + 3] < 200) continue
-    sumR += data[i]; sumG += data[i + 1]; sumB += data[i + 2]
-    n++
+  if (edgeSamples.length < 8) return imageDataUrl
+
+  // Robust background estimation: use only the brightest 60% of edge samples.
+  // This is robust to subject contamination — a dark subject extending to some
+  // edges populates the bottom of the brightness sort and is excluded.
+  edgeSamples.sort((a, b) => b.brightness - a.brightness)
+  const cutoff = Math.max(8, Math.ceil(edgeSamples.length * 0.6))
+  const candidates = edgeSamples.slice(0, cutoff)
+
+  let sumR = 0, sumG = 0, sumB = 0
+  for (const s of candidates) {
+    sumR += s.r; sumG += s.g; sumB += s.b
   }
-  if (n === 0) return imageDataUrl
+  const bgR = sumR / candidates.length
+  const bgG = sumG / candidates.length
+  const bgB = sumB / candidates.length
 
-  const bgR = sumR / n, bgG = sumG / n, bgB = sumB / n
-
-  // Reject if edge colours are not uniform — this is a photograph background, not a solid colour
+  // Variance check — if even the brightest 60% is non-uniform, the bg is not solid
   let variance = 0
-  for (const [x, y] of edgeSamples) {
-    const i = (y * width + x) * 4
-    if (data[i + 3] < 200) continue
-    const dr = data[i] - bgR, dg = data[i + 1] - bgG, db = data[i + 2] - bgB
+  for (const s of candidates) {
+    const dr = s.r - bgR, dg = s.g - bgG, db = s.b - bgB
     variance += dr * dr + dg * dg + db * db
   }
-  variance /= n
+  variance /= candidates.length
 
-  if (variance > 1500) {
-    console.log(`[BgMatte] Edge variance ${Math.round(variance)} > 1500 — background not uniform, skipping`)
+  if (variance > 2500) {
+    console.log(`[BgMatte] Top-60% variance ${Math.round(variance)} > 2500 — background not uniform, skipping`)
     return imageDataUrl
   }
 
-  console.log(`[BgMatte] Uniform background rgb(${Math.round(bgR)},${Math.round(bgG)},${Math.round(bgB)}) variance=${Math.round(variance)} — removing`)
+  console.log(`[BgMatte] Uniform background rgb(${Math.round(bgR)},${Math.round(bgG)},${Math.round(bgB)}) variance=${Math.round(variance)} from top-60% of ${edgeSamples.length} edge samples — removing`)
 
-  // Fade out pixels close to the detected background colour
-  const removeThreshold = 45 // Euclidean RGB distance
+  // Fade out pixels close to the detected background colour.
+  // 60 px Euclidean distance catches anti-aliased and JPEG-compressed near-bg pixels.
+  const removeThreshold = 60
   for (let i = 0; i < data.length; i += 4) {
     if (data[i + 3] < 10) continue
     const dr = data[i] - bgR, dg = data[i + 1] - bgG, db = data[i + 2] - bgB

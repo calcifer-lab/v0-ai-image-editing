@@ -408,18 +408,20 @@ export function useImageEditor(): UseImageEditorReturn {
           processedReference = bgData.result_image
           console.log("[AI Editor] Background removed successfully")
         } else {
-          console.warn("[AI Editor] Background removal returned no result — attempting local white matte removal")
-          processedReference = await removeWhiteMatteIfNeeded(processedReference)
+          console.warn("[AI Editor] Background removal returned no result")
         }
       } else {
         const errText = await bgResponse.text().catch(() => "")
-        console.warn("[AI Editor] Background removal failed:", errText, "— attempting local white matte removal")
-        processedReference = await removeWhiteMatteIfNeeded(processedReference)
+        console.warn("[AI Editor] Background removal failed:", errText)
       }
     } catch (bgError) {
-      console.warn("[AI Editor] Background removal error:", bgError, "— attempting local white matte removal")
-      processedReference = await removeWhiteMatteIfNeeded(processedReference)
+      console.warn("[AI Editor] Background removal error:", bgError)
     }
+
+    // Always run local matte cleanup as a safety pass — handles full bg-removal failure
+    // (still showing original white/uniform bg) and is a fast no-op when Replicate
+    // already returned a clean transparent PNG (transparent edges → 0 candidates → skip).
+    processedReference = await removeWhiteMatteIfNeeded(processedReference)
 
     // 合成图片 (40%)
     // toneMatchStrength=0: skip local color correction — /api/fusion (Gemini) handles all
@@ -493,15 +495,16 @@ export function useImageEditor(): UseImageEditorReturn {
       if (bgResponse.ok) {
         const bgData = await bgResponse.json()
         if (bgData.result_image) processedReference = bgData.result_image
-        else processedReference = await removeWhiteMatteIfNeeded(processedReference)
+        else console.warn("[AI Editor] BG removal: no result_image in response")
       } else {
-        console.warn("[AI Editor] BG removal failed:", bgResponse.status, "— attempting local white matte removal")
-        processedReference = await removeWhiteMatteIfNeeded(processedReference)
+        console.warn("[AI Editor] BG removal failed:", bgResponse.status)
       }
     } catch (bgError) {
       console.warn("[AI Editor] BG removal error, continuing:", bgError)
-      processedReference = await removeWhiteMatteIfNeeded(processedReference)
     }
+
+    // Always run local matte cleanup as a safety pass
+    processedReference = await removeWhiteMatteIfNeeded(processedReference)
 
     // Compress inputs — send clean base (no ghost), reference cutout, and mask
     updateProgress("Compressing images for AI generation...", 35)
