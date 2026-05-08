@@ -807,7 +807,7 @@ export async function compositeImages(
   // Feather radius proportional to MASK dimensions (not image dimensions).
   // A mask covering 400 px needs ~40 px of blur to look naturally feathered;
   // the old image-based formula produced only ~7 px which is invisible at scale.
-  const blurPx = Math.max(15, Math.min(60, Math.round(Math.min(targetWidth, targetHeight) * 0.10)))
+  const blurPx = Math.max(15, Math.min(80, Math.round(Math.min(targetWidth, targetHeight) * 0.14)))
   fullMaskCtx.filter = `blur(${blurPx}px)`
   fullMaskCtx.drawImage(maskImg, 0, 0, baseImg.width, baseImg.height)
   fullMaskCtx.filter = "none"
@@ -860,7 +860,7 @@ export async function compositeImages(
   // Ramp: brightness < 0.55 → no fill (original base shows through);
   //        brightness = 1   → full fill (old content cleared for element to cover).
   const fullBaseData = ctx.getImageData(0, 0, canvas.width, canvas.height)
-  const surroundMargin = clamp(Math.round(Math.max(targetWidth, targetHeight) * 0.16), 12, 48)
+  const surroundMargin = clamp(Math.round(Math.max(targetWidth, targetHeight) * 0.20), 16, 64)
   const surroundStats = collectSurroundingStats(
     fullBaseData.data,
     canvas.width,
@@ -881,15 +881,51 @@ export async function compositeImages(
     }
   }
 
+  // Tone matching: shift element colour toward surrounding scene colour.
+  // Samples the element's overall mean and the base's surrounding mean,
+  // then applies a per-channel scale + luma shift that is strongest at the
+  // feathered edge (where the seam is most visible) and weakest at the centre.
+  const refStats = collectReferenceStats(refData.data)
+  const toneMatchStrength = 0.65
+  const scaleR = refStats.count > 0 && surroundStats.count > 0 ? clamp(surroundStats.r / Math.max(1, refStats.r), 0.72, 1.32) : 1
+  const scaleG = refStats.count > 0 && surroundStats.count > 0 ? clamp(surroundStats.g / Math.max(1, refStats.g), 0.72, 1.32) : 1
+  const scaleB = refStats.count > 0 && surroundStats.count > 0 ? clamp(surroundStats.b / Math.max(1, refStats.b), 0.72, 1.32) : 1
+  const lumaShift = refStats.count > 0 && surroundStats.count > 0
+    ? clamp(surroundStats.luma - refStats.luma, -25, 25) : 0
+
   // Pass 2 — composite the new element over the already-cleared base.
   for (let i = 0; i < maskData.data.length; i += 4) {
     const maskBrightness = (maskData.data[i] + maskData.data[i + 1] + maskData.data[i + 2]) / 3
     const refAlpha = refData.data[i + 3] / 255
     const combinedAlpha = (maskBrightness / 255) * refAlpha * blendStrength
     if (combinedAlpha > 0.01) {
-      baseData.data[i]     = Math.round(refData.data[i]     * combinedAlpha + baseData.data[i]     * (1 - combinedAlpha))
-      baseData.data[i + 1] = Math.round(refData.data[i + 1] * combinedAlpha + baseData.data[i + 1] * (1 - combinedAlpha))
-      baseData.data[i + 2] = Math.round(refData.data[i + 2] * combinedAlpha + baseData.data[i + 2] * (1 - combinedAlpha))
+      // edgeFactor is 1 at the feather boundary, 0 at the core centre
+      const edgeFactor = 1 - smoothstep(0.4, 0.85, maskBrightness / 255)
+      const corrStrength = toneMatchStrength * lerp(0.25, 1.0, edgeFactor)
+
+      const origR = refData.data[i]
+      const origG = refData.data[i + 1]
+      const origB = refData.data[i + 2]
+
+      const correctedR = clamp(origR * scaleR + lumaShift, 0, 255)
+      const correctedG = clamp(origG * scaleG + lumaShift, 0, 255)
+      const correctedB = clamp(origB * scaleB + lumaShift, 0, 255)
+
+      // Lerp between original element colour and tone-corrected colour
+      let fusedR = lerp(origR, correctedR, corrStrength)
+      let fusedG = lerp(origG, correctedG, corrStrength)
+      let fusedB = lerp(origB, correctedB, corrStrength)
+
+      // At edges, tint slightly toward the surrounding base colour so the
+      // boundary dissolves into the scene rather than abruptly colour-shifting
+      const edgeTintStrength = edgeFactor * 0.18
+      fusedR = lerp(fusedR, surroundStats.r, edgeTintStrength)
+      fusedG = lerp(fusedG, surroundStats.g, edgeTintStrength)
+      fusedB = lerp(fusedB, surroundStats.b, edgeTintStrength)
+
+      baseData.data[i]     = Math.round(fusedR * combinedAlpha + baseData.data[i]     * (1 - combinedAlpha))
+      baseData.data[i + 1] = Math.round(fusedG * combinedAlpha + baseData.data[i + 1] * (1 - combinedAlpha))
+      baseData.data[i + 2] = Math.round(fusedB * combinedAlpha + baseData.data[i + 2] * (1 - combinedAlpha))
       baseData.data[i + 3] = 255
     }
   }
