@@ -469,6 +469,11 @@ export function useImageEditor(): UseImageEditorReturn {
       processedReference = await removeWhiteMatteIfNeeded(processedReference)
     }
 
+    // Always run local matte cleanup as a safety pass — handles full bg-removal failure
+    // (still showing original white/uniform bg) and is a fast no-op when Replicate
+    // already returned a clean transparent PNG (transparent edges → 0 candidates → skip).
+    processedReference = await removeWhiteMatteIfNeeded(processedReference)
+
     // 合成图片 (40%)
     // toneMatchStrength=0: skip local color correction — /api/fusion (Gemini) handles all
     // lighting/color harmonization. Pre-adjusting here causes double-correction artifacts.
