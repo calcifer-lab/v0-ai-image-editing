@@ -915,16 +915,24 @@ export async function compositeImages(
       let fusedG = lerp(origG, correctedG, corrStrength)
       let fusedB = lerp(origB, correctedB, corrStrength)
 
-      // At edges, tint slightly toward the surrounding base colour so the
-      // boundary dissolves into the scene rather than abruptly colour-shifting
+      // At edges, tint the element toward the surrounding base colour
       const edgeTintStrength = edgeFactor * 0.18
       fusedR = lerp(fusedR, surroundStats.r, edgeTintStrength)
       fusedG = lerp(fusedG, surroundStats.g, edgeTintStrength)
       fusedB = lerp(fusedB, surroundStats.b, edgeTintStrength)
 
-      baseData.data[i]     = Math.round(fusedR * combinedAlpha + baseData.data[i]     * (1 - combinedAlpha))
-      baseData.data[i + 1] = Math.round(fusedG * combinedAlpha + baseData.data[i + 1] * (1 - combinedAlpha))
-      baseData.data[i + 2] = Math.round(fusedB * combinedAlpha + baseData.data[i + 2] * (1 - combinedAlpha))
+      // In the feather zone the blend-out target is shifted from old content toward
+      // the surrounding ambient colour.  Without this, (1 - combinedAlpha) recovers
+      // the old element content at the mask edge — exactly the ghost the user sees.
+      // Factor 0.82: at full edge the old content is reduced to ≈18%; at core (edgeFactor=0)
+      // the original base is used unchanged so fine detail outside the mask is preserved.
+      const blendBaseR = lerp(baseData.data[i],     surroundStats.r, edgeFactor * 0.82)
+      const blendBaseG = lerp(baseData.data[i + 1], surroundStats.g, edgeFactor * 0.82)
+      const blendBaseB = lerp(baseData.data[i + 2], surroundStats.b, edgeFactor * 0.82)
+
+      baseData.data[i]     = Math.round(fusedR * combinedAlpha + blendBaseR * (1 - combinedAlpha))
+      baseData.data[i + 1] = Math.round(fusedG * combinedAlpha + blendBaseG * (1 - combinedAlpha))
+      baseData.data[i + 2] = Math.round(fusedB * combinedAlpha + blendBaseB * (1 - combinedAlpha))
       baseData.data[i + 3] = 255
     }
   }
