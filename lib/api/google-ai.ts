@@ -3,16 +3,15 @@
  *
  * We support two models:
  *   - `gemini-2.5-flash-image`  → image generation / fusion (a.k.a. "Nano Banana", GA)
- *   - `gemini-2.0-flash`        → vision analysis (text-out)
+ *   - `gemini-2.5-flash`        → vision analysis (text-out)
+ *
+ * Note: `gemini-2.0-flash` was deprecated for new users in 2026 (Google returns
+ * 404 "no longer available to new users" for fresh billing accounts). Always
+ * use `gemini-2.5-flash` for vision/text tasks.
  *
  * Note: the previous preview alias `gemini-2.5-flash-image-preview` was
  * retired by Google and now returns 404 from v1beta `generateContent`. Always
- * use the GA model id below.
- *
- * Why this exists: OpenRouter started rejecting our account at the Google
- * provider routing layer (403 "Terms Of Service violation" with
- * `provider_name: null`, no entry in their Activity/Logs). Direct calls to
- * Google bypass that and let the product keep working.
+ * use the GA model id below for image generation.
  */
 
 const GOOGLE_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
@@ -139,4 +138,4 @@ export function extractGoogleText(data: unknown): string {
 }
 
 export const GOOGLE_IMAGE_MODEL = "gemini-2.5-flash-image"
-export const GOOGLE_VISION_MODEL = "gemini-2.0-flash"
+export const GOOGLE_VISION_MODEL = "gemini-2.5-flash"

@@ -15,6 +15,7 @@ import {
   buildFluxEnhancedPrompt,
   callGoogleGenerate,
   extractGoogleImage,
+  extractGoogleText,
   GOOGLE_IMAGE_MODEL,
   type OpenRouterContentPart,
 } from "@/lib/api"
@@ -135,8 +136,20 @@ async function inpaintWithGoogle(
 
   const image = extractGoogleImage(result.data)
   if (!image) {
-    console.error("[Inpaint] No image found in Google response")
-    return { ok: false, error_code: "NO_IMAGE_IN_RESPONSE" }
+    const text = extractGoogleText(result.data)
+    const finishReason = (result.data as any)?.candidates?.[0]?.finishReason
+    const promptFeedback = JSON.stringify((result.data as any)?.promptFeedback ?? {})
+    console.error(
+      "[Inpaint] Google returned 200 but no image. " +
+        `finishReason=${finishReason ?? "<none>"}, ` +
+        `promptFeedback=${promptFeedback}, ` +
+        `text=${(text || "<empty>").slice(0, 800)}`
+    )
+    return {
+      ok: false,
+      error_code: "NO_IMAGE_IN_RESPONSE",
+      message: `finishReason=${finishReason}; text=${(text || "").slice(0, 200)}`,
+    }
   }
 
   console.log("[Inpaint] Successfully generated image via Google direct API")

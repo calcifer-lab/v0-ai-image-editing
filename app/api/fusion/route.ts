@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import {
   callGoogleGenerate,
   extractGoogleImage,
+  extractGoogleText,
   GOOGLE_IMAGE_MODEL,
   type OpenRouterContentPart,
 } from "@/lib/api"
@@ -339,7 +340,18 @@ async function fusionWithGoogle(
 
   const image = extractGoogleImage(result.data)
   if (!image) {
-    console.error("[Fusion] No image found in Google response")
+    // Diagnostic: when Gemini returns 200 but no image, dump the model's text
+    // response (truncated) so we can tell content-policy refusal vs prompt
+    // confusion vs model-name issue. Without this we can't tell what's wrong.
+    const text = extractGoogleText(result.data)
+    const finishReason = (result.data as any)?.candidates?.[0]?.finishReason
+    const promptFeedback = JSON.stringify((result.data as any)?.promptFeedback ?? {})
+    console.error(
+      "[Fusion] Google returned 200 but no image. " +
+        `finishReason=${finishReason ?? "<none>"}, ` +
+        `promptFeedback=${promptFeedback}, ` +
+        `text=${(text || "<empty>").slice(0, 800)}`
+    )
     return null
   }
 
