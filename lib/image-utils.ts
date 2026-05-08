@@ -1025,6 +1025,91 @@ export async function fitOutputToBase(
 }
 
 /**
+ * Apply an AI-generated inpaint output onto the original base, using the mask
+ * to restrict edits to the masked region only. Outside the mask, the result
+ * is byte-identical to the base.
+ *
+ * Why this exists: Gemini's image-gen model often makes subtle "harmonization"
+ * tweaks to areas OUTSIDE the requested mask region (small color shifts,
+ * lighting drifts, occasional smudge artifacts). Those incidental edits are
+ * the largest source of run-to-run inconsistency — even when the in-mask
+ * content is good, the outside-mask drift makes consecutive runs look
+ * different in unpredictable ways.
+ *
+ * This function enforces the proper inpaint contract:
+ *   • Outside mask → base, untouched
+ *   • Inside mask  → Gemini's output (resized + cover-cropped to base dims)
+ *   • Mask edge    → soft 3-8px feather for smooth transition
+ *
+ * Returns the composited result at base's exact dimensions.
+ */
+export async function applyInpaintOutput(
+  outputDataUrl: string,
+  baseDataUrl: string,
+  maskDataUrl: string
+): Promise<string> {
+  const [output, base, mask] = await Promise.all([
+    loadImage(outputDataUrl),
+    loadImage(baseDataUrl),
+    loadImage(maskDataUrl),
+  ])
+
+  const w = base.width
+  const h = base.height
+
+  const canvas = document.createElement("canvas")
+  canvas.width = w
+  canvas.height = h
+  const ctx = canvas.getContext("2d")
+  if (!ctx) return outputDataUrl
+  ctx.drawImage(base, 0, 0)
+
+  const outputCanvas = document.createElement("canvas")
+  outputCanvas.width = w
+  outputCanvas.height = h
+  const outputCtx = outputCanvas.getContext("2d")
+  if (!outputCtx) return outputDataUrl
+
+  if (output.width === w && output.height === h) {
+    outputCtx.drawImage(output, 0, 0)
+  } else {
+    const scale = Math.max(w / output.width, h / output.height)
+    const drawWidth = output.width * scale
+    const drawHeight = output.height * scale
+    const drawX = (w - drawWidth) / 2
+    const drawY = (h - drawHeight) / 2
+    outputCtx.drawImage(output, drawX, drawY, drawWidth, drawHeight)
+  }
+
+  const maskCanvas = document.createElement("canvas")
+  maskCanvas.width = w
+  maskCanvas.height = h
+  const maskCtx = maskCanvas.getContext("2d")
+  if (!maskCtx) return outputDataUrl
+
+  const blurPx = Math.max(3, Math.min(8, Math.round(Math.min(w, h) / 200)))
+  maskCtx.filter = `blur(${blurPx}px)`
+  maskCtx.drawImage(mask, 0, 0, w, h)
+  maskCtx.filter = "none"
+
+  const outData = outputCtx.getImageData(0, 0, w, h)
+  const maskData = maskCtx.getImageData(0, 0, w, h)
+  const baseData = ctx.getImageData(0, 0, w, h)
+
+  for (let i = 0; i < baseData.data.length; i += 4) {
+    const maskBrightness = (maskData.data[i] + maskData.data[i + 1] + maskData.data[i + 2]) / 3
+    const alpha = maskBrightness / 255
+    if (alpha < 0.005) continue
+    baseData.data[i]     = Math.round(outData.data[i]     * alpha + baseData.data[i]     * (1 - alpha))
+    baseData.data[i + 1] = Math.round(outData.data[i + 1] * alpha + baseData.data[i + 1] * (1 - alpha))
+    baseData.data[i + 2] = Math.round(outData.data[i + 2] * alpha + baseData.data[i + 2] * (1 - alpha))
+  }
+
+  ctx.putImageData(baseData, 0, 0)
+  return canvas.toDataURL("image/png")
+}
+
+/**
  * Sample-based pixel similarity check inside the masked region.
  *
  * Detects "model degeneration" — when an image-generation model returns

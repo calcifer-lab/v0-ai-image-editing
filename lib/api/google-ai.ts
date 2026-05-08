@@ -46,6 +46,8 @@ function partToGoogle(part: OpenRouterContentPart): GooglePart {
 
 interface GoogleGenerateOptions {
   responseModalities?: Array<"TEXT" | "IMAGE">
+  /** Sampling temperature, 0..2. Lower = more deterministic. Default ~1.0. */
+  temperature?: number
 }
 
 interface GoogleGenerateResult {
@@ -83,8 +85,15 @@ export async function callGoogleGenerate(
   const body: Record<string, unknown> = {
     contents: [{ role: "user", parts }],
   }
+  const generationConfig: Record<string, unknown> = {}
   if (options.responseModalities && options.responseModalities.length > 0) {
-    body.generationConfig = { responseModalities: options.responseModalities }
+    generationConfig.responseModalities = options.responseModalities
+  }
+  if (typeof options.temperature === "number") {
+    generationConfig.temperature = options.temperature
+  }
+  if (Object.keys(generationConfig).length > 0) {
+    body.generationConfig = generationConfig
   }
 
   const response = await fetch(url, {

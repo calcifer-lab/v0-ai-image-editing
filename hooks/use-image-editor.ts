@@ -20,6 +20,7 @@ import {
   removeWhiteMatteIfNeeded,
   isOutputTooSimilarToBase,
   fitOutputToBase,
+  applyInpaintOutput,
 } from "@/lib/image-utils"
 import { safeParseJSON } from "@/utils/safeParse"
 
@@ -634,10 +635,18 @@ export function useImageEditor(): UseImageEditorReturn {
     }
     if (!data.result_image) throw new Error("Inpainting API response missing result image")
 
-    // Normalize output dimensions: Gemini's image model returns at its own canonical
-    // resolution (e.g. 1024×1024), so we resize the result back to base dims using
-    // a cover-style fit. Done before similarity check so meanDiff samples align.
-    const normalizedResult = await fitOutputToBase(data.result_image, images.baseImage)
+    // Apply inpaint output with mask-restricted composition:
+    //   • Outside the mask → byte-identical to base (eliminates Gemini's incidental
+    //     "harmonization" tweaks to non-mask regions which are the largest source
+    //     of run-to-run inconsistency)
+    //   • Inside the mask → Gemini's content (resized cover-fit to base dims)
+    //   • Soft 3-8px feather on the mask edge for smooth transition
+    // For the FLUX-fallback path (reference_dropped=true), the model already
+    // operated on a base-aligned mask server-side, so we use the simpler
+    // dimension-only fit there.
+    const normalizedResult = data.meta?.reference_dropped
+      ? await fitOutputToBase(data.result_image, images.baseImage)
+      : await applyInpaintOutput(data.result_image, images.baseImage, mask.dataUrl)
 
     if (data.meta?.reference_dropped) {
       console.warn("[AI Editor] AI Compose degraded: reference element was not preserved by fallback model")

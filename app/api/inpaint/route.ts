@@ -131,8 +131,12 @@ async function inpaintWithGoogle(
   startTime: number,
   composite_used: boolean
 ): Promise<InpaintAttempt> {
+  // Lower temperature for more deterministic inpaint outputs. Element identity
+  // and geometry are non-negotiable here, so we suppress sampling variability
+  // at the cost of slightly less "creative" lighting harmonization.
   const result = await callGoogleGenerate(GOOGLE_IMAGE_MODEL, content, apiKey, {
     responseModalities: ["TEXT", "IMAGE"],
+    temperature: 0.4,
   })
 
   if (!result.ok) {

@@ -330,8 +330,12 @@ async function fusionWithGoogle(
   apiKey: string,
   startTime: number
 ): Promise<NextResponse<FusionResponse> | null> {
+  // Slightly higher temperature than inpaint — fusion's job is "harmonize",
+  // a bit more variability is acceptable since geometry is already pinned by
+  // the input composite.
   const result = await callGoogleGenerate(GOOGLE_IMAGE_MODEL, content, apiKey, {
     responseModalities: ["TEXT", "IMAGE"],
+    temperature: 0.6,
   })
 
   if (!result.ok) {
