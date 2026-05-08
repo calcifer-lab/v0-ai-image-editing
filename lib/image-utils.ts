@@ -1025,6 +1025,75 @@ export async function fitOutputToBase(
 }
 
 /**
+ * Detect whether an image has a transparent background by sampling its edges.
+ * Returns true when ≥5 of 8 edge sample points have alpha < 200 (likely already
+ * background-removed).
+ *
+ * Used to short-circuit redundant /api/remove-background calls and to decide
+ * whether the reference cutout needs alpha flattening before being sent to
+ * Gemini (whose vision model handles alpha channels unpredictably).
+ */
+export async function hasTransparentBackground(dataUrl: string): Promise<boolean> {
+  try {
+    const img = await loadImage(dataUrl)
+    const canvas = document.createElement("canvas")
+    canvas.width = img.width
+    canvas.height = img.height
+    const ctx = canvas.getContext("2d")
+    if (!ctx) return false
+    ctx.drawImage(img, 0, 0)
+    const data = ctx.getImageData(0, 0, img.width, img.height).data
+
+    const samplePoints: [number, number][] = [
+      [0, 0],
+      [img.width - 1, 0],
+      [0, img.height - 1],
+      [img.width - 1, img.height - 1],
+      [Math.floor(img.width / 2), 0],
+      [Math.floor(img.width / 2), img.height - 1],
+      [0, Math.floor(img.height / 2)],
+      [img.width - 1, Math.floor(img.height / 2)],
+    ]
+
+    let transparentCount = 0
+    for (const [x, y] of samplePoints) {
+      const i = (y * img.width + x) * 4
+      if (data[i + 3] < 200) transparentCount += 1
+    }
+
+    return transparentCount >= 5
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Flatten an image with an alpha channel onto a solid white background.
+ *
+ * Why this exists: Gemini's vision model handles PNG alpha channels
+ * inconsistently — sometimes treating transparent pixels as black, sometimes
+ * white, sometimes producing visual confusion that makes the model unable to
+ * read the element's identity. Flattening to a clean white background gives
+ * Gemini an unambiguous, opaque image to study while preserving the
+ * background-removed cutout's visible content.
+ *
+ * The transparent original is still used for client-side compositeImages
+ * (where alpha-aware blending is needed); this is only for the Gemini input.
+ */
+export async function flattenAlphaToWhite(dataUrl: string): Promise<string> {
+  const img = await loadImage(dataUrl)
+  const canvas = document.createElement("canvas")
+  canvas.width = img.width
+  canvas.height = img.height
+  const ctx = canvas.getContext("2d")
+  if (!ctx) return dataUrl
+  ctx.fillStyle = "#FFFFFF"
+  ctx.fillRect(0, 0, canvas.width, canvas.height)
+  ctx.drawImage(img, 0, 0)
+  return canvas.toDataURL("image/png")
+}
+
+/**
  * Apply an AI-generated inpaint output onto the original base, using the mask
  * to restrict edits to the masked region only. Outside the mask, the result
  * is byte-identical to the base.

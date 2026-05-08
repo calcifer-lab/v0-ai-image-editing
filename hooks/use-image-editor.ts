@@ -21,6 +21,8 @@ import {
   isOutputTooSimilarToBase,
   fitOutputToBase,
   applyInpaintOutput,
+  hasTransparentBackground,
+  flattenAlphaToWhite,
 } from "@/lib/image-utils"
 import { safeParseJSON } from "@/utils/safeParse"
 
@@ -522,34 +524,42 @@ export function useImageEditor(): UseImageEditorReturn {
       }
     }
 
-    // Remove background so Gemini receives only the subject
-    updateProgress("Removing background...", 18)
-    try {
-      const compressedForBg = await compressDataUrlForUpload(processedReference, { preserveTransparency: false })
-      const bgController = new AbortController()
-      const bgTimeout = setTimeout(() => bgController.abort(), 120_000)
-      let bgResponse: Response
+    // Skip bg-removal when the user-supplied element is already a transparent
+    // cutout (running rembg on a transparent input produces unpredictable
+    // garbage that confuses Gemini downstream).
+    const alreadyCut = await hasTransparentBackground(processedReference)
+    if (alreadyCut) {
+      console.log("[AI Editor] Reference already has transparent background — skipping bg-removal")
+      updateProgress("Reference already cut out — skipping bg-removal", 18)
+    } else {
+      updateProgress("Removing background...", 18)
       try {
-        bgResponse = await fetch("/api/remove-background", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ image: compressedForBg }),
-          signal: bgController.signal,
-        })
-      } finally {
-        clearTimeout(bgTimeout)
-      }
-      if (bgResponse.ok) {
-        const bgData = await bgResponse.json()
-        if (bgData.result_image) processedReference = bgData.result_image
-        else processedReference = await removeWhiteMatteIfNeeded(processedReference)
-      } else {
-        console.warn("[AI Editor] BG removal failed:", bgResponse.status, "— attempting local white matte removal")
+        const compressedForBg = await compressDataUrlForUpload(processedReference, { preserveTransparency: false })
+        const bgController = new AbortController()
+        const bgTimeout = setTimeout(() => bgController.abort(), 120_000)
+        let bgResponse: Response
+        try {
+          bgResponse = await fetch("/api/remove-background", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ image: compressedForBg }),
+            signal: bgController.signal,
+          })
+        } finally {
+          clearTimeout(bgTimeout)
+        }
+        if (bgResponse.ok) {
+          const bgData = await bgResponse.json()
+          if (bgData.result_image) processedReference = bgData.result_image
+          else processedReference = await removeWhiteMatteIfNeeded(processedReference)
+        } else {
+          console.warn("[AI Editor] BG removal failed:", bgResponse.status, "— attempting local white matte removal")
+          processedReference = await removeWhiteMatteIfNeeded(processedReference)
+        }
+      } catch (bgError) {
+        console.warn("[AI Editor] BG removal error, continuing:", bgError)
         processedReference = await removeWhiteMatteIfNeeded(processedReference)
       }
-    } catch (bgError) {
-      console.warn("[AI Editor] BG removal error, continuing:", bgError)
-      processedReference = await removeWhiteMatteIfNeeded(processedReference)
     }
 
     // Build local composite to anchor placement (geometric prior for Gemini)
@@ -580,11 +590,20 @@ export function useImageEditor(): UseImageEditorReturn {
     }
 
     // Compress inputs. Mask stays as PNG to preserve binary edges.
+    // The reference sent to Gemini is FLATTENED ONTO WHITE — Gemini's vision
+    // model handles PNG alpha channels inconsistently and can fail to recognize
+    // the element's identity when it sees jagged transparent edges. The
+    // transparent processedReference is still used for the local composite.
     updateProgress("Compressing images for AI generation...", 40)
+    const flattenedReference = await flattenAlphaToWhite(processedReference)
+    console.log(
+      `[AI Editor] Reference for Gemini: alpha-flattened-to-white ` +
+        `(input was-already-cut=${alreadyCut})`
+    )
     const [compressedBase, compressedMask, compressedRef, compressedComposite, maskBboxNorm] = await Promise.all([
       compressDataUrlForUpload(images.baseImage),
       compressDataUrlForUpload(mask.dataUrl, { isMask: true }),
-      compressDataUrlForUpload(processedReference, { preserveTransparency: true }),
+      compressDataUrlForUpload(flattenedReference),
       compositePreview
         ? compressDataUrlForUpload(compositePreview)
         : Promise.resolve(null as string | null),
