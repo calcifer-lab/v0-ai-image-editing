@@ -451,17 +451,11 @@ export function loadImage(src: string): Promise<HTMLImageElement> {
   })
 }
 
-/**
- * Get image dimensions from a data URL
- */
 export async function getImageDimensions(dataUrl: string): Promise<ImageDimensions> {
   const img = await loadImage(dataUrl)
   return { width: img.width, height: img.height }
 }
 
-/**
- * Resize an image to fit within max dimensions while maintaining aspect ratio
- */
 export async function resizeImage(
   dataUrl: string,
   maxWidth: number,
@@ -500,9 +494,6 @@ export async function resizeImage(
   }
 }
 
-/**
- * Ensure mask image matches base image dimensions
- */
 export async function resizeMaskToMatch(maskDataUrl: string, targetWidth: number, targetHeight: number): Promise<string> {
   const img = await loadImage(maskDataUrl)
 
@@ -774,9 +765,25 @@ export async function compositeImages(
   const refData = refCtx.getImageData(0, 0, targetWidth, targetHeight)
   const baseData = ctx.getImageData(targetX, targetY, targetWidth, targetHeight)
 
-  // Pass 1: clear only the extreme centre (brightness > 0.85) with surrounding ambient.
-  // Only clear where the element is guaranteed to be fully opaque so the flat ambient
-  // colour does not create a visible rectangle in transparent gap areas.
+  // Generate a heavily blurred version of the base image as a poor-man's inpainting fill.
+  // Heavy blur (radius ~ half the mask) dissolves the old element's hard edges into a
+  // smooth colour gradient that matches the surrounding scene. This avoids both:
+  //   - the flat-colour rectangle that a single mean colour produces (since the blurred
+  //     base preserves local colour gradients like sky tone, ground tone)
+  //   - the sharp old-element ghost that the un-modified base shows through transparent
+  //     gaps in the new element (since heavy blur smears the old element into a soft blob)
+  const inpaintBlurPx = clamp(Math.round(Math.min(targetWidth, targetHeight) * 0.45), 30, 90)
+  const inpaintCanvas = document.createElement("canvas")
+  inpaintCanvas.width = baseImg.width
+  inpaintCanvas.height = baseImg.height
+  const inpaintCtx = inpaintCanvas.getContext("2d")
+  if (!inpaintCtx) throw new Error("Failed to get inpaint canvas context")
+  inpaintCtx.filter = `blur(${inpaintBlurPx}px)`
+  inpaintCtx.drawImage(baseImg, 0, 0)
+  inpaintCtx.filter = "none"
+  const inpaintData = inpaintCtx.getImageData(targetX, targetY, targetWidth, targetHeight)
+
+  // Surrounding stats (still used for element tone matching, NOT for spatial fill).
   const fullBaseData = ctx.getImageData(0, 0, canvas.width, canvas.height)
   const surroundMargin = clamp(Math.round(Math.max(targetWidth, targetHeight) * 0.20), 16, 64)
   const surroundStats = collectSurroundingStats(
@@ -786,18 +793,17 @@ export async function compositeImages(
     { x: targetX, y: targetY, width: targetWidth, height: targetHeight },
     surroundMargin
   )
-  if (surroundStats.count > 0) {
-    for (let i = 0; i < maskData.data.length; i += 4) {
-      const maskBrightness = (maskData.data[i] + maskData.data[i + 1] + maskData.data[i + 2]) / 3 / 255
-      // Only clear the very centre (brightness > 0.85) where the element is guaranteed
-      // to cover. A wide fill range creates a visible flat-colour rectangle because
-      // surroundStats is a mean that does not match local texture.
-      const fill = clamp((maskBrightness - 0.85) / 0.15, 0, 1)
-      if (fill > 0.01) {
-        baseData.data[i]     = Math.round(surroundStats.r * fill + baseData.data[i]     * (1 - fill))
-        baseData.data[i + 1] = Math.round(surroundStats.g * fill + baseData.data[i + 1] * (1 - fill))
-        baseData.data[i + 2] = Math.round(surroundStats.b * fill + baseData.data[i + 2] * (1 - fill))
-      }
+
+  // Pass 1: replace base inside the mask with the blurred (inpaint) version.
+  // Strength scales with mask brightness so the very edge keeps a touch of original
+  // texture for a seamless join, while the core is fully replaced -- old element gone.
+  for (let i = 0; i < maskData.data.length; i += 4) {
+    const maskBrightness = (maskData.data[i] + maskData.data[i + 1] + maskData.data[i + 2]) / 3 / 255
+    const fill = smoothstep(0.05, 0.55, maskBrightness)
+    if (fill > 0.01) {
+      baseData.data[i]     = Math.round(inpaintData.data[i]     * fill + baseData.data[i]     * (1 - fill))
+      baseData.data[i + 1] = Math.round(inpaintData.data[i + 1] * fill + baseData.data[i + 1] * (1 - fill))
+      baseData.data[i + 2] = Math.round(inpaintData.data[i + 2] * fill + baseData.data[i + 2] * (1 - fill))
     }
   }
 
@@ -810,13 +816,12 @@ export async function compositeImages(
   const lumaShift = refStats.count > 0 && surroundStats.count > 0
     ? clamp(surroundStats.luma - refStats.luma, -25, 25) : 0
 
-  // Pass 2: composite the new element over the already-cleared base.
+  // Pass 2: composite the new element over the inpainted base.
   for (let i = 0; i < maskData.data.length; i += 4) {
     const maskBrightness = (maskData.data[i] + maskData.data[i + 1] + maskData.data[i + 2]) / 3
     const refAlpha = refData.data[i + 3] / 255
     const combinedAlpha = (maskBrightness / 255) * refAlpha * blendStrength
     if (combinedAlpha > 0.01) {
-      // edgeFactor is 1 at the feather boundary, 0 at the core centre
       const edgeFactor = 1 - smoothstep(0.4, 0.85, maskBrightness / 255)
       const corrStrength = toneMatchStrength * lerp(0.25, 1.0, edgeFactor)
 
@@ -828,26 +833,16 @@ export async function compositeImages(
       const correctedG = clamp(origG * scaleG + lumaShift, 0, 255)
       const correctedB = clamp(origB * scaleB + lumaShift, 0, 255)
 
-      let fusedR = lerp(origR, correctedR, corrStrength)
-      let fusedG = lerp(origG, correctedG, corrStrength)
-      let fusedB = lerp(origB, correctedB, corrStrength)
+      const fusedR = lerp(origR, correctedR, corrStrength)
+      const fusedG = lerp(origG, correctedG, corrStrength)
+      const fusedB = lerp(origB, correctedB, corrStrength)
 
-      // Very subtle tint toward surrounding colour at edges
-      const edgeTintStrength = edgeFactor * 0.08
-      fusedR = lerp(fusedR, surroundStats.r, edgeTintStrength)
-      fusedG = lerp(fusedG, surroundStats.g, edgeTintStrength)
-      fusedB = lerp(fusedB, surroundStats.b, edgeTintStrength)
-
-      // Blend-out target: use the actual base pixel (preserves natural scene texture).
-      // A small nudge toward surroundStats (15%) at the extreme edge softens the ghost
-      // without producing the visible flat-colour rectangle that higher values create.
-      const blendBaseR = lerp(baseData.data[i],     surroundStats.r, edgeFactor * 0.15)
-      const blendBaseG = lerp(baseData.data[i + 1], surroundStats.g, edgeFactor * 0.15)
-      const blendBaseB = lerp(baseData.data[i + 2], surroundStats.b, edgeFactor * 0.15)
-
-      baseData.data[i]     = Math.round(fusedR * combinedAlpha + blendBaseR * (1 - combinedAlpha))
-      baseData.data[i + 1] = Math.round(fusedG * combinedAlpha + blendBaseG * (1 - combinedAlpha))
-      baseData.data[i + 2] = Math.round(fusedB * combinedAlpha + blendBaseB * (1 - combinedAlpha))
+      // Blend out into the modified base (which now holds the inpaint fill where the
+      // mask is bright, and original scene where it is dim). No additional ambient
+      // shift needed -- inpaintData already gives a smooth, scene-matching backdrop.
+      baseData.data[i]     = Math.round(fusedR * combinedAlpha + baseData.data[i]     * (1 - combinedAlpha))
+      baseData.data[i + 1] = Math.round(fusedG * combinedAlpha + baseData.data[i + 1] * (1 - combinedAlpha))
+      baseData.data[i + 2] = Math.round(fusedB * combinedAlpha + baseData.data[i + 2] * (1 - combinedAlpha))
       baseData.data[i + 3] = 255
     }
   }
