@@ -699,8 +699,8 @@ export async function detectWatermark(dataUrl: string): Promise<boolean> {
 export const ASPECT_RATIOS = {
   "original": { ratio: null, label: "Original", description: "Keep original dimensions" },
   "1:1": { ratio: 1, label: "1:1", description: "Square (Instagram)" },
-  "4:3": { ratio: 4 / 3, label: "4:3", description: "Standard (1024×768)" },
-  "16:9": { ratio: 16 / 9, label: "16:9", description: "Widescreen (1920×1080)" },
+  "4:3": { ratio: 4 / 3, label: "4:3", description: "Standard (1024x768)" },
+  "16:9": { ratio: 16 / 9, label: "16:9", description: "Widescreen (1920x1080)" },
   "3:2": { ratio: 3 / 2, label: "3:2", description: "Classic photo (DSLR)" },
   "9:16": { ratio: 9 / 16, label: "9:16", description: "Vertical (Stories)" },
   "custom": { ratio: null, label: "Custom", description: "Enter custom dimensions" },
@@ -805,8 +805,7 @@ export async function compositeImages(
   const fullMaskCtx = fullMaskCanvas.getContext("2d")
   if (!fullMaskCtx) throw new Error("Failed to get full mask canvas context")
   // Feather radius proportional to MASK dimensions (not image dimensions).
-  // A mask covering 400 px needs ~40 px of blur to look naturally feathered;
-  // the old image-based formula produced only ~7 px which is invisible at scale.
+  // A mask covering 400 px needs ~56 px of blur to look naturally feathered.
   const blurPx = Math.max(15, Math.min(80, Math.round(Math.min(targetWidth, targetHeight) * 0.14)))
   fullMaskCtx.filter = `blur(${blurPx}px)`
   fullMaskCtx.drawImage(maskImg, 0, 0, baseImg.width, baseImg.height)
@@ -848,7 +847,7 @@ export async function compositeImages(
     refCtx.drawImage(refImg, 0, 0, refImg.width, refImg.height, 0, 0, targetWidth, targetHeight)
   }
 
-  // Pixel-by-pixel blend: combinedAlpha = maskBrightness × refAlpha × blendStrength
+  // Pixel-by-pixel blend: combinedAlpha = maskBrightness x refAlpha x blendStrength
   const blendStrength = clamp(options?.blendStrength ?? 1.0, 0, 1)
   const maskData = fullMaskCtx.getImageData(targetX, targetY, targetWidth, targetHeight)
   const refData = refCtx.getImageData(0, 0, targetWidth, targetHeight)
@@ -870,7 +869,10 @@ export async function compositeImages(
   if (surroundStats.count > 0) {
     for (let i = 0; i < maskData.data.length; i += 4) {
       const maskBrightness = (maskData.data[i] + maskData.data[i + 1] + maskData.data[i + 2]) / 3 / 255
-      const fill = Math.max(0, (maskBrightness - 0.40) / 0.60)
+      // Steep ramp 0.40 to 0.70: fully clears the core (fill=1 at brightness >= 0.70)
+      // so that high-contrast original content (annotation boxes, text) cannot leak
+      // through transparent gaps in the new element where refAlpha=0 in Pass 2.
+      const fill = clamp((maskBrightness - 0.40) / 0.30, 0, 1)
       if (fill > 0.01) {
         baseData.data[i]     = Math.round(surroundStats.r * fill + baseData.data[i]     * (1 - fill))
         baseData.data[i + 1] = Math.round(surroundStats.g * fill + baseData.data[i + 1] * (1 - fill))
@@ -922,8 +924,8 @@ export async function compositeImages(
 
       // In the feather zone the blend-out target is shifted from old content toward
       // the surrounding ambient colour.  Without this, (1 - combinedAlpha) recovers
-      // the old element content at the mask edge — exactly the ghost the user sees.
-      // Factor 0.82: at full edge the old content is reduced to ≈18%; at core (edgeFactor=0)
+      // the old element content at the mask edge.
+      // Factor 0.82: at full edge the old content is reduced to ~18%; at core (edgeFactor=0)
       // the original base is used unchanged so fine detail outside the mask is preserved.
       const blendBaseR = lerp(baseData.data[i],     surroundStats.r, edgeFactor * 0.82)
       const blendBaseG = lerp(baseData.data[i + 1], surroundStats.g, edgeFactor * 0.82)
