@@ -804,8 +804,10 @@ export async function compositeImages(
   fullMaskCanvas.height = baseImg.height
   const fullMaskCtx = fullMaskCanvas.getContext("2d")
   if (!fullMaskCtx) throw new Error("Failed to get full mask canvas context")
-  // Proportional blur: larger images need more blur to achieve the same perceptual softness
-  const blurPx = Math.max(3, Math.min(8, Math.round(Math.min(baseImg.width, baseImg.height) / 150)))
+  // Feather radius proportional to MASK dimensions (not image dimensions).
+  // A mask covering 400 px needs ~40 px of blur to look naturally feathered;
+  // the old image-based formula produced only ~7 px which is invisible at scale.
+  const blurPx = Math.max(15, Math.min(60, Math.round(Math.min(targetWidth, targetHeight) * 0.10)))
   fullMaskCtx.filter = `blur(${blurPx}px)`
   fullMaskCtx.drawImage(maskImg, 0, 0, baseImg.width, baseImg.height)
   fullMaskCtx.filter = "none"
@@ -852,9 +854,11 @@ export async function compositeImages(
   const refData = refCtx.getImageData(0, 0, targetWidth, targetHeight)
   const baseData = ctx.getImageData(targetX, targetY, targetWidth, targetHeight)
 
-  // Pass 1 — clear mask region to surrounding ambient color.
-  // This removes old base content so it cannot bleed through transparent gaps
-  // in the new element (e.g. spaces between legs, internal holes of a white-bg product).
+  // Pass 1 — clear only the CORE mask area with surrounding ambient colour.
+  // The feather zone (low mask brightness, near boundary) keeps the original base
+  // so the element fades naturally into the scene instead of cutting to a flat box.
+  // Ramp: brightness < 0.55 → no fill (original base shows through);
+  //        brightness = 1   → full fill (old content cleared for element to cover).
   const fullBaseData = ctx.getImageData(0, 0, canvas.width, canvas.height)
   const surroundMargin = clamp(Math.round(Math.max(targetWidth, targetHeight) * 0.16), 12, 48)
   const surroundStats = collectSurroundingStats(
@@ -866,8 +870,9 @@ export async function compositeImages(
   )
   if (surroundStats.count > 0) {
     for (let i = 0; i < maskData.data.length; i += 4) {
-      const maskBrightness = (maskData.data[i] + maskData.data[i + 1] + maskData.data[i + 2]) / 3
-      const fill = maskBrightness / 255
+      const maskBrightness = (maskData.data[i] + maskData.data[i + 1] + maskData.data[i + 2]) / 3 / 255
+      // Only clear pixels in the core region; feather zone stays as original base
+      const fill = Math.max(0, (maskBrightness - 0.55) / 0.45)
       if (fill > 0.01) {
         baseData.data[i]     = Math.round(surroundStats.r * fill + baseData.data[i]     * (1 - fill))
         baseData.data[i + 1] = Math.round(surroundStats.g * fill + baseData.data[i + 1] * (1 - fill))
