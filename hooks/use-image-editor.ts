@@ -524,6 +524,7 @@ export function useImageEditor(): UseImageEditorReturn {
       }
     }
 
+
     // Skip bg-removal when the user-supplied element is already a transparent
     // cutout (running rembg on a transparent input produces unpredictable
     // garbage that confuses Gemini downstream).
@@ -533,6 +534,7 @@ export function useImageEditor(): UseImageEditorReturn {
       updateProgress("Reference already cut out — skipping bg-removal", 18)
     } else {
       updateProgress("Removing background...", 18)
+
       try {
         const compressedForBg = await compressDataUrlForUpload(processedReference, { preserveTransparency: false })
         const bgController = new AbortController()
@@ -590,6 +592,7 @@ export function useImageEditor(): UseImageEditorReturn {
     }
 
     // Compress inputs. Mask stays as PNG to preserve binary edges.
+
     // The reference sent to Gemini is FLATTENED ONTO WHITE — Gemini's vision
     // model handles PNG alpha channels inconsistently and can fail to recognize
     // the element's identity when it sees jagged transparent edges. The
@@ -604,6 +607,7 @@ export function useImageEditor(): UseImageEditorReturn {
       compressDataUrlForUpload(images.baseImage),
       compressDataUrlForUpload(mask.dataUrl, { isMask: true }),
       compressDataUrlForUpload(flattenedReference),
+
       compositePreview
         ? compressDataUrlForUpload(compositePreview)
         : Promise.resolve(null as string | null),
@@ -650,6 +654,7 @@ export function useImageEditor(): UseImageEditorReturn {
     updateProgress("AI model processing response...", 82, { driftTo: 88 })
     const data = await safeParseJSON(response) as {
       result_image?: string
+
       meta?: { model?: string; reference_dropped?: boolean; composite_used?: boolean }
     }
     if (!data.result_image) throw new Error("Inpainting API response missing result image")
@@ -702,6 +707,7 @@ export function useImageEditor(): UseImageEditorReturn {
     }
 
     return normalizedResult
+
   }, [images, mask, params, elementCrop, imageAnalysis, analyzeImage, updateProgress])
 
   // 处理主流程

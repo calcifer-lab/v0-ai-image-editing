@@ -175,6 +175,7 @@ async function inpaintWithGoogle(
         reference_used: true,
         composite_used,
       },
+
     }),
   }
 }
@@ -509,8 +510,10 @@ export async function POST(request: NextRequest): Promise<NextResponse<InpaintRe
         }
       }
 
+
       // OpenRouter Gemini path retired — the proxy account no longer serves
       // OpenAI/Google models. Falls through to Replicate FLUX directly.
+
     }
 
     // 3. Replicate FLUX

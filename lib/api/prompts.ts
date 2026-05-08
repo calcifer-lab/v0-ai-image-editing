@@ -122,6 +122,7 @@ REMEMBER: Accurately identifying layers and their relationships is ESSENTIAL for
 
 /**
  * AI Compose harmonization prompt (composite-first flow).
+
  * Used when a pre-composited preview is available — Gemini's job is to
  * REPLACE whatever is in the masked region of the base image with the
  * REFERENCE element, while preserving the rest of the base.
@@ -132,6 +133,7 @@ REMEMBER: Accurately identifying layers and their relationships is ESSENTIAL for
  * base), telling Gemini to match style causes it to repaint the reference
  * AS the base, which collapses to "no change". We prioritize element identity
  * over scene-style uniformity.
+
  */
 export function buildGeminiComposeHarmonizationPrompt(
   userPrompt: string,
@@ -141,6 +143,7 @@ export function buildGeminiComposeHarmonizationPrompt(
   }
 ): string {
   const analysisBlock = options?.elementAnalysis
+
     ? `\n\nREFERENCE ELEMENT DETAILS (these specific features MUST appear in the output):\n${options.elementAnalysis.trim()}`
     : ""
   const bboxBlock = options?.maskBboxNorm
@@ -173,10 +176,13 @@ CRITICAL RULES (failure if violated):
 
 6. OUTSIDE THE MASK: IMAGE 3 byte-identical. No global recoloring, no recropping, no aspect change. No new objects added anywhere.
 
+
 USER INTENT:
 ${userPrompt}${analysisBlock}${bboxBlock}
 
+
 Return only the final composited image. The masked region must show IMAGE 1's element clearly recognizable, lit to match IMAGE 3's lighting environment.`
+
 }
 
 /**
