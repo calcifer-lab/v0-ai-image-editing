@@ -394,8 +394,7 @@ export function useImageEditor(): UseImageEditorReturn {
           return fusionData.fused_image
         }
         console.log("[AI Editor] AI fusion complete:", fusionData.meta?.model)
-        // Gemini doesn't preserve input dimensions; normalize back to base size.
-        return await fitOutputToBase(fusionData.fused_image, images.baseImage!)
+        return fusionData.fused_image
       }
     } catch (fusionError) {
       console.warn("[AI Editor] AI fusion error:", fusionError)
