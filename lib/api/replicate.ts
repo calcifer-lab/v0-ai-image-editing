@@ -1,21 +1,20 @@
 /**
- * Replicate API 共享工具函数
+ * Replicate API 共享工具函数 (sharp-free).
+ *
+ * Mask resize (the only sharp-using helper) lives in ./resize-mask so that
+ * routes which only need polling / validation utilities don't bundle sharp.
  */
 
 import type { ReplicatePredictionResult, ImageDimensions } from "@/types"
 
-const IMAGE_DATA_URL_REGEX = /^data:(image\/[a-zA-Z0-9.+-]+);base64,([A-Za-z0-9+/=\s]+)$/
-
-export interface ValidatedImageInput {
-  dataUrl: string
-  mimeType: string
-  bytes: number
-}
-
-export interface ImageValidationOptions {
-  fieldName?: string
-  maxBytes?: number
-}
+// Re-export validation utilities so existing import paths (`@/lib/api`) keep working.
+export {
+  validateImageDataUrl,
+  isValidImage,
+  estimateBase64DecodedBytes,
+  type ValidatedImageInput,
+  type ImageValidationOptions,
+} from "./validate"
 
 /**
  * 轮询 Replicate 预测结果
@@ -68,65 +67,6 @@ export async function urlToBase64(url: string): Promise<string> {
 }
 
 /**
- * 验证图片格式是否有效
- */
-export function isValidImage(base64: string): boolean {
-  return base64.startsWith("data:image/")
-}
-
-export function estimateBase64DecodedBytes(base64Payload: string): number {
-  const normalized = base64Payload.replace(/\s/g, "")
-  const padding = normalized.endsWith("==") ? 2 : normalized.endsWith("=") ? 1 : 0
-  return Math.floor((normalized.length * 3) / 4) - padding
-}
-
-export function validateImageDataUrl(
-  value: string,
-  options: ImageValidationOptions = {}
-): { ok: true; image: ValidatedImageInput } | { ok: false; error: string; status: number } {
-  const fieldName = options.fieldName || "image"
-
-  if (!value || typeof value !== "string") {
-    return { ok: false, error: `${fieldName} is required`, status: 400 }
-  }
-
-  const trimmed = value.trim()
-  const match = trimmed.match(IMAGE_DATA_URL_REGEX)
-  if (!match) {
-    return {
-      ok: false,
-      error: `${fieldName} must be a valid base64 data URL (for example data:image/png;base64,...)`,
-      status: 400,
-    }
-  }
-
-  const [, mimeType, base64Payload] = match
-  const bytes = estimateBase64DecodedBytes(base64Payload)
-
-  if (!Number.isFinite(bytes) || bytes <= 0) {
-    return { ok: false, error: `${fieldName} could not be decoded`, status: 400 }
-  }
-
-  if (options.maxBytes && bytes > options.maxBytes) {
-    const maxMb = (options.maxBytes / (1024 * 1024)).toFixed(1).replace(/\.0$/, "")
-    return {
-      ok: false,
-      error: `${fieldName} is too large. Maximum supported size is ${maxMb}MB.`,
-      status: 413,
-    }
-  }
-
-  return {
-    ok: true,
-    image: {
-      dataUrl: trimmed,
-      mimeType,
-      bytes,
-    },
-  }
-}
-
-/**
  * 从 base64 获取图片尺寸
  */
 export async function getImageDimensions(base64: string): Promise<ImageDimensions> {
@@ -158,39 +98,6 @@ export async function getImageDimensions(base64: string): Promise<ImageDimension
   
   // Default fallback
   return { width: 512, height: 512 }
-}
-
-/**
- * 使用 sharp 调整遮罩尺寸以匹配图片
- */
-export async function resizeMaskToMatchImage(
-  maskBase64: string,
-  targetWidth: number,
-  targetHeight: number
-): Promise<string> {
-  const maskDims = await getImageDimensions(maskBase64)
-  
-  if (maskDims.width === targetWidth && maskDims.height === targetHeight) {
-    return maskBase64
-  }
-  
-  console.log(`[API] Resizing mask from ${maskDims.width}x${maskDims.height} to ${targetWidth}x${targetHeight}`)
-  
-  try {
-    const sharp = (await import("sharp")).default
-    const base64Data = maskBase64.replace(/^data:image\/\w+;base64,/, "")
-    const buffer = Buffer.from(base64Data, "base64")
-    
-    const resizedBuffer = await sharp(buffer)
-      .resize(targetWidth, targetHeight, { fit: "fill" })
-      .png()
-      .toBuffer()
-    
-    return `data:image/png;base64,${resizedBuffer.toString("base64")}`
-  } catch (error) {
-    console.error("[API] Sharp not available, cannot resize mask:", error)
-    return maskBase64
-  }
 }
 
 /**

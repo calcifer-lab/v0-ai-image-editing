@@ -122,9 +122,18 @@ REMEMBER: Accurately identifying layers and their relationships is ESSENTIAL for
 
 /**
  * AI Compose harmonization prompt (composite-first flow).
- * Used when a pre-composited preview is available — Gemini's job is to regenerate
- * textures inside the mask so the already-positioned element matches scene lighting,
- * NOT to figure out placement from scratch.
+
+ * Used when a pre-composited preview is available — Gemini's job is to
+ * REPLACE whatever is in the masked region of the base image with the
+ * REFERENCE element, while preserving the rest of the base.
+ *
+ * Image order is REFERENCE-first to bias Gemini's attention toward identity
+ * preservation. Style-match instructions are deliberately removed: in the
+ * cross-style case (e.g. photorealistic reference into a fantasy-painting
+ * base), telling Gemini to match style causes it to repaint the reference
+ * AS the base, which collapses to "no change". We prioritize element identity
+ * over scene-style uniformity.
+
  */
 export function buildGeminiComposeHarmonizationPrompt(
   userPrompt: string,
@@ -134,34 +143,46 @@ export function buildGeminiComposeHarmonizationPrompt(
   }
 ): string {
   const analysisBlock = options?.elementAnalysis
-    ? `\n\nREFERENCE ELEMENT ANALYSIS (these details MUST appear in your output):\n${options.elementAnalysis.trim()}`
+
+    ? `\n\nREFERENCE ELEMENT DETAILS (these specific features MUST appear in the output):\n${options.elementAnalysis.trim()}`
     : ""
   const bboxBlock = options?.maskBboxNorm
-    ? `\n\nMASK BOUNDING BOX (normalized 0..1 in IMAGE 1):\nx0=${options.maskBboxNorm.x0.toFixed(3)} y0=${options.maskBboxNorm.y0.toFixed(3)} x1=${options.maskBboxNorm.x1.toFixed(3)} y1=${options.maskBboxNorm.y1.toFixed(3)}\nEdit ONLY pixels inside this region. Pixels outside MUST be byte-identical to IMAGE 1.`
+    ? `\n\nMASK BOUNDING BOX (normalized 0..1 in IMAGE 3):\nx0=${options.maskBboxNorm.x0.toFixed(3)} y0=${options.maskBboxNorm.y0.toFixed(3)} x1=${options.maskBboxNorm.x1.toFixed(3)} y1=${options.maskBboxNorm.y1.toFixed(3)}\nEdit ONLY pixels inside this region. Pixels outside MUST remain byte-identical to IMAGE 3.`
     : ""
 
-  return `You are performing reference-guided HARMONIZATION inpainting.
+  return `You are performing reference-driven inpainting. Your task is to REPLACE the contents of the masked region with the REFERENCE element, while leaving the rest of the scene untouched.
 
-You will receive FOUR images:
-- IMAGE 1 — BASE: the original scene (must be preserved outside the mask)
-- IMAGE 2 — COMPOSITE PREVIEW: IMAGE 1 with the reference element already placed at the correct position and scale. Use this as the geometric ground truth — do NOT reposition or rescale.
-- IMAGE 3 — REFERENCE: a clean cutout of the element. Use this to verify exact colors, materials, layered structure, and small details that the composite preview may have softened.
-- IMAGE 4 — MASK: white = the editable region, black = preserve IMAGE 1 unchanged.
+You will receive FOUR images (in this order):
 
-YOUR TASK:
-Generate a single image that equals IMAGE 1 outside the white mask, and inside the white mask shows the reference element from IMAGE 3 sitting in IMAGE 1's scene with naturally matching lighting, shadows, color temperature, perspective, and grain.
+— IMAGE 1 (REFERENCE) — the EXACT element that must appear inside the masked region. Its identity, proportions, colors, materials, and distinctive details are NON-NEGOTIABLE. Treat IMAGE 1 as the source of truth.
 
-HARD CONSTRAINTS (failure if violated):
-1. Element identity is fixed — the object inside the mask must be the same object as IMAGE 3. Do not substitute or invent a similar-looking thing.
-2. Element geometry is fixed — keep the position, scale, orientation, and silhouette from IMAGE 2.
-3. Outside the mask: IMAGE 1 unchanged. No global recoloring, no recropping, no aspect change.
-4. Inside the mask: regenerate only what is needed to make the element belong — re-light, cast contact shadows, integrate edges, match film/render style. Keep the element's own colors, textures, and layered structure recognizable.
-5. Do not add new objects, decorations, text, or watermarks anywhere.
+— IMAGE 2 (COMPOSITE PREVIEW) — IMAGE 3 with IMAGE 1 already placed at the correct position and scale. Use this as the geometric ground truth — do NOT reposition or rescale.
+
+— IMAGE 3 (BASE SCENE) — the surrounding scene to preserve. Whatever currently exists inside the masked region of IMAGE 3 must be DELETED and REPLACED with IMAGE 1's element.
+
+— IMAGE 4 (MASK) — white = the region to edit, black = preserve IMAGE 3 exactly.
+
+CRITICAL RULES (failure if violated):
+
+1. ELEMENT IDENTITY IS FIXED. The object inside the masked region MUST be IMAGE 1's element with all its distinctive features (specific shape, proportions, colors, materials, fine details, accessories, layered structure). Do NOT substitute. Do NOT blend with whatever IMAGE 3 had in that region. Do NOT invent variations.
+
+2. ANTI-SNAP RULE — IGNORE IMAGE 3'S EXISTING CONTENT IN THE MASKED REGION. If IMAGE 3 already contains an object that looks similar to IMAGE 1, you MUST IGNORE IT. IMAGE 1 is the only source of truth for the masked region. Do not preserve, blend with, or revert to IMAGE 3's pre-existing version. Even if it would look more "natural" to keep IMAGE 3's content — do not. Replace it completely.
+
+3. ELEMENT GEOMETRY IS FIXED. Keep position, scale, orientation, and silhouette exactly as in IMAGE 2.
+
+4. DO NOT RESTYLE THE ELEMENT TO MATCH IMAGE 3'S ARTISTIC MEDIUM. If IMAGE 1 is photorealistic and IMAGE 3 is illustration/painting/cartoon, the element retains its photorealistic detail. Cross-style results are acceptable. Identity preservation > stylistic uniformity.
+
+5. ONLY ADJUST: lighting direction, lighting intensity, contact shadows where the element meets the scene, and color temperature of the lighting (not the element's intrinsic colors). These are subtle pixel-level changes that wrap the element in the scene's lighting environment, NOT a stylistic redraw.
+
+6. OUTSIDE THE MASK: IMAGE 3 byte-identical. No global recoloring, no recropping, no aspect change. No new objects added anywhere.
+
 
 USER INTENT:
 ${userPrompt}${analysisBlock}${bboxBlock}
 
-Return only the final composited image.`
+
+Return only the final composited image. The masked region must show IMAGE 1's element clearly recognizable, lit to match IMAGE 3's lighting environment.`
+
 }
 
 /**

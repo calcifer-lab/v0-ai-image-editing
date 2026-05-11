@@ -893,6 +893,178 @@ export async function compositeImages(
   return canvas.toDataURL("image/png")
 }
 
+export async function compositeForDirectPatch(
+  baseImageUrl: string,
+  referenceImageUrl: string,
+  maskImageUrl: string,
+  maskCoordinates: { x: number; y: number; width: number; height: number },
+  brushMaskCanvas?: HTMLCanvasElement,
+  options?: LocalFusionOptions
+): Promise<string> {
+  const [baseImg, refImg, maskImg] = await Promise.all([
+    loadImage(baseImageUrl),
+    loadImage(referenceImageUrl),
+    loadImage(maskImageUrl),
+  ])
+
+  console.log("[Composite] Base image:", baseImg.width, "x", baseImg.height)
+  console.log("[Composite] Reference image:", refImg.width, "x", refImg.height)
+  console.log("[Composite] Mask image:", maskImg.width, "x", maskImg.height)
+  console.log("[Composite] Mask coordinates:", maskCoordinates)
+
+  const canvas = document.createElement("canvas")
+  canvas.width = baseImg.width
+  canvas.height = baseImg.height
+  const ctx = canvas.getContext("2d")
+  if (!ctx) throw new Error("Failed to get canvas context")
+
+  ctx.drawImage(baseImg, 0, 0)
+
+  const scaleX = baseImg.width / maskImg.width
+  const scaleY = baseImg.height / maskImg.height
+
+  const targetX = Math.round(maskCoordinates.x * scaleX)
+  const targetY = Math.round(maskCoordinates.y * scaleY)
+  const targetWidth = Math.round(maskCoordinates.width * scaleX)
+  const targetHeight = Math.round(maskCoordinates.height * scaleY)
+
+  console.log("[Composite] Target area:", targetX, targetY, targetWidth, targetHeight)
+
+  // Scale full mask to base image dimensions with edge feathering
+  const fullMaskCanvas = document.createElement("canvas")
+  fullMaskCanvas.width = baseImg.width
+  fullMaskCanvas.height = baseImg.height
+  const fullMaskCtx = fullMaskCanvas.getContext("2d")
+  if (!fullMaskCtx) throw new Error("Failed to get full mask canvas context")
+  const blurPx = Math.max(15, Math.min(80, Math.round(Math.min(targetWidth, targetHeight) * 0.14)))
+  fullMaskCtx.filter = `blur(${blurPx}px)`
+  fullMaskCtx.drawImage(maskImg, 0, 0, baseImg.width, baseImg.height)
+  fullMaskCtx.filter = "none"
+
+  // Scale reference image to fit target region
+  const refCanvas = document.createElement("canvas")
+  refCanvas.width = targetWidth
+  refCanvas.height = targetHeight
+  const refCtx = refCanvas.getContext("2d")
+  if (!refCtx) throw new Error("Failed to get ref canvas context")
+
+  const sourceCanvas = document.createElement("canvas")
+  sourceCanvas.width = refImg.width
+  sourceCanvas.height = refImg.height
+  const sourceCtx = sourceCanvas.getContext("2d")
+  if (!sourceCtx) throw new Error("Failed to get source canvas context")
+  sourceCtx.drawImage(refImg, 0, 0)
+  const sourceImageData = sourceCtx.getImageData(0, 0, refImg.width, refImg.height)
+  const opaqueBounds = findOpaqueBounds(sourceImageData.data, refImg.width, refImg.height)
+
+  if (opaqueBounds) {
+    // Always stretch the opaque subject to exactly fill the target.
+    // Whether the element has transparent edges (post bg-removal) or not,
+    // the visible content must fill the entire selected region — no letterboxing.
+    refCtx.drawImage(
+      refImg,
+      opaqueBounds.srcX,
+      opaqueBounds.srcY,
+      opaqueBounds.srcWidth,
+      opaqueBounds.srcHeight,
+      0,
+      0,
+      targetWidth,
+      targetHeight
+    )
+  } else {
+    // No opaque pixels at all — stretch the whole image
+    refCtx.drawImage(refImg, 0, 0, refImg.width, refImg.height, 0, 0, targetWidth, targetHeight)
+  }
+
+  // Pixel-by-pixel blend: combinedAlpha = maskBrightness × refAlpha × blendStrength
+  const blendStrength = clamp(options?.blendStrength ?? 1.0, 0, 1)
+  const maskData = fullMaskCtx.getImageData(targetX, targetY, targetWidth, targetHeight)
+  const refData = refCtx.getImageData(0, 0, targetWidth, targetHeight)
+  const baseData = ctx.getImageData(targetX, targetY, targetWidth, targetHeight)
+
+  // Pass 1: clear only the extreme centre (brightness > 0.85) with surrounding ambient.
+  // Only clear where the element is guaranteed to be fully opaque so the flat ambient
+  // colour does not create a visible rectangle in transparent gap areas.
+  const fullBaseData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+  const surroundMargin = clamp(Math.round(Math.max(targetWidth, targetHeight) * 0.20), 16, 64)
+  const surroundStats = collectSurroundingStats(
+    fullBaseData.data,
+    canvas.width,
+    canvas.height,
+    { x: targetX, y: targetY, width: targetWidth, height: targetHeight },
+    surroundMargin
+  )
+  if (surroundStats.count > 0) {
+    for (let i = 0; i < maskData.data.length; i += 4) {
+      const maskBrightness = (maskData.data[i] + maskData.data[i + 1] + maskData.data[i + 2]) / 3 / 255
+      // Only clear the very centre (brightness > 0.85) where the element is guaranteed
+      // to cover. A wide fill range creates a visible flat-colour rectangle because
+      // surroundStats is a mean that does not match local texture.
+      const fill = clamp((maskBrightness - 0.85) / 0.15, 0, 1)
+      if (fill > 0.01) {
+        baseData.data[i]     = Math.round(surroundStats.r * fill + baseData.data[i]     * (1 - fill))
+        baseData.data[i + 1] = Math.round(surroundStats.g * fill + baseData.data[i + 1] * (1 - fill))
+        baseData.data[i + 2] = Math.round(surroundStats.b * fill + baseData.data[i + 2] * (1 - fill))
+      }
+    }
+  }
+
+  // Tone matching: shift element colour toward surrounding scene colour.
+  const refStats = collectReferenceStats(refData.data)
+  const toneMatchStrength = 0.50
+  const scaleR = refStats.count > 0 && surroundStats.count > 0 ? clamp(surroundStats.r / Math.max(1, refStats.r), 0.72, 1.32) : 1
+  const scaleG = refStats.count > 0 && surroundStats.count > 0 ? clamp(surroundStats.g / Math.max(1, refStats.g), 0.72, 1.32) : 1
+  const scaleB = refStats.count > 0 && surroundStats.count > 0 ? clamp(surroundStats.b / Math.max(1, refStats.b), 0.72, 1.32) : 1
+  const lumaShift = refStats.count > 0 && surroundStats.count > 0
+    ? clamp(surroundStats.luma - refStats.luma, -25, 25) : 0
+
+  // Pass 2: composite the new element over the already-cleared base.
+  for (let i = 0; i < maskData.data.length; i += 4) {
+    const maskBrightness = (maskData.data[i] + maskData.data[i + 1] + maskData.data[i + 2]) / 3
+    const refAlpha = refData.data[i + 3] / 255
+    const combinedAlpha = (maskBrightness / 255) * refAlpha * blendStrength
+    if (combinedAlpha > 0.01) {
+      // edgeFactor is 1 at the feather boundary, 0 at the core centre
+      const edgeFactor = 1 - smoothstep(0.4, 0.85, maskBrightness / 255)
+      const corrStrength = toneMatchStrength * lerp(0.25, 1.0, edgeFactor)
+
+      const origR = refData.data[i]
+      const origG = refData.data[i + 1]
+      const origB = refData.data[i + 2]
+
+      const correctedR = clamp(origR * scaleR + lumaShift, 0, 255)
+      const correctedG = clamp(origG * scaleG + lumaShift, 0, 255)
+      const correctedB = clamp(origB * scaleB + lumaShift, 0, 255)
+
+      let fusedR = lerp(origR, correctedR, corrStrength)
+      let fusedG = lerp(origG, correctedG, corrStrength)
+      let fusedB = lerp(origB, correctedB, corrStrength)
+
+      // Very subtle tint toward surrounding colour at edges
+      const edgeTintStrength = edgeFactor * 0.08
+      fusedR = lerp(fusedR, surroundStats.r, edgeTintStrength)
+      fusedG = lerp(fusedG, surroundStats.g, edgeTintStrength)
+      fusedB = lerp(fusedB, surroundStats.b, edgeTintStrength)
+
+      // Blend-out target: use the actual base pixel (preserves natural scene texture).
+      // A small nudge toward surroundStats (15%) at the extreme edge softens the ghost
+      // without producing the visible flat-colour rectangle that higher values create.
+      const blendBaseR = lerp(baseData.data[i],     surroundStats.r, edgeFactor * 0.15)
+      const blendBaseG = lerp(baseData.data[i + 1], surroundStats.g, edgeFactor * 0.15)
+      const blendBaseB = lerp(baseData.data[i + 2], surroundStats.b, edgeFactor * 0.15)
+
+      baseData.data[i]     = Math.round(fusedR * combinedAlpha + blendBaseR * (1 - combinedAlpha))
+      baseData.data[i + 1] = Math.round(fusedG * combinedAlpha + blendBaseG * (1 - combinedAlpha))
+      baseData.data[i + 2] = Math.round(fusedB * combinedAlpha + blendBaseB * (1 - combinedAlpha))
+      baseData.data[i + 3] = 255
+    }
+  }
+
+  ctx.putImageData(baseData, targetX, targetY)
+  return canvas.toDataURL("image/png")
+}
+
 export async function compositePatchWithLocalFusion(
   baseImageUrl: string,
   referenceImageUrl: string,
@@ -972,6 +1144,314 @@ export async function resizeToAspectRatio(
     dataUrl: canvas.toDataURL("image/png"),
     width: canvas.width,
     height: canvas.height,
+  }
+}
+
+/**
+ * Resize an AI-generated output to match the base image's exact dimensions.
+ *
+ * Gemini's image-gen model doesn't strictly preserve input dimensions —
+ * outputs often come back at the model's preferred canonical resolution
+ * (e.g. ~1024×1024 even when the base was 1672×901). For inpaint use cases
+ * the user expects output dimensions to equal base dimensions, so we
+ * normalize after the model call.
+ *
+ * Uses a "cover" strategy: scale the output to fill base dimensions while
+ * maintaining aspect ratio, then center-crop the excess. Preserves visual
+ * quality (no stretch/distortion) at the cost of clipping a sliver of the
+ * model's output if aspect ratios disagree. In practice Gemini's output
+ * aspect is usually within a few percent of the input, so the clipped
+ * region is negligible.
+ */
+export async function fitOutputToBase(
+  outputDataUrl: string,
+  baseDataUrl: string
+): Promise<string> {
+  const [output, base] = await Promise.all([
+    loadImage(outputDataUrl),
+    loadImage(baseDataUrl),
+  ])
+
+  if (output.width === base.width && output.height === base.height) {
+    return outputDataUrl
+  }
+
+  console.log(
+    `[ImageUtils] Resizing AI output to match base: ${output.width}×${output.height} → ${base.width}×${base.height}`
+  )
+
+  const canvas = document.createElement("canvas")
+  canvas.width = base.width
+  canvas.height = base.height
+  const ctx = canvas.getContext("2d")
+  if (!ctx) return outputDataUrl
+
+  const scale = Math.max(base.width / output.width, base.height / output.height)
+  const drawWidth = output.width * scale
+  const drawHeight = output.height * scale
+  const drawX = (base.width - drawWidth) / 2
+  const drawY = (base.height - drawHeight) / 2
+  ctx.drawImage(output, drawX, drawY, drawWidth, drawHeight)
+
+  return canvas.toDataURL("image/png")
+}
+
+/**
+ * Detect whether an image has a transparent background by sampling its edges.
+ * Returns true when ≥5 of 8 edge sample points have alpha < 200 (likely already
+ * background-removed).
+ *
+ * Used to short-circuit redundant /api/remove-background calls and to decide
+ * whether the reference cutout needs alpha flattening before being sent to
+ * Gemini (whose vision model handles alpha channels unpredictably).
+ */
+export async function hasTransparentBackground(dataUrl: string): Promise<boolean> {
+  try {
+    const img = await loadImage(dataUrl)
+    const canvas = document.createElement("canvas")
+    canvas.width = img.width
+    canvas.height = img.height
+    const ctx = canvas.getContext("2d")
+    if (!ctx) return false
+    ctx.drawImage(img, 0, 0)
+    const data = ctx.getImageData(0, 0, img.width, img.height).data
+
+    const samplePoints: [number, number][] = [
+      [0, 0],
+      [img.width - 1, 0],
+      [0, img.height - 1],
+      [img.width - 1, img.height - 1],
+      [Math.floor(img.width / 2), 0],
+      [Math.floor(img.width / 2), img.height - 1],
+      [0, Math.floor(img.height / 2)],
+      [img.width - 1, Math.floor(img.height / 2)],
+    ]
+
+    let transparentCount = 0
+    for (const [x, y] of samplePoints) {
+      const i = (y * img.width + x) * 4
+      if (data[i + 3] < 200) transparentCount += 1
+    }
+
+    return transparentCount >= 5
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Flatten an image with an alpha channel onto a solid white background.
+ *
+ * Why this exists: Gemini's vision model handles PNG alpha channels
+ * inconsistently — sometimes treating transparent pixels as black, sometimes
+ * white, sometimes producing visual confusion that makes the model unable to
+ * read the element's identity. Flattening to a clean white background gives
+ * Gemini an unambiguous, opaque image to study while preserving the
+ * background-removed cutout's visible content.
+ *
+ * The transparent original is still used for client-side compositeImages
+ * (where alpha-aware blending is needed); this is only for the Gemini input.
+ */
+export async function flattenAlphaToWhite(dataUrl: string): Promise<string> {
+  const img = await loadImage(dataUrl)
+  const canvas = document.createElement("canvas")
+  canvas.width = img.width
+  canvas.height = img.height
+  const ctx = canvas.getContext("2d")
+  if (!ctx) return dataUrl
+  ctx.fillStyle = "#FFFFFF"
+  ctx.fillRect(0, 0, canvas.width, canvas.height)
+  ctx.drawImage(img, 0, 0)
+  return canvas.toDataURL("image/png")
+}
+
+/**
+ * Apply an AI-generated inpaint output onto the original base, using the mask
+ * to restrict edits to the masked region only. Outside the mask, the result
+ * is byte-identical to the base.
+ *
+ * Why this exists: Gemini's image-gen model often makes subtle "harmonization"
+ * tweaks to areas OUTSIDE the requested mask region (small color shifts,
+ * lighting drifts, occasional smudge artifacts). Those incidental edits are
+ * the largest source of run-to-run inconsistency — even when the in-mask
+ * content is good, the outside-mask drift makes consecutive runs look
+ * different in unpredictable ways.
+ *
+ * This function enforces the proper inpaint contract:
+ *   • Outside mask → base, untouched
+ *   • Inside mask  → Gemini's output (resized + cover-cropped to base dims)
+ *   • Mask edge    → soft 3-8px feather for smooth transition
+ *
+ * Returns the composited result at base's exact dimensions.
+ */
+export async function applyInpaintOutput(
+  outputDataUrl: string,
+  baseDataUrl: string,
+  maskDataUrl: string
+): Promise<string> {
+  const [output, base, mask] = await Promise.all([
+    loadImage(outputDataUrl),
+    loadImage(baseDataUrl),
+    loadImage(maskDataUrl),
+  ])
+
+  const w = base.width
+  const h = base.height
+
+  const canvas = document.createElement("canvas")
+  canvas.width = w
+  canvas.height = h
+  const ctx = canvas.getContext("2d")
+  if (!ctx) return outputDataUrl
+  ctx.drawImage(base, 0, 0)
+
+  const outputCanvas = document.createElement("canvas")
+  outputCanvas.width = w
+  outputCanvas.height = h
+  const outputCtx = outputCanvas.getContext("2d")
+  if (!outputCtx) return outputDataUrl
+
+  if (output.width === w && output.height === h) {
+    outputCtx.drawImage(output, 0, 0)
+  } else {
+    const scale = Math.max(w / output.width, h / output.height)
+    const drawWidth = output.width * scale
+    const drawHeight = output.height * scale
+    const drawX = (w - drawWidth) / 2
+    const drawY = (h - drawHeight) / 2
+    outputCtx.drawImage(output, drawX, drawY, drawWidth, drawHeight)
+  }
+
+  const maskCanvas = document.createElement("canvas")
+  maskCanvas.width = w
+  maskCanvas.height = h
+  const maskCtx = maskCanvas.getContext("2d")
+  if (!maskCtx) return outputDataUrl
+
+  const blurPx = Math.max(3, Math.min(8, Math.round(Math.min(w, h) / 200)))
+  maskCtx.filter = `blur(${blurPx}px)`
+  maskCtx.drawImage(mask, 0, 0, w, h)
+  maskCtx.filter = "none"
+
+  const outData = outputCtx.getImageData(0, 0, w, h)
+  const maskData = maskCtx.getImageData(0, 0, w, h)
+  const baseData = ctx.getImageData(0, 0, w, h)
+
+  for (let i = 0; i < baseData.data.length; i += 4) {
+    const maskBrightness = (maskData.data[i] + maskData.data[i + 1] + maskData.data[i + 2]) / 3
+    const alpha = maskBrightness / 255
+    if (alpha < 0.005) continue
+    baseData.data[i]     = Math.round(outData.data[i]     * alpha + baseData.data[i]     * (1 - alpha))
+    baseData.data[i + 1] = Math.round(outData.data[i + 1] * alpha + baseData.data[i + 1] * (1 - alpha))
+    baseData.data[i + 2] = Math.round(outData.data[i + 2] * alpha + baseData.data[i + 2] * (1 - alpha))
+  }
+
+  ctx.putImageData(baseData, 0, 0)
+  return canvas.toDataURL("image/png")
+}
+
+/**
+ * Sample-based pixel similarity check inside the masked region.
+ *
+ * Detects "model degeneration" — when an image-generation model returns
+ * something visually almost identical to the base image inside the mask
+ * (i.e. it ignored the reference and just preserved what was already there).
+ * Gemini exhibits this failure mode when the base already contains an object
+ * similar to the reference; we use this to trigger a Direct Patch fallback
+ * rather than show the user a "fake success" output.
+ *
+ * Strategy: random-sample N points inside the mask's white region, compute
+ * the mean per-channel absolute pixel difference between output and base.
+ * Returns true when the diff is below `threshold` (default 25/255), meaning
+ * the output is suspiciously close to the unmodified base.
+ *
+ * Threshold calibration (per-channel mean abs diff out of 255), measured
+ * empirically from preview test runs:
+ *   <10  : Gemini didn't alter the masked region at all (clear snap-to-base)
+ *   10-25: Gemini did surface tweaks (lighting/color polish) but did NOT
+ *          replace the element's identity — visually still indistinguishable
+ *          from base for the user. This is the "fake success" zone.
+ *   25-35: Gemini polished base with some structural tweaks (added detail,
+ *          adjusted edges) but the EXISTING base content is still recognizable
+ *          and the reference's distinctive identity has NOT been transferred.
+ *          Reference's specific features (proportions, materials, spire shape,
+ *          etc.) do not appear. Still effectively a fake success.
+ *   >35  : Substantial identity replacement — reference's distinctive features
+ *          are visible in output (target zone).
+ *
+ * Threshold default = 35 to reject everything below the real-replacement zone.
+ * Below this, Direct Patch + fusion gives a more faithful result by pixel-
+ * pasting the reference exactly.
+ *
+ * Returns false on any error (e.g. tiny mask, decode failure) — the check
+ * is best-effort and must not block the main flow.
+ */
+export async function isOutputTooSimilarToBase(
+  outputDataUrl: string,
+  baseDataUrl: string,
+  maskDataUrl: string,
+  options?: { threshold?: number; sampleCount?: number }
+): Promise<{ tooSimilar: boolean; meanDiff: number; sampleCount: number }> {
+  const threshold = options?.threshold ?? 35
+  const targetSamples = options?.sampleCount ?? 256
+
+  try {
+    const [output, base, mask] = await Promise.all([
+      loadImage(outputDataUrl),
+      loadImage(baseDataUrl),
+      loadImage(maskDataUrl),
+    ])
+
+    const w = base.width
+    const h = base.height
+
+    const drawTo = (img: HTMLImageElement): ImageData | null => {
+      const c = document.createElement("canvas")
+      c.width = w
+      c.height = h
+      const ctx = c.getContext("2d")
+      if (!ctx) return null
+      ctx.drawImage(img, 0, 0, w, h)
+      return ctx.getImageData(0, 0, w, h)
+    }
+
+    const outData = drawTo(output)
+    const baseData = drawTo(base)
+    const maskData = drawTo(mask)
+    if (!outData || !baseData || !maskData) {
+      return { tooSimilar: false, meanDiff: -1, sampleCount: 0 }
+    }
+
+    const samples: number[] = []
+    let attempts = 0
+    const maxAttempts = targetSamples * 12
+    while (samples.length < targetSamples && attempts < maxAttempts) {
+      attempts += 1
+      const x = Math.floor(Math.random() * w)
+      const y = Math.floor(Math.random() * h)
+      const i = (y * w + x) * 4
+      const maskLuma = (maskData.data[i] + maskData.data[i + 1] + maskData.data[i + 2]) / 3
+      if (maskLuma > 128) {
+        samples.push(i)
+      }
+    }
+
+    if (samples.length < 16) {
+      return { tooSimilar: false, meanDiff: -1, sampleCount: samples.length }
+    }
+
+    let totalDiff = 0
+    for (const i of samples) {
+      const dr = Math.abs(outData.data[i] - baseData.data[i])
+      const dg = Math.abs(outData.data[i + 1] - baseData.data[i + 1])
+      const db = Math.abs(outData.data[i + 2] - baseData.data[i + 2])
+      totalDiff += (dr + dg + db) / 3
+    }
+    const meanDiff = totalDiff / samples.length
+    return { tooSimilar: meanDiff < threshold, meanDiff, sampleCount: samples.length }
+  } catch (error) {
+    console.warn("[ImageUtils] isOutputTooSimilarToBase failed:", error)
+    return { tooSimilar: false, meanDiff: -1, sampleCount: 0 }
   }
 }
 

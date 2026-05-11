@@ -14,10 +14,16 @@ import type { CanvasEditorRef } from "@/components/canvas-editor"
 import {
   resizeToAspectRatio,
   compositeImages,
+  compositeForDirectPatch,
   loadImage,
   resizeImage,
   compressImage,
   removeWhiteMatteIfNeeded,
+  isOutputTooSimilarToBase,
+  fitOutputToBase,
+  applyInpaintOutput,
+  hasTransparentBackground,
+  flattenAlphaToWhite,
 } from "@/lib/image-utils"
 import { safeParseJSON } from "@/utils/safeParse"
 
@@ -386,10 +392,12 @@ export function useImageEditor(): UseImageEditorReturn {
           // All AI providers were unavailable; server returned the composite as-is.
           // This is expected degraded behaviour — don't show an error to the user.
           console.log("[AI Editor] AI fusion unavailable — using local composite (passthrough)")
-        } else {
-          console.log("[AI Editor] AI fusion complete:", fusionData.meta?.model)
+          return fusionData.fused_image
         }
-        return fusionData.fused_image
+        console.log("[AI Editor] AI fusion complete:", fusionData.meta?.model)
+        // Mask-restricted blend: outside mask = base byte-identical (eliminates
+        // Gemini's reframe/spill artifacts), inside mask = Gemini's output.
+        return await applyInpaintOutput(fusionData.fused_image, images.baseImage!, mask.dataUrl)
       }
     } catch (fusionError) {
       console.warn("[AI Editor] AI fusion error:", fusionError)
@@ -467,7 +475,7 @@ export function useImageEditor(): UseImageEditorReturn {
     // toneMatchStrength=0: skip local color correction — /api/fusion (Gemini) handles all
     // lighting/color harmonization. Pre-adjusting here causes double-correction artifacts.
     updateProgress("Patching element into image...", 40)
-    const compositeResult = await compositeImages(
+    const compositeResult = await compositeForDirectPatch(
       images.baseImage,
       processedReference,
       mask.dataUrl,
@@ -476,20 +484,9 @@ export function useImageEditor(): UseImageEditorReturn {
       { toneMatchStrength: 0 }
     )
 
-    console.log("[AI Editor] Composite complete, starting AI fusion...")
-
-    const fusedResult = await runFusionPass(compositeResult, processedReference, {
-      status: "AI fusion: Harmonizing lighting and style...",
-      value: 60,
-      driftTo: 78,
-    })
-
-    if (fusedResult === compositeResult) {
-      console.log("[AI Editor] Direct Patch complete (no fusion)")
-    }
-
-    return fusedResult
-  }, [images, mask, elementCrop, runFusionPass, updateProgress])
+    console.log("[AI Editor] Direct Patch complete")
+    return compositeResult
+  }, [images, mask, elementCrop, updateProgress])
 
   // 处理 AI 生成模式 (AI Compose)
   // Strategy: composite-first harmonization.
@@ -518,34 +515,44 @@ export function useImageEditor(): UseImageEditorReturn {
       }
     }
 
-    // Remove background so Gemini receives only the subject
-    updateProgress("Removing background...", 18)
-    try {
-      const compressedForBg = await compressDataUrlForUpload(processedReference, { preserveTransparency: false })
-      const bgController = new AbortController()
-      const bgTimeout = setTimeout(() => bgController.abort(), 120_000)
-      let bgResponse: Response
+
+    // Skip bg-removal when the user-supplied element is already a transparent
+    // cutout (running rembg on a transparent input produces unpredictable
+    // garbage that confuses Gemini downstream).
+    const alreadyCut = await hasTransparentBackground(processedReference)
+    if (alreadyCut) {
+      console.log("[AI Editor] Reference already has transparent background — skipping bg-removal")
+      updateProgress("Reference already cut out — skipping bg-removal", 18)
+    } else {
+      updateProgress("Removing background...", 18)
+
       try {
-        bgResponse = await fetch("/api/remove-background", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ image: compressedForBg }),
-          signal: bgController.signal,
-        })
-      } finally {
-        clearTimeout(bgTimeout)
-      }
-      if (bgResponse.ok) {
-        const bgData = await bgResponse.json()
-        if (bgData.result_image) processedReference = bgData.result_image
-        else processedReference = await removeWhiteMatteIfNeeded(processedReference)
-      } else {
-        console.warn("[AI Editor] BG removal failed:", bgResponse.status, "— attempting local white matte removal")
+        const compressedForBg = await compressDataUrlForUpload(processedReference, { preserveTransparency: false })
+        const bgController = new AbortController()
+        const bgTimeout = setTimeout(() => bgController.abort(), 120_000)
+        let bgResponse: Response
+        try {
+          bgResponse = await fetch("/api/remove-background", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ image: compressedForBg }),
+            signal: bgController.signal,
+          })
+        } finally {
+          clearTimeout(bgTimeout)
+        }
+        if (bgResponse.ok) {
+          const bgData = await bgResponse.json()
+          if (bgData.result_image) processedReference = bgData.result_image
+          else processedReference = await removeWhiteMatteIfNeeded(processedReference)
+        } else {
+          console.warn("[AI Editor] BG removal failed:", bgResponse.status, "— attempting local white matte removal")
+          processedReference = await removeWhiteMatteIfNeeded(processedReference)
+        }
+      } catch (bgError) {
+        console.warn("[AI Editor] BG removal error, continuing:", bgError)
         processedReference = await removeWhiteMatteIfNeeded(processedReference)
       }
-    } catch (bgError) {
-      console.warn("[AI Editor] BG removal error, continuing:", bgError)
-      processedReference = await removeWhiteMatteIfNeeded(processedReference)
     }
 
     // Build local composite to anchor placement (geometric prior for Gemini)
@@ -576,11 +583,22 @@ export function useImageEditor(): UseImageEditorReturn {
     }
 
     // Compress inputs. Mask stays as PNG to preserve binary edges.
+
+    // The reference sent to Gemini is FLATTENED ONTO WHITE — Gemini's vision
+    // model handles PNG alpha channels inconsistently and can fail to recognize
+    // the element's identity when it sees jagged transparent edges. The
+    // transparent processedReference is still used for the local composite.
     updateProgress("Compressing images for AI generation...", 40)
+    const flattenedReference = await flattenAlphaToWhite(processedReference)
+    console.log(
+      `[AI Editor] Reference for Gemini: alpha-flattened-to-white ` +
+        `(input was-already-cut=${alreadyCut})`
+    )
     const [compressedBase, compressedMask, compressedRef, compressedComposite, maskBboxNorm] = await Promise.all([
       compressDataUrlForUpload(images.baseImage),
       compressDataUrlForUpload(mask.dataUrl, { isMask: true }),
-      compressDataUrlForUpload(processedReference, { preserveTransparency: true }),
+      compressDataUrlForUpload(flattenedReference),
+
       compositePreview
         ? compressDataUrlForUpload(compositePreview)
         : Promise.resolve(null as string | null),
@@ -627,16 +645,60 @@ export function useImageEditor(): UseImageEditorReturn {
     updateProgress("AI model processing response...", 82, { driftTo: 88 })
     const data = await safeParseJSON(response) as {
       result_image?: string
-      meta?: { model?: string; reference_dropped?: boolean }
+
+      meta?: { model?: string; reference_dropped?: boolean; composite_used?: boolean }
     }
     if (!data.result_image) throw new Error("Inpainting API response missing result image")
 
+    // Apply inpaint output with mask-restricted composition:
+    //   • Outside the mask → byte-identical to base (eliminates Gemini's incidental
+    //     "harmonization" tweaks to non-mask regions which are the largest source
+    //     of run-to-run inconsistency)
+    //   • Inside the mask → Gemini's content (resized cover-fit to base dims)
+    //   • Soft 3-8px feather on the mask edge for smooth transition
+    // For the FLUX-fallback path (reference_dropped=true), the model already
+    // operated on a base-aligned mask server-side, so we use the simpler
+    // dimension-only fit there.
+    const normalizedResult = data.meta?.reference_dropped
+      ? await fitOutputToBase(data.result_image, images.baseImage)
+      : await applyInpaintOutput(data.result_image, images.baseImage, mask.dataUrl)
+
     if (data.meta?.reference_dropped) {
       console.warn("[AI Editor] AI Compose degraded: reference element was not preserved by fallback model")
-      setWarning("AI 主模型不可用，降级模型不支持参考元素 — 元素细节可能未保留。建议重试或切换 Direct Patch。")
+      setWarning("AI main model unavailable. Fallback model does not support the reference image — element details may not be preserved. Try again or switch to Direct Patch.")
+      return normalizedResult
     }
 
-    return data.result_image
+    // Degeneration check: when base already contains a similar object, Gemini
+    // often returns either the base unchanged or with surface-level "polish"
+    // (lighting tweaks, minor structural detail) WITHOUT swapping the element's
+    // identity. Empirical calibration from preview runs: meanDiff <35/255 is
+    // the polish-only zone; >=35 indicates actual identity replacement. Below
+    // 35 we fall back to Direct Patch+fusion which pixel-pastes the reference.
+    // Only run on the Gemini path (skip when reference was already dropped to FLUX).
+    try {
+      const similarity = await isOutputTooSimilarToBase(normalizedResult, images.baseImage, mask.dataUrl)
+      console.log(
+        `[AI Editor] Output-vs-base diff in mask: meanDiff=${similarity.meanDiff.toFixed(1)}/255 ` +
+          `(samples=${similarity.sampleCount}, threshold=35)`
+      )
+      if (similarity.tooSimilar) {
+        throw new Error(
+          `AI Compose degenerate output: model returned an image too close to the base ` +
+            `(meanDiff=${similarity.meanDiff.toFixed(1)} < 35/255). Falling back to Direct Patch.`
+        )
+      }
+    } catch (similarityError) {
+      // Re-throw the degeneration error to trigger the outer fallback in handleProcess.
+      // Other detection errors (decode failure, etc.) are non-blocking — log and continue.
+      if (similarityError instanceof Error && similarityError.message.startsWith("AI Compose degenerate")) {
+        throw similarityError
+      }
+      console.warn("[AI Editor] Degeneration check failed (non-blocking):", similarityError)
+    }
+
+    return normalizedResult
+
   }, [images, mask, params, elementCrop, imageAnalysis, analyzeImage, updateProgress])
 
   // 处理主流程
@@ -661,7 +723,6 @@ export function useImageEditor(): UseImageEditorReturn {
           updateProgress("AI inpaint failed, using direct composite fallback...", 65)
           finalImage = await processCompositeMode()
           console.log("[AI Editor] Fallback composite complete")
-          setWarning("AI 不可用，显示的是直接拼图")
         }
       }
 
