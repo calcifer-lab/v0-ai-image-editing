@@ -395,8 +395,9 @@ export function useImageEditor(): UseImageEditorReturn {
           return fusionData.fused_image
         }
         console.log("[AI Editor] AI fusion complete:", fusionData.meta?.model)
-        // Gemini doesn't preserve input dimensions; normalize back to base size.
-        return await fitOutputToBase(fusionData.fused_image, images.baseImage!)
+        // Mask-restricted blend: outside mask = base byte-identical (eliminates
+        // Gemini's reframe/spill artifacts), inside mask = Gemini's output.
+        return await applyInpaintOutput(fusionData.fused_image, images.baseImage!, mask.dataUrl)
       }
     } catch (fusionError) {
       console.warn("[AI Editor] AI fusion error:", fusionError)

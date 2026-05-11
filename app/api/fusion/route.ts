@@ -133,153 +133,31 @@ export async function POST(request: NextRequest): Promise<NextResponse<FusionRes
   }
 }
 
+
 /**
  * 构建融合提示词
  */
 function buildFusionPrompt(maskRegion: { x: number; y: number; width: number; height: number }): string {
-  return `You are an expert image fusion specialist. This image contains a newly composited element that needs to be seamlessly integrated with the existing scene.
+  return `You are an image edge-blending specialist. The COMPOSITED IMAGE contains a newly pasted element at coordinates ${maskRegion.x},${maskRegion.y} (size ${maskRegion.width}x${maskRegion.height}).
 
-CRITICAL TASK: FUSION AND HARMONIZATION
-- Analyze the entire image for lighting, shadows, color temperature, and style
-- The composited region (around coordinates ${maskRegion.x},${maskRegion.y}, size ${maskRegion.width}x${maskRegion.height}) contains a newly added element
-- Your goal is to FUSE this element naturally with the surrounding environment
+YOUR ONLY TASK: blend the pasted element's outer edges into the surrounding scene. Do NOT repaint. Do NOT reframe. Do NOT change the element's identity, shape, position, scale, or pose.
 
-⚠️ CONFLICT DETECTION AND REMOVAL (HIGHEST PRIORITY - CRITICAL):
-Before any fusion work, METICULOUSLY scan for conflicts and duplicates:
+ALLOWED operations (within 20px of the element's boundary only):
+- Soft feather the cut edge so it doesn't look pasted
+- Add a contact shadow consistent with the scene's light direction
+- Match the element's edge colour temperature to the surroundings
 
-🚨 HANDS AND ARMS DETECTION:
-✓ Count ALL hands visible in the composited element
-✓ Count ALL hands visible in the base image character
-✓ If TOTAL hands > 2, you MUST DELETE the extra hands from the composited element
-✓ ONLY the base image character's original hands should remain - DELETE all hands from the pasted element
-✓ Look for: fingers, palms, wrists, forearms - DELETE any that belong to the pasted element
+FORBIDDEN operations (zero tolerance):
+- Generating a new element from scratch
+- Repainting the element with a different style
+- Moving, scaling, rotating, or reframing the element
+- Modifying any pixels >20px from the mask boundary
+- Adding extra copies of the element anywhere
+- Changing the camera angle or composition
 
-🚨 SPATIAL ALIGNMENT:
-✓ If the element contains objects (tray, plate, tool), check if they align with the base character's hand position
-✓ If misaligned: MOVE or TRANSFORM the object to align with the base character's hands
-✓ The object should appear to be HELD by the base character's hands, not floating or misaligned
-✓ Example: If base has hands at waist level, the tray should be at waist level, not chest level
+The COMPOSITED IMAGE is the ground truth. Your output must look IDENTICAL to the COMPOSITED IMAGE except for the soft edge blending described above. If you would output any pixel that is not within 20px of the mask edge AND not byte-equal to the composited image, STOP and output the composited image unchanged.
 
-🚨 DELETION RULES:
-✓ DELETE: Any hands/arms that came from the source element image
-✓ KEEP: Only the base image character's original hands and arms
-✓ ADJUST: Object position/angle to match base character's hand position and pose
-✓ Think: "Does this look like the character is actually holding this object naturally?"
-
-⚠️ FAILURE CHECK: If you see more than 2 hands total, or objects not aligned with character's grasp, you have FAILED
-
-🎯 TWO-PHASE FUSION STRATEGY (CRITICAL - FOLLOW BOTH PHASES):
-
-📍 PHASE 1: INTERNAL LIGHTING & COLOR HARMONY (Preserve Shape, Adjust Light Only)
-Before handling edges, harmonize the element's INTERNAL lighting and colors WITHOUT changing shapes:
-
-⚠️ SHAPE PRESERVATION (HIGHEST PRIORITY):
-✓ PRESERVE the EXACT shapes, sizes, and forms of ALL objects in the element
-✓ Do NOT morph, distort, or change the geometry of any object (food, tray, rack, etc.)
-✓ Do NOT merge objects together - keep them as distinct as they are
-✓ Think: "Are the objects the SAME shape as in the composited version?" If NO, you FAILED
-
-✓ ONLY ADJUST: Lighting, shadows, brightness, color temperature, and reflections
-✓ If element contains multiple sub-components (e.g., tray + rack + food):
-  - Keep their SHAPES unchanged
-  - Adjust their lighting to be consistent with each other
-  - Harmonize their color temperature
-  - Add natural shadows between them
-✓ Example: If pasting food on a tray, keep food shape EXACTLY as composited, only adjust its lighting/shadows
-✓ Internal lighting harmony MUST be completed before moving to edge blending
-✓ Think: "Did I preserve shapes while improving lighting?" If shapes changed, you FAILED
-
-📍 PHASE 2: EDGE BLENDING WITH ENVIRONMENT (Element's Outer Boundaries)
-After internal fusion is perfect, handle the element's edges with environment:
-✓ Analyze surrounding environment's geometric features (straight lines, curves, angles, patterns)
-✓ The element's OUTER edges MUST match the surrounding geometry:
-  - If surroundings have STRAIGHT LINES (walls, panels, shelves), element edges should align with those lines
-  - If surroundings have CURVES, element edges should follow similar curves
-  - If surroundings have GRID PATTERNS, element should respect the grid alignment
-✓ Blend OUTER edges with SOFT, GRADUAL transitions - NOT sharp boundaries
-✓ Use feathering and gradient blending at ALL outer edges while maintaining geometric consistency
-✓ The boundary should be INVISIBLE - viewer should NOT be able to tell where element ends and background begins
-✓ Create natural falloff from element to background (fade the edges smoothly)
-✓ Example: If element is pasted on a spaceship interior with straight metal panels, the element's outer edges should align with panel edges, NOT create curved boundaries that break the straight-line aesthetic
-✓ Pay EXTRA attention to corners and edge transitions
-✓ Do NOT leave distinct, sharp, or obvious boundaries at outer edges - this looks unnatural and artificial
-✓ Think: "Do the element's outer edges respect the geometric structure of the environment AND fade naturally into it?"
-
-⚠️ CRITICAL: You MUST complete BOTH phases. Do NOT skip internal fusion. Do NOT skip edge blending. Both are required for success.
-
-STYLE CONSISTENCY (CRITICAL):
-✓ MATCH the exact artistic style of the base image (photorealistic, cartoon, anime, painting, etc.)
-✓ If base is photorealistic, make element photorealistic with same level of detail
-✓ If base is cartoon/anime, stylize the element to match exactly
-✓ Ensure color grading, contrast, saturation match the base image's aesthetic
-✓ The element should look like it was ALWAYS part of this image - same artist, same style, same technique
-
-LIGHTING AND SHADOW REQUIREMENTS:
-✓ Match lighting direction and intensity from the environment
-✓ Add realistic shadows that match the scene's light source
-✓ Adjust color temperature to match ambient lighting
-✓ Add appropriate ambient occlusion and contact shadows
-✓ Preserve fine details (textures, patterns, materials)
-
-CHARACTER PRESERVATION (if base image has characters):
-✓ Maintain base image characters EXACTLY: face, hair, clothing, pose MUST remain identical
-✓ Keep facial features unchanged (eyes, nose, mouth, expression)
-✓ Preserve hairstyle and hair color exactly
-✓ Maintain body proportions and posture
-✓ Keep outfit details consistent
-✓ If element brings conflicting body parts (extra hands, limbs), REMOVE them completely
-
-STEP-BY-STEP PROCESS (FOLLOW EXACTLY):
-1. COUNT HANDS: How many hands total do you see? If > 2, identify which hands came from pasted element and DELETE them completely
-2. SPATIAL ALIGNMENT: Is the pasted object (tray/tool) aligned with base character's hand position? If NO, transform it to align
-3. INTERNAL LIGHTING HARMONY (PHASE 1): Harmonize lighting WITHOUT changing shapes
-   - Are ALL object shapes preserved EXACTLY as composited? (food, tray, rack must keep their shapes)
-   - Did you ONLY adjust lighting, shadows, and color temperature (NO shape changes)?
-   - Is internal lighting consistent within the element?
-   - Are internal shadows and reflections natural?
-   If shapes changed at all, you FAILED - redo this phase with shape preservation
-4. GEOMETRY ANALYSIS: What are the surrounding geometric features (straight lines, curves, grid)? Note them
-5. STYLE ANALYSIS: What is the base image's artistic style? Match element to this style perfectly
-6. EDGE BLENDING (PHASE 2): Now handle the element's outer edges with environment
-   - Analyze environment geometry (straight/curved/grid)
-   - Adjust element's OUTER edges to match surrounding geometry
-   - Apply soft, gradual feathering at ALL outer boundaries
-   - Make edges INVISIBLE and naturally fading into background
-7. LIGHTING: Adjust element's overall lighting to match environment's light source and color temperature
-8. SHADOW: Add realistic shadows and ambient occlusion where element meets environment
-9. FINAL VERIFICATION:
-   - Are there exactly 2 hands or fewer total? ✓
-   - Is the object properly aligned with character's grasp? ✓
-   - Do internal components of element fuse naturally? (PHASE 1 complete) ✓
-   - Do outer edges match surrounding geometry? (PHASE 2 geometry) ✓
-   - Are outer edges soft and invisible? (PHASE 2 blending) ✓
-   - Is element indistinguishable from original? ✓
-   If ANY answer is NO, you must fix it before outputting
-
-WHAT NOT TO DO:
-✗ Do NOT skip internal fusion - element's internal components MUST be fused first (MAJOR FAILURE)
-✗ Do NOT leave sharp, distinct boundaries at outer edges (MAJOR FAILURE)
-✗ Do NOT keep conflicting body parts from the element (MAJOR FAILURE)
-✗ Do NOT use a different style than the base image (MAJOR FAILURE)
-✗ Do NOT change base image characters' faces, hair, or poses
-✗ Do NOT add new objects or remove existing base content
-✗ Do NOT over-blend to the point of losing element details
-✗ Do NOT change the overall composition
-✗ Do NOT skip either phase - BOTH internal fusion AND edge blending are mandatory
-
-✅ SUCCESS CRITERIA (ALL must be true):
-1. PHASE 1 complete: Internal components of element blend perfectly together (tray + rack + food unified) ✓
-2. PHASE 2 complete: Outer edges are soft, invisible, and naturally fade into environment ✓
-3. No visible outer boundaries - edges geometrically match surroundings ✓
-4. No conflicting body parts - only intended element content remains ✓
-5. Style perfectly matches base image ✓
-6. Lighting and shadows are consistent both internally and with environment ✓
-7. Impossible to tell where element was added ✓
-
-OUTPUT: A seamlessly fused image where:
-- The element's INTERNAL components (tray, rack, food) are perfectly integrated with each other (PHASE 1)
-- The element's OUTER edges blend invisibly with the surrounding environment (PHASE 2)
-- Soft edges, no conflicts, matching style, natural lighting, and impossible to distinguish from the original scene.`
+OUTPUT: an image identical to the COMPOSITED IMAGE except with naturally blended edges around the pasted element.`
 }
 
 /**
