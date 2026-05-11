@@ -234,11 +234,13 @@ export function useImageEditor(): UseImageEditorReturn {
   // target: 给显示动画用，含 driftTo（让条始终爬升），上限 99
   // real:   只跟真实 progress，不吃 driftTo，给 ETA 算实际剩余
   // displayed: rAF 平滑跟随 target，永不回退
+  // priorTotalRef: 总时长先验（按模式不同），用于一开始给用户一个合理的"要等多久"预期
   const progressTargetRef = useRef(0)
   const progressRealRef = useRef(0)
   const progressDisplayedRef = useRef(0)
   const progressStartRef = useRef<number | null>(null)
   const etaRef = useRef<number | null>(null)
+  const priorTotalRef = useRef(25)
 
   const resetProgressRefs = useCallback(() => {
     progressTargetRef.current = 0
@@ -296,14 +298,23 @@ export function useImageEditor(): UseImageEditorReturn {
         setProcessingProgress(next)
       }
 
-      // ETA：基于 real（真实 progress，不吃 driftTo）算 rawEta，
+      // ETA：基于 real（真实 progress，不吃 driftTo）+ 模式先验，给用户一个合理预期。
       // 单调递减 + 一阶低通 slide，让倒计时永远均匀走，不会卡住也不会突跳。
       // 跌到 0 后就让它停在 0，UI 会自然隐藏文案，只剩 Fixing… 继续表达"在跑"。
       const startedAt = progressStartRef.current ?? now
       const elapsed = (now - startedAt) / 1000
       const real = progressRealRef.current
-      if (real >= 4 && elapsed >= 1.2 && real < 100) {
-        const rawEta = (elapsed * (100 - real)) / real
+      if (elapsed >= 0.3 && real < 100) {
+        // 线性外推估算（real 太小时不可靠，先验兜底）
+        const linearEta = real >= 4 ? (elapsed * (100 - real)) / real : Infinity
+        // 模式先验剩余：priorTotal - elapsed
+        const priorRemaining = Math.max(0, priorTotalRef.current - elapsed)
+        // 取两者较大值作为 rawEta：开局时先验更高，避免 4s 就开始倒数误导用户；
+        // 中后期 linearEta 才会主导（real 上升后 linearEta 收敛到接近 priorRemaining）
+        const rawEta = Number.isFinite(linearEta)
+          ? Math.max(priorRemaining, linearEta)
+          : priorRemaining
+
         const prev = etaRef.current
         let nextEta: number
         if (prev == null) {
@@ -769,6 +780,10 @@ export function useImageEditor(): UseImageEditorReturn {
   // 处理主流程
   const handleProcess = useCallback(async () => {
     if (!images.baseImage || !images.elementImage || !mask) return
+
+    // 设置总时长先验：AI 模式约 25s（推理大头），composite 模式约 8s（纯本地合成）。
+    // 必须在 setIsProcessing 之前，effect 启动 rAF 时就能读到正确值。
+    priorTotalRef.current = params.editMode === "ai" ? 25 : 8
 
     setIsProcessing(true)
     setError(null)
