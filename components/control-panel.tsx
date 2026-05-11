@@ -20,6 +20,7 @@ interface ControlPanelProps {
   canProcess: boolean
   processingStatus?: string
   processingProgress?: number
+  processingEta?: number | null
   error?: string | null
   imageAnalysis?: string | null
   isAnalyzing?: boolean
@@ -33,6 +34,7 @@ export default function ControlPanel({
   canProcess,
   processingStatus = "",
   processingProgress = 0,
+  processingEta = null,
   error = null,
   imageAnalysis = null,
   isAnalyzing = false,
@@ -65,6 +67,7 @@ export default function ControlPanel({
         canProcess={canProcess}
         processingStatus={processingStatus}
         processingProgress={processingProgress}
+        processingEta={processingEta}
         editMode={params.editMode}
       />
     </Card>
@@ -396,6 +399,7 @@ function ProcessButton({
   canProcess,
   processingStatus,
   processingProgress,
+  processingEta,
   editMode,
 }: {
   onProcess: () => void
@@ -403,10 +407,12 @@ function ProcessButton({
   canProcess: boolean
   processingStatus: string
   processingProgress: number
+  processingEta: number | null
   editMode: "ai" | "composite"
 }) {
   const buttonText = "FIX"
   const Icon = editMode === "composite" ? Layers : Sparkles
+  const etaText = formatEta(processingEta)
 
   return (
     <div className="border-t p-4">
@@ -414,7 +420,9 @@ function ProcessButton({
         {isProcessing ? (
           <>
             <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-            {processingStatus || "Processing..."}
+            <span>
+              Fixing<span className="fix-status-dots" aria-hidden="true" />
+            </span>
           </>
         ) : (
           <>
@@ -429,21 +437,41 @@ function ProcessButton({
         </p>
       )}
       {isProcessing && (
-        <div className="mt-3 space-y-2">
-          {/* Progress bar */}
-          <div className="w-full bg-secondary rounded-full h-2 overflow-hidden">
+        <div
+          className="mt-4 space-y-2"
+          role="status"
+          aria-live="polite"
+          aria-label={`Fixing, ${Math.round(processingProgress)} percent${etaText ? `, ${etaText}` : ""}`}
+        >
+          <div className="fix-progress-track">
             <div
-              className="bg-primary h-full transition-all duration-300 ease-in-out"
-              style={{ width: `${processingProgress}%` }}
+              className="fix-progress-fill"
+              style={{ width: `${Math.max(4, Math.min(100, processingProgress))}%` }}
             />
           </div>
-          {/* Status text with percentage */}
-          <div className="flex justify-between text-xs text-muted-foreground">
-            <span>{processingStatus}</span>
-            <span className="font-mono font-semibold">{processingProgress}%</span>
-          </div>
+          <p className="flex items-center justify-center gap-1.5 text-center text-xs text-muted-foreground">
+            <span>
+              Fixing<span className="fix-status-dots" aria-hidden="true" />
+            </span>
+            {etaText && (
+              <>
+                <span className="opacity-40">·</span>
+                <span className="tabular-nums">{etaText}</span>
+              </>
+            )}
+          </p>
         </div>
       )}
     </div>
   )
+}
+
+function formatEta(seconds: number | null): string | null {
+  if (seconds == null || !Number.isFinite(seconds)) return null
+  // 不足 1s 直接隐藏文案：避免出现 0s left / 卡在 1s 的尴尬态，
+  // 让 Fixing… 的动态省略号 + shimmer 进度条继续表达"还在跑"
+  if (seconds < 1) return null
+  if (seconds < 60) return `~${Math.ceil(seconds)}s left`
+  const minutes = Math.ceil(seconds / 60)
+  return `~${minutes}m left`
 }

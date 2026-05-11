@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback, useRef } from "react"
+import { useState, useCallback, useEffect, useRef } from "react"
 import type {
   EditorStep,
   ImageData,
@@ -55,7 +55,8 @@ export interface UseImageEditorReturn {
   resultImage: string | null
   isProcessing: boolean
   processingStatus: string
-  processingProgress: number // 0-100 百分比
+  processingProgress: number // 0-100, 单调递增，连续动画
+  processingEta: number | null // 预计剩余秒数；无估算时为 null
   error: string | null
   warning: string | null
   imageAnalysis: string | null
@@ -214,6 +215,7 @@ export function useImageEditor(): UseImageEditorReturn {
   const [isProcessing, setIsProcessing] = useState(false)
   const [processingStatus, setProcessingStatus] = useState("")
   const [processingProgress, setProcessingProgress] = useState(0)
+  const [processingEta, setProcessingEta] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [warning, setWarning] = useState<string | null>(null)
   const [imageAnalysis, setImageAnalysis] = useState<string | null>(null)
@@ -228,44 +230,118 @@ export function useImageEditor(): UseImageEditorReturn {
     image: string   // Cutout PNG (transparent background)
     mask: string    // Alpha mask PNG (white = subject, black = background)
   } | null>(null)
-  const progressDriftTimer = useRef<number | null>(null)
+  // ============ 进度动画驱动 ============
+  // target: 给显示动画用，含 driftTo（让条始终爬升），上限 99
+  // real:   只跟真实 progress，不吃 driftTo，给 ETA 算实际剩余
+  // displayed: rAF 平滑跟随 target，永不回退
+  // priorTotalRef: 总时长先验（按模式不同），用于一开始给用户一个合理的"要等多久"预期
+  const progressTargetRef = useRef(0)
+  const progressRealRef = useRef(0)
+  const progressDisplayedRef = useRef(0)
+  const progressStartRef = useRef<number | null>(null)
+  const etaRef = useRef<number | null>(null)
+  const priorTotalRef = useRef(25)
 
-  const stopProgressDrift = useCallback(() => {
-    if (progressDriftTimer.current !== null) {
-      clearInterval(progressDriftTimer.current)
-      progressDriftTimer.current = null
-    }
+  const resetProgressRefs = useCallback(() => {
+    progressTargetRef.current = 0
+    progressRealRef.current = 0
+    progressDisplayedRef.current = 0
+    progressStartRef.current = null
+    etaRef.current = null
   }, [])
 
-  const startProgressDrift = useCallback(
-    (target: number) => {
-      stopProgressDrift()
-      progressDriftTimer.current = window.setInterval(() => {
-        setProcessingProgress((prev) => {
-          const next = Math.min(prev + 1, target - 1)
-          if (next >= target - 1) {
-            stopProgressDrift()
-          }
-          return next
-        })
-      }, 500)
-    },
-    [stopProgressDrift]
-  )
-
-  // 辅助函数：更新处理状态和进度
+  // 单调推进：real 仅吃 progress；target 吃 max(progress, driftTo)
   const updateProgress = useCallback(
     (status: string, progress: number, options?: { driftTo?: number }) => {
       setProcessingStatus(status)
-      setProcessingProgress(progress)
-
-      stopProgressDrift()
-      if (options?.driftTo && options.driftTo > progress) {
-        startProgressDrift(options.driftTo)
+      const realClamped = Math.min(100, Math.max(0, progress))
+      if (realClamped > progressRealRef.current) {
+        progressRealRef.current = realClamped
+      }
+      const targetCandidate = Math.max(progress, options?.driftTo ?? 0)
+      const targetClamped = Math.min(100, Math.max(0, targetCandidate))
+      if (targetClamped > progressTargetRef.current) {
+        progressTargetRef.current = targetClamped
       }
     },
-    [startProgressDrift, stopProgressDrift]
+    []
   )
+
+  useEffect(() => {
+    if (!isProcessing) {
+      resetProgressRefs()
+      setProcessingProgress(0)
+      setProcessingEta(null)
+      return
+    }
+
+    progressStartRef.current = performance.now()
+    let raf = 0
+    let last = performance.now()
+
+    const tick = (now: number) => {
+      const dt = Math.min(0.1, (now - last) / 1000)
+      last = now
+
+      const target = progressTargetRef.current
+      const cap = target >= 100 ? 100 : 99
+      const current = progressDisplayedRef.current
+
+      if (current < cap) {
+        // gap-driven velocity for active phase + asymptotic creep so bar never fully stalls
+        const gap = Math.max(0, target - current)
+        const gapVel = gap > 0 ? Math.max(0.4, gap * 0.18) : 0
+        const asymptotic = Math.max(0.15, (99 - current) * 0.04)
+        const velocity = Math.max(asymptotic, gapVel)
+        const next = Math.min(cap, current + velocity * dt)
+        progressDisplayedRef.current = next
+        setProcessingProgress(next)
+      }
+
+      // ETA：基于 real（真实 progress，不吃 driftTo）+ 模式先验，给用户一个合理预期。
+      // 单调递减 + 一阶低通 slide，让倒计时永远均匀走，不会卡住也不会突跳。
+      // 跌到 0 后就让它停在 0，UI 会自然隐藏文案，只剩 Fixing… 继续表达"在跑"。
+      const startedAt = progressStartRef.current ?? now
+      const elapsed = (now - startedAt) / 1000
+      const real = progressRealRef.current
+      if (elapsed >= 0.3 && real < 100) {
+        // 线性外推估算（real 太小时不可靠，先验兜底）
+        const linearEta = real >= 4 ? (elapsed * (100 - real)) / real : Infinity
+        // 模式先验剩余：priorTotal - elapsed
+        const priorRemaining = Math.max(0, priorTotalRef.current - elapsed)
+        // 取两者较大值作为 rawEta：开局时先验更高，避免 4s 就开始倒数误导用户；
+        // 中后期 linearEta 才会主导（real 上升后 linearEta 收敛到接近 priorRemaining）
+        const rawEta = Number.isFinite(linearEta)
+          ? Math.max(priorRemaining, linearEta)
+          : priorRemaining
+
+        const prev = etaRef.current
+        let nextEta: number
+        if (prev == null) {
+          nextEta = rawEta
+        } else {
+          // 每帧先按 1s/s 倒数（保证均匀走），再判断要不要追赶到更小的 rawEta
+          const tickedDown = Math.max(0, prev - dt)
+          if (rawEta < tickedDown) {
+            // 新估算更短：一阶低通 slide，tau=3s 内追上，绝不突跳
+            const tau = 3.0
+            const alpha = 1 - Math.exp(-dt / tau)
+            nextEta = tickedDown + (rawEta - tickedDown) * alpha
+          } else {
+            // 新估算 >= tickedDown：保持均匀倒数，不允许 ETA 上抬
+            nextEta = tickedDown
+          }
+        }
+        etaRef.current = Math.max(0, nextEta)
+        setProcessingEta(etaRef.current)
+      }
+
+      raf = requestAnimationFrame(tick)
+    }
+
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [isProcessing, resetProgressRefs])
 
   // 分析图片 - 支持传入裁剪区域以聚焦分析
   // 返回分析结果字符串，以便调用者可以立即使用（避免闭包捕获的状态值过时问题）
@@ -705,6 +781,12 @@ export function useImageEditor(): UseImageEditorReturn {
   const handleProcess = useCallback(async () => {
     if (!images.baseImage || !images.elementImage || !mask) return
 
+    // 设置总时长先验：AI 模式 60s、composite 模式 20s。
+    // 原则：宁可保守估高，让用户提前完成时获得超预期体验，
+    // 绝不能让用户眼看 ETA 归零后还在等。
+    // 必须在 setIsProcessing 之前，effect 启动 rAF 时就能读到正确值。
+    priorTotalRef.current = params.editMode === "ai" ? 60 : 20
+
     setIsProcessing(true)
     setError(null)
     setWarning(null)
@@ -755,12 +837,11 @@ export function useImageEditor(): UseImageEditorReturn {
       console.error("Processing failed:", error)
       setError(error instanceof Error ? error.message : "Failed to process image")
     } finally {
-      stopProgressDrift()
       setIsProcessing(false)
       setProcessingStatus("")
-      setProcessingProgress(0)
+      // displayed/eta 重置交给 effect 监听 isProcessing 变化处理
     }
-  }, [images, mask, params, processCompositeMode, processAIMode, updateProgress, stopProgressDrift])
+  }, [images, mask, params, processCompositeMode, processAIMode, updateProgress])
 
   // 重置状态
   const handleReset = useCallback(() => {
@@ -774,10 +855,9 @@ export function useImageEditor(): UseImageEditorReturn {
     setImageAnalysis(null)
     setIsAnalyzing(false)
     setProcessingStatus("")
-    setProcessingProgress(0)
     setElementCrop(null)
-    stopProgressDrift()
-  }, [stopProgressDrift])
+    // processing 相关动画/进度状态由 isProcessing 的 effect 统一清理
+  }, [])
 
   return {
     step,
@@ -788,6 +868,7 @@ export function useImageEditor(): UseImageEditorReturn {
     isProcessing,
     processingStatus,
     processingProgress,
+    processingEta,
     error,
     warning,
     imageAnalysis,

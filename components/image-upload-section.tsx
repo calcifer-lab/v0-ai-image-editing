@@ -15,7 +15,7 @@ type ImageType = "element" | "base"
 type UploadFeedback = { type: "error" | "warning"; message: string } | null
 
 const DEMO_PRESETS = [
-  { element: "/demo/nezuko-element.jpg", base: "/demo/nezuko-base.jpg" },
+  { element: "/demo/pagoda-element.jpg", base: "/demo/pagoda-base.jpg" },
   { element: "/demo/nezuko-base.jpg", base: "/demo/nezuko-element.jpg" },
 ]
 
