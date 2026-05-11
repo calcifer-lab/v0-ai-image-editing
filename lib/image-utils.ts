@@ -893,6 +893,178 @@ export async function compositeImages(
   return canvas.toDataURL("image/png")
 }
 
+export async function compositeForDirectPatch(
+  baseImageUrl: string,
+  referenceImageUrl: string,
+  maskImageUrl: string,
+  maskCoordinates: { x: number; y: number; width: number; height: number },
+  brushMaskCanvas?: HTMLCanvasElement,
+  options?: LocalFusionOptions
+): Promise<string> {
+  const [baseImg, refImg, maskImg] = await Promise.all([
+    loadImage(baseImageUrl),
+    loadImage(referenceImageUrl),
+    loadImage(maskImageUrl),
+  ])
+
+  console.log("[Composite] Base image:", baseImg.width, "x", baseImg.height)
+  console.log("[Composite] Reference image:", refImg.width, "x", refImg.height)
+  console.log("[Composite] Mask image:", maskImg.width, "x", maskImg.height)
+  console.log("[Composite] Mask coordinates:", maskCoordinates)
+
+  const canvas = document.createElement("canvas")
+  canvas.width = baseImg.width
+  canvas.height = baseImg.height
+  const ctx = canvas.getContext("2d")
+  if (!ctx) throw new Error("Failed to get canvas context")
+
+  ctx.drawImage(baseImg, 0, 0)
+
+  const scaleX = baseImg.width / maskImg.width
+  const scaleY = baseImg.height / maskImg.height
+
+  const targetX = Math.round(maskCoordinates.x * scaleX)
+  const targetY = Math.round(maskCoordinates.y * scaleY)
+  const targetWidth = Math.round(maskCoordinates.width * scaleX)
+  const targetHeight = Math.round(maskCoordinates.height * scaleY)
+
+  console.log("[Composite] Target area:", targetX, targetY, targetWidth, targetHeight)
+
+  // Scale full mask to base image dimensions with edge feathering
+  const fullMaskCanvas = document.createElement("canvas")
+  fullMaskCanvas.width = baseImg.width
+  fullMaskCanvas.height = baseImg.height
+  const fullMaskCtx = fullMaskCanvas.getContext("2d")
+  if (!fullMaskCtx) throw new Error("Failed to get full mask canvas context")
+  const blurPx = Math.max(15, Math.min(80, Math.round(Math.min(targetWidth, targetHeight) * 0.14)))
+  fullMaskCtx.filter = `blur(${blurPx}px)`
+  fullMaskCtx.drawImage(maskImg, 0, 0, baseImg.width, baseImg.height)
+  fullMaskCtx.filter = "none"
+
+  // Scale reference image to fit target region
+  const refCanvas = document.createElement("canvas")
+  refCanvas.width = targetWidth
+  refCanvas.height = targetHeight
+  const refCtx = refCanvas.getContext("2d")
+  if (!refCtx) throw new Error("Failed to get ref canvas context")
+
+  const sourceCanvas = document.createElement("canvas")
+  sourceCanvas.width = refImg.width
+  sourceCanvas.height = refImg.height
+  const sourceCtx = sourceCanvas.getContext("2d")
+  if (!sourceCtx) throw new Error("Failed to get source canvas context")
+  sourceCtx.drawImage(refImg, 0, 0)
+  const sourceImageData = sourceCtx.getImageData(0, 0, refImg.width, refImg.height)
+  const opaqueBounds = findOpaqueBounds(sourceImageData.data, refImg.width, refImg.height)
+
+  if (opaqueBounds) {
+    // Always stretch the opaque subject to exactly fill the target.
+    // Whether the element has transparent edges (post bg-removal) or not,
+    // the visible content must fill the entire selected region — no letterboxing.
+    refCtx.drawImage(
+      refImg,
+      opaqueBounds.srcX,
+      opaqueBounds.srcY,
+      opaqueBounds.srcWidth,
+      opaqueBounds.srcHeight,
+      0,
+      0,
+      targetWidth,
+      targetHeight
+    )
+  } else {
+    // No opaque pixels at all — stretch the whole image
+    refCtx.drawImage(refImg, 0, 0, refImg.width, refImg.height, 0, 0, targetWidth, targetHeight)
+  }
+
+  // Pixel-by-pixel blend: combinedAlpha = maskBrightness × refAlpha × blendStrength
+  const blendStrength = clamp(options?.blendStrength ?? 1.0, 0, 1)
+  const maskData = fullMaskCtx.getImageData(targetX, targetY, targetWidth, targetHeight)
+  const refData = refCtx.getImageData(0, 0, targetWidth, targetHeight)
+  const baseData = ctx.getImageData(targetX, targetY, targetWidth, targetHeight)
+
+  // Pass 1: clear only the extreme centre (brightness > 0.85) with surrounding ambient.
+  // Only clear where the element is guaranteed to be fully opaque so the flat ambient
+  // colour does not create a visible rectangle in transparent gap areas.
+  const fullBaseData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+  const surroundMargin = clamp(Math.round(Math.max(targetWidth, targetHeight) * 0.20), 16, 64)
+  const surroundStats = collectSurroundingStats(
+    fullBaseData.data,
+    canvas.width,
+    canvas.height,
+    { x: targetX, y: targetY, width: targetWidth, height: targetHeight },
+    surroundMargin
+  )
+  if (surroundStats.count > 0) {
+    for (let i = 0; i < maskData.data.length; i += 4) {
+      const maskBrightness = (maskData.data[i] + maskData.data[i + 1] + maskData.data[i + 2]) / 3 / 255
+      // Only clear the very centre (brightness > 0.85) where the element is guaranteed
+      // to cover. A wide fill range creates a visible flat-colour rectangle because
+      // surroundStats is a mean that does not match local texture.
+      const fill = clamp((maskBrightness - 0.85) / 0.15, 0, 1)
+      if (fill > 0.01) {
+        baseData.data[i]     = Math.round(surroundStats.r * fill + baseData.data[i]     * (1 - fill))
+        baseData.data[i + 1] = Math.round(surroundStats.g * fill + baseData.data[i + 1] * (1 - fill))
+        baseData.data[i + 2] = Math.round(surroundStats.b * fill + baseData.data[i + 2] * (1 - fill))
+      }
+    }
+  }
+
+  // Tone matching: shift element colour toward surrounding scene colour.
+  const refStats = collectReferenceStats(refData.data)
+  const toneMatchStrength = 0.50
+  const scaleR = refStats.count > 0 && surroundStats.count > 0 ? clamp(surroundStats.r / Math.max(1, refStats.r), 0.72, 1.32) : 1
+  const scaleG = refStats.count > 0 && surroundStats.count > 0 ? clamp(surroundStats.g / Math.max(1, refStats.g), 0.72, 1.32) : 1
+  const scaleB = refStats.count > 0 && surroundStats.count > 0 ? clamp(surroundStats.b / Math.max(1, refStats.b), 0.72, 1.32) : 1
+  const lumaShift = refStats.count > 0 && surroundStats.count > 0
+    ? clamp(surroundStats.luma - refStats.luma, -25, 25) : 0
+
+  // Pass 2: composite the new element over the already-cleared base.
+  for (let i = 0; i < maskData.data.length; i += 4) {
+    const maskBrightness = (maskData.data[i] + maskData.data[i + 1] + maskData.data[i + 2]) / 3
+    const refAlpha = refData.data[i + 3] / 255
+    const combinedAlpha = (maskBrightness / 255) * refAlpha * blendStrength
+    if (combinedAlpha > 0.01) {
+      // edgeFactor is 1 at the feather boundary, 0 at the core centre
+      const edgeFactor = 1 - smoothstep(0.4, 0.85, maskBrightness / 255)
+      const corrStrength = toneMatchStrength * lerp(0.25, 1.0, edgeFactor)
+
+      const origR = refData.data[i]
+      const origG = refData.data[i + 1]
+      const origB = refData.data[i + 2]
+
+      const correctedR = clamp(origR * scaleR + lumaShift, 0, 255)
+      const correctedG = clamp(origG * scaleG + lumaShift, 0, 255)
+      const correctedB = clamp(origB * scaleB + lumaShift, 0, 255)
+
+      let fusedR = lerp(origR, correctedR, corrStrength)
+      let fusedG = lerp(origG, correctedG, corrStrength)
+      let fusedB = lerp(origB, correctedB, corrStrength)
+
+      // Very subtle tint toward surrounding colour at edges
+      const edgeTintStrength = edgeFactor * 0.08
+      fusedR = lerp(fusedR, surroundStats.r, edgeTintStrength)
+      fusedG = lerp(fusedG, surroundStats.g, edgeTintStrength)
+      fusedB = lerp(fusedB, surroundStats.b, edgeTintStrength)
+
+      // Blend-out target: use the actual base pixel (preserves natural scene texture).
+      // A small nudge toward surroundStats (15%) at the extreme edge softens the ghost
+      // without producing the visible flat-colour rectangle that higher values create.
+      const blendBaseR = lerp(baseData.data[i],     surroundStats.r, edgeFactor * 0.15)
+      const blendBaseG = lerp(baseData.data[i + 1], surroundStats.g, edgeFactor * 0.15)
+      const blendBaseB = lerp(baseData.data[i + 2], surroundStats.b, edgeFactor * 0.15)
+
+      baseData.data[i]     = Math.round(fusedR * combinedAlpha + blendBaseR * (1 - combinedAlpha))
+      baseData.data[i + 1] = Math.round(fusedG * combinedAlpha + blendBaseG * (1 - combinedAlpha))
+      baseData.data[i + 2] = Math.round(fusedB * combinedAlpha + blendBaseB * (1 - combinedAlpha))
+      baseData.data[i + 3] = 255
+    }
+  }
+
+  ctx.putImageData(baseData, targetX, targetY)
+  return canvas.toDataURL("image/png")
+}
+
 export async function compositePatchWithLocalFusion(
   baseImageUrl: string,
   referenceImageUrl: string,

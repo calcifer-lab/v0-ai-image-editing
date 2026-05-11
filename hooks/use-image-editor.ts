@@ -14,6 +14,7 @@ import type { CanvasEditorRef } from "@/components/canvas-editor"
 import {
   resizeToAspectRatio,
   compositeImages,
+  compositeForDirectPatch,
   loadImage,
   resizeImage,
   compressImage,
@@ -473,7 +474,7 @@ export function useImageEditor(): UseImageEditorReturn {
     // toneMatchStrength=0: skip local color correction — /api/fusion (Gemini) handles all
     // lighting/color harmonization. Pre-adjusting here causes double-correction artifacts.
     updateProgress("Patching element into image...", 40)
-    const compositeResult = await compositeImages(
+    const compositeResult = await compositeForDirectPatch(
       images.baseImage,
       processedReference,
       mask.dataUrl,
