@@ -1,5 +1,6 @@
 import type { Metadata } from "next"
 import Script from "next/script"
+import { GoogleAnalytics } from "@next/third-parties/google"
 import "./globals.css"
 import { LangProvider } from "@/contexts/lang-context"
 import LangToggleFixed from "@/components/lang-toggle-fixed"
@@ -104,6 +105,7 @@ export default function RootLayout({
             }}
           />
         )}
+        <GoogleAnalytics gaId="G-1XPECVXKE3" />
       </body>
     </html>
   )
