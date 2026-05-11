@@ -208,12 +208,12 @@ async function fusionWithGoogle(
   apiKey: string,
   startTime: number
 ): Promise<NextResponse<FusionResponse> | null> {
-  // Slightly higher temperature than inpaint — fusion's job is "harmonize",
-  // a bit more variability is acceptable since geometry is already pinned by
-  // the input composite.
+  // Low temperature: fusion must be deterministic edge-blending, not creative
+  // regeneration. The mask-restricted blend + strict prompt in Phase 2a needs
+  // a conservative sampler to keep Gemini from "polishing" too aggressively.
   const result = await callGoogleGenerate(GOOGLE_IMAGE_MODEL, content, apiKey, {
     responseModalities: ["TEXT", "IMAGE"],
-    temperature: 0.6,
+    temperature: 0.3,
   })
 
   if (!result.ok) {
