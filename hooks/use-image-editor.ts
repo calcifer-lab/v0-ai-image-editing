@@ -289,25 +289,28 @@ export function useImageEditor(): UseImageEditorReturn {
         setProcessingProgress(next)
       }
 
-      // ETA：基于 elapsed / displayed 反推剩余时长，单调递减
+      // ETA：基于 target（真实后端阶段位）反推剩余时长，单调递减且不穿透 floor
+      // 用 displayed 会因 rAF 渐进爬升提前归零，所以必须用 target 锚定
       const startedAt = progressStartRef.current ?? now
       const elapsed = (now - startedAt) / 1000
-      const disp = progressDisplayedRef.current
-      if (disp >= 4 && elapsed >= 1.2 && disp < 100) {
-        const rawEta = (elapsed * (100 - disp)) / disp
+      const tgt = progressTargetRef.current
+      if (tgt >= 4 && elapsed >= 1.2 && tgt < 100) {
+        const rawEta = (elapsed * (100 - tgt)) / tgt
+        // floor：每剩余 1% 估算 0.3s 真实等待，避免 target 卡住时 ETA 提前归零
+        const floor = Math.max(0, (100 - tgt) * 0.3)
         const prev = etaRef.current
         let nextEta: number
         if (prev == null) {
-          nextEta = rawEta
+          nextEta = Math.max(rawEta, floor)
         } else {
-          const tickedDown = Math.max(0, prev - dt)
-          nextEta = Math.min(rawEta, tickedDown)
-          // 实际进度比预期快很多时，允许 ETA 一次性下调
-          if (rawEta < nextEta - 0.5) nextEta = rawEta
+          // 单调递减但永不低于 floor
+          const tickedDown = Math.max(floor, prev - dt)
+          nextEta = Math.min(Math.max(rawEta, floor), tickedDown)
+          // 实际进度比预期快很多时，允许 ETA 一次性下调（但仍不破 floor）
+          if (rawEta < nextEta - 0.5) nextEta = Math.max(rawEta, floor)
         }
-        nextEta = Math.max(0, nextEta)
-        etaRef.current = nextEta
-        setProcessingEta(nextEta)
+        etaRef.current = Math.max(0, nextEta)
+        setProcessingEta(etaRef.current)
       }
 
       raf = requestAnimationFrame(tick)

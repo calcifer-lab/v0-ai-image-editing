@@ -139,10 +139,12 @@ chore/global-replace-emoji-icons
 
 **ETA（预计剩余时间）规则**：
 
-- 估算公式：`eta = elapsed * (100 - displayed) / displayed`
-- 出现条件：`displayed >= 4%` 且已运行 `>= 1.2s`，避免冷启动时给出离谱预估
-- **单调递减**：每帧用 `min(rawEta, prevEta - dt)` 限制，预估变长时只允许"按秒倒数"，绝不允许 ETA 跳升；预估明显变短（`< prev - 0.5s`）时允许一次性下调
-- 文案格式：`~Ns left`（< 60s）/ `~Nm left`（>= 60s）/ `almost done`（< 2s）/ 不显示（无估算）
+- 估算公式：`rawEta = elapsed * (100 - target) / target`
+  - **必须用 `target`（真实后端阶段位）而非 `displayed`** —— rAF 渐进爬升会让 displayed 提前接近 99，分母趋零导致 ETA 提前清零（产生"快好了但还要等很久"的错觉）
+- floor：`floor = (100 - target) * 0.3`，即每剩余 1% 估算 0.3 秒真实等待。target 卡住时 ETA 不会一路掉到 0
+- 出现条件：`target >= 4%` 且已运行 `>= 1.2s`，避免冷启动乱估
+- **单调递减 + floor 保护**：每帧 `min(max(rawEta, floor), max(floor, prevEta - dt))`，预估变长时只允许"按秒倒数到 floor"为止；预估明显变短（`< prev - 0.5s`）时允许一次性下调，但仍不破 floor
+- 文案格式：`~Ns left`（< 60s）/ `~Nm left`（>= 60s）/ 不显示（无估算）。**禁止"almost done" 文案**：它在 target 卡住时会停留过久，等于把误导从百分比挪到文字上
 
 **禁止出现在 UI 上的内容**：
 

@@ -468,8 +468,9 @@ function ProcessButton({
 
 function formatEta(seconds: number | null): string | null {
   if (seconds == null || !Number.isFinite(seconds)) return null
-  if (seconds < 2) return "almost done"
-  if (seconds < 60) return `~${Math.ceil(seconds)}s left`
-  const minutes = Math.ceil(seconds / 60)
+  // 不再使用 "almost done" 标签——它在 target 卡住时会停留过久造成误导
+  const clamped = Math.max(1, seconds)
+  if (clamped < 60) return `~${Math.ceil(clamped)}s left`
+  const minutes = Math.ceil(clamped / 60)
   return `~${minutes}m left`
 }
