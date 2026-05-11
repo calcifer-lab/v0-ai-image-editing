@@ -20,6 +20,7 @@ interface ControlPanelProps {
   canProcess: boolean
   processingStatus?: string
   processingProgress?: number
+  processingEta?: number | null
   error?: string | null
   imageAnalysis?: string | null
   isAnalyzing?: boolean
@@ -33,6 +34,7 @@ export default function ControlPanel({
   canProcess,
   processingStatus = "",
   processingProgress = 0,
+  processingEta = null,
   error = null,
   imageAnalysis = null,
   isAnalyzing = false,
@@ -65,6 +67,7 @@ export default function ControlPanel({
         canProcess={canProcess}
         processingStatus={processingStatus}
         processingProgress={processingProgress}
+        processingEta={processingEta}
         editMode={params.editMode}
       />
     </Card>
@@ -396,6 +399,7 @@ function ProcessButton({
   canProcess,
   processingStatus,
   processingProgress,
+  processingEta,
   editMode,
 }: {
   onProcess: () => void
@@ -403,10 +407,12 @@ function ProcessButton({
   canProcess: boolean
   processingStatus: string
   processingProgress: number
+  processingEta: number | null
   editMode: "ai" | "composite"
 }) {
   const buttonText = "FIX"
   const Icon = editMode === "composite" ? Layers : Sparkles
+  const etaText = formatEta(processingEta)
 
   return (
     <div className="border-t p-4">
@@ -435,7 +441,7 @@ function ProcessButton({
           className="mt-4 space-y-2"
           role="status"
           aria-live="polite"
-          aria-label={`Fixing, ${Math.round(processingProgress)} percent`}
+          aria-label={`Fixing, ${Math.round(processingProgress)} percent${etaText ? `, ${etaText}` : ""}`}
         >
           <div className="fix-progress-track">
             <div
@@ -443,11 +449,27 @@ function ProcessButton({
               style={{ width: `${Math.max(4, Math.min(100, processingProgress))}%` }}
             />
           </div>
-          <p className="text-center text-xs text-muted-foreground">
-            Fixing<span className="fix-status-dots" aria-hidden="true" />
+          <p className="flex items-center justify-center gap-1.5 text-center text-xs text-muted-foreground">
+            <span>
+              Fixing<span className="fix-status-dots" aria-hidden="true" />
+            </span>
+            {etaText && (
+              <>
+                <span className="opacity-40">·</span>
+                <span className="tabular-nums">{etaText}</span>
+              </>
+            )}
           </p>
         </div>
       )}
     </div>
   )
+}
+
+function formatEta(seconds: number | null): string | null {
+  if (seconds == null || !Number.isFinite(seconds)) return null
+  if (seconds < 2) return "almost done"
+  if (seconds < 60) return `~${Math.ceil(seconds)}s left`
+  const minutes = Math.ceil(seconds / 60)
+  return `~${minutes}m left`
 }

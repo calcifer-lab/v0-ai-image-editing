@@ -114,7 +114,7 @@ chore/global-replace-emoji-icons
 │                                     │
 │   ─────────●──────────────          │  ← pill 进度条 + 微光带 shimmer
 │                                     │
-│            Fixing…                  │  ← 居中单行，动态省略号
+│       Fixing… · ~12s left           │  ← 居中单行：状态 + 预计剩余时间
 │                                     │
 └─────────────────────────────────────┘
 ```
@@ -128,12 +128,21 @@ chore/global-replace-emoji-icons
 
 > Fix 按钮在空闲态显示 `FIX`，处理中显示 `Fixing…`（带动态省略号），始终只有一句话，不暴露 stage。
 
-**进度条视觉规范**：
+**进度条与 ETA 视觉规范**：
 
 - pill 形状（高度 6px，圆角 999px），轨道用 `primary` 10% 透明叠色
-- 填充使用 `var(--primary)` 实色，过渡 `cubic-bezier(0.22, 1, 0.36, 1)` 700ms，避免跳变
-- 填充层叠加 1.6s 线性 shimmer 光带（白色 55% 透明的横向 sweep），让进度即使停滞也保持运动感
-- 不显示百分比数字；可访问性通过 `role="status"` + `aria-label` 暴露给屏幕阅读器
+- 填充使用 `var(--primary)` 实色，由 `requestAnimationFrame` 逐帧推进；**单调递增、永不回退**（真实事件只会抬高目标位，不会下拉显示位）
+- 推进逻辑：`velocity = max(gap*0.18, (99-current)*0.04, 0.15) %/sec`，即使后端长时间无事件，进度条也按渐近曲线持续爬升，避免"卡住像死机"的错觉
+- 进度位上限锁定在 **99%**，只有最终结果就绪才允许冲到 100，避免提前到顶
+- 填充层叠加 1.6s 线性 shimmer 光带（白色 55% 透明横向 sweep），强化"还在工作中"的视觉信号
+- 不显示百分比数字；屏幕阅读器通过 `role="status"` + `aria-label="Fixing, X percent, ~Ys left"` 获取详情
+
+**ETA（预计剩余时间）规则**：
+
+- 估算公式：`eta = elapsed * (100 - displayed) / displayed`
+- 出现条件：`displayed >= 4%` 且已运行 `>= 1.2s`，避免冷启动时给出离谱预估
+- **单调递减**：每帧用 `min(rawEta, prevEta - dt)` 限制，预估变长时只允许"按秒倒数"，绝不允许 ETA 跳升；预估明显变短（`< prev - 0.5s`）时允许一次性下调
+- 文案格式：`~Ns left`（< 60s）/ `~Nm left`（>= 60s）/ `almost done`（< 2s）/ 不显示（无估算）
 
 **禁止出现在 UI 上的内容**：
 

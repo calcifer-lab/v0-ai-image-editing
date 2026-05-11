@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback, useRef } from "react"
+import { useState, useCallback, useEffect, useRef } from "react"
 import type {
   EditorStep,
   ImageData,
@@ -55,7 +55,8 @@ export interface UseImageEditorReturn {
   resultImage: string | null
   isProcessing: boolean
   processingStatus: string
-  processingProgress: number // 0-100 百分比
+  processingProgress: number // 0-100, 单调递增，连续动画
+  processingEta: number | null // 预计剩余秒数；无估算时为 null
   error: string | null
   warning: string | null
   imageAnalysis: string | null
@@ -214,6 +215,7 @@ export function useImageEditor(): UseImageEditorReturn {
   const [isProcessing, setIsProcessing] = useState(false)
   const [processingStatus, setProcessingStatus] = useState("")
   const [processingProgress, setProcessingProgress] = useState(0)
+  const [processingEta, setProcessingEta] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [warning, setWarning] = useState<string | null>(null)
   const [imageAnalysis, setImageAnalysis] = useState<string | null>(null)
@@ -228,44 +230,92 @@ export function useImageEditor(): UseImageEditorReturn {
     image: string   // Cutout PNG (transparent background)
     mask: string    // Alpha mask PNG (white = subject, black = background)
   } | null>(null)
-  const progressDriftTimer = useRef<number | null>(null)
+  // ============ 进度动画驱动 ============
+  // 真实事件设置 targetRef（单调递增、上限 99，直到收尾把它顶到 100）。
+  // rAF 循环平滑推动 displayedRef 向 target 靠拢，并维护单调递减的 ETA。
+  const progressTargetRef = useRef(0)
+  const progressDisplayedRef = useRef(0)
+  const progressStartRef = useRef<number | null>(null)
+  const etaRef = useRef<number | null>(null)
 
-  const stopProgressDrift = useCallback(() => {
-    if (progressDriftTimer.current !== null) {
-      clearInterval(progressDriftTimer.current)
-      progressDriftTimer.current = null
-    }
+  const resetProgressRefs = useCallback(() => {
+    progressTargetRef.current = 0
+    progressDisplayedRef.current = 0
+    progressStartRef.current = null
+    etaRef.current = null
   }, [])
 
-  const startProgressDrift = useCallback(
-    (target: number) => {
-      stopProgressDrift()
-      progressDriftTimer.current = window.setInterval(() => {
-        setProcessingProgress((prev) => {
-          const next = Math.min(prev + 1, target - 1)
-          if (next >= target - 1) {
-            stopProgressDrift()
-          }
-          return next
-        })
-      }, 500)
-    },
-    [stopProgressDrift]
-  )
-
-  // 辅助函数：更新处理状态和进度
+  // 单调推进 target；driftTo 视为「下一阶段最高位」，作为目标上限
   const updateProgress = useCallback(
     (status: string, progress: number, options?: { driftTo?: number }) => {
       setProcessingStatus(status)
-      setProcessingProgress(progress)
-
-      stopProgressDrift()
-      if (options?.driftTo && options.driftTo > progress) {
-        startProgressDrift(options.driftTo)
+      const candidate = Math.max(progress, options?.driftTo ?? 0)
+      const clamped = Math.min(100, Math.max(0, candidate))
+      if (clamped > progressTargetRef.current) {
+        progressTargetRef.current = clamped
       }
     },
-    [startProgressDrift, stopProgressDrift]
+    []
   )
+
+  useEffect(() => {
+    if (!isProcessing) {
+      resetProgressRefs()
+      setProcessingProgress(0)
+      setProcessingEta(null)
+      return
+    }
+
+    progressStartRef.current = performance.now()
+    let raf = 0
+    let last = performance.now()
+
+    const tick = (now: number) => {
+      const dt = Math.min(0.1, (now - last) / 1000)
+      last = now
+
+      const target = progressTargetRef.current
+      const cap = target >= 100 ? 100 : 99
+      const current = progressDisplayedRef.current
+
+      if (current < cap) {
+        // gap-driven velocity for active phase + asymptotic creep so bar never fully stalls
+        const gap = Math.max(0, target - current)
+        const gapVel = gap > 0 ? Math.max(0.4, gap * 0.18) : 0
+        const asymptotic = Math.max(0.15, (99 - current) * 0.04)
+        const velocity = Math.max(asymptotic, gapVel)
+        const next = Math.min(cap, current + velocity * dt)
+        progressDisplayedRef.current = next
+        setProcessingProgress(next)
+      }
+
+      // ETA：基于 elapsed / displayed 反推剩余时长，单调递减
+      const startedAt = progressStartRef.current ?? now
+      const elapsed = (now - startedAt) / 1000
+      const disp = progressDisplayedRef.current
+      if (disp >= 4 && elapsed >= 1.2 && disp < 100) {
+        const rawEta = (elapsed * (100 - disp)) / disp
+        const prev = etaRef.current
+        let nextEta: number
+        if (prev == null) {
+          nextEta = rawEta
+        } else {
+          const tickedDown = Math.max(0, prev - dt)
+          nextEta = Math.min(rawEta, tickedDown)
+          // 实际进度比预期快很多时，允许 ETA 一次性下调
+          if (rawEta < nextEta - 0.5) nextEta = rawEta
+        }
+        nextEta = Math.max(0, nextEta)
+        etaRef.current = nextEta
+        setProcessingEta(nextEta)
+      }
+
+      raf = requestAnimationFrame(tick)
+    }
+
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [isProcessing, resetProgressRefs])
 
   // 分析图片 - 支持传入裁剪区域以聚焦分析
   // 返回分析结果字符串，以便调用者可以立即使用（避免闭包捕获的状态值过时问题）
@@ -755,12 +805,11 @@ export function useImageEditor(): UseImageEditorReturn {
       console.error("Processing failed:", error)
       setError(error instanceof Error ? error.message : "Failed to process image")
     } finally {
-      stopProgressDrift()
       setIsProcessing(false)
       setProcessingStatus("")
-      setProcessingProgress(0)
+      // displayed/eta 重置交给 effect 监听 isProcessing 变化处理
     }
-  }, [images, mask, params, processCompositeMode, processAIMode, updateProgress, stopProgressDrift])
+  }, [images, mask, params, processCompositeMode, processAIMode, updateProgress])
 
   // 重置状态
   const handleReset = useCallback(() => {
@@ -774,10 +823,9 @@ export function useImageEditor(): UseImageEditorReturn {
     setImageAnalysis(null)
     setIsAnalyzing(false)
     setProcessingStatus("")
-    setProcessingProgress(0)
     setElementCrop(null)
-    stopProgressDrift()
-  }, [stopProgressDrift])
+    // processing 相关动画/进度状态由 isProcessing 的 effect 统一清理
+  }, [])
 
   return {
     step,
@@ -788,6 +836,7 @@ export function useImageEditor(): UseImageEditorReturn {
     isProcessing,
     processingStatus,
     processingProgress,
+    processingEta,
     error,
     warning,
     imageAnalysis,
