@@ -676,7 +676,7 @@ export function useImageEditor(): UseImageEditorReturn {
 
     if (data.meta?.reference_dropped) {
       console.warn("[AI Editor] AI Compose degraded: reference element was not preserved by fallback model")
-      setWarning("AI 主模型不可用，降级模型不支持参考元素 — 元素细节可能未保留。建议重试或切换 Direct Patch。")
+      setWarning("AI main model unavailable. Fallback model does not support the reference image — element details may not be preserved. Try again or switch to Direct Patch.")
       return normalizedResult
     }
 
@@ -734,7 +734,6 @@ export function useImageEditor(): UseImageEditorReturn {
           updateProgress("AI inpaint failed, using direct composite fallback...", 65)
           finalImage = await processCompositeMode()
           console.log("[AI Editor] Fallback composite complete")
-          setWarning("AI Compose 主路径未通过质量检测，已切换到直接拼图模式（仍包含 AI 光影协调）")
         }
       }
 
