@@ -484,20 +484,9 @@ export function useImageEditor(): UseImageEditorReturn {
       { toneMatchStrength: 0 }
     )
 
-    console.log("[AI Editor] Composite complete, starting AI fusion...")
-
-    const fusedResult = await runFusionPass(compositeResult, processedReference, {
-      status: "AI fusion: Harmonizing lighting and style...",
-      value: 60,
-      driftTo: 78,
-    })
-
-    if (fusedResult === compositeResult) {
-      console.log("[AI Editor] Direct Patch complete (no fusion)")
-    }
-
-    return fusedResult
-  }, [images, mask, elementCrop, runFusionPass, updateProgress])
+    console.log("[AI Editor] Direct Patch complete")
+    return compositeResult
+  }, [images, mask, elementCrop, updateProgress])
 
   // 处理 AI 生成模式 (AI Compose)
   // Strategy: composite-first harmonization.
