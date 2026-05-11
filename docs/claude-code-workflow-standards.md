@@ -148,8 +148,10 @@ chore/global-replace-emoji-icons
 
 - 估算公式：`rawEta = max(priorTotal - elapsed, linearEta)`，其中
   - `linearEta = elapsed * (100 - real) / real`（real >= 4 时才可信）
-  - `priorTotal`：按 `editMode` 设置的总时长先验（AI = 25s、composite = 8s），在 `handleProcess` 入口写入 ref
-- **为什么要先验**：早期 stage（real=5→8→18→32→40）会在 2-3s 内连发，纯 linearEta 会让初始 ETA 给出 `~4s left` 这种乐观值。但 AI 推理阶段（real=48 driftTo=80）才是耗时大头，先验保底确保用户上来就看到合理的等待预期，方便决定要不要先去做别的事。
+  - `priorTotal`：按 `editMode` 设置的总时长先验（AI = 60s、composite = 20s），在 `handleProcess` 入口写入 ref
+- **为什么要先验、且要保守估高**：
+  - 早期 stage（real=5→8→18→32→40）会在 2-3s 内连发，纯 linearEta 会让初始 ETA 给出 `~4s left` 这种乐观值。但 AI 推理阶段（real=48 driftTo=80）才是耗时大头，先验保底确保用户上来就看到合理的等待预期，方便决定要不要先去做别的事。
+  - 先验**宁可估高不能估低**：用户看到 ETA 归零却还在等是最坏体验；估高了哪怕提前完成，也是超预期。所以 60s / 20s 不是中位数，而是按 P90 量级取的保守值。
 - 出现条件：`elapsed >= 0.3s` 且 `real < 100`（real 太小时由先验托底，无需等 real 起步）
 - **均匀倒数 + 一阶低通追赶**（这是 ETA 体验的关键）：
   - 每帧先做 `tickedDown = max(0, prev - dt)` —— 保证倒计时永远以 1s/s 均匀走

@@ -781,9 +781,11 @@ export function useImageEditor(): UseImageEditorReturn {
   const handleProcess = useCallback(async () => {
     if (!images.baseImage || !images.elementImage || !mask) return
 
-    // 设置总时长先验：AI 模式约 25s（推理大头），composite 模式约 8s（纯本地合成）。
+    // 设置总时长先验：AI 模式 60s、composite 模式 20s。
+    // 原则：宁可保守估高，让用户提前完成时获得超预期体验，
+    // 绝不能让用户眼看 ETA 归零后还在等。
     // 必须在 setIsProcessing 之前，effect 启动 rAF 时就能读到正确值。
-    priorTotalRef.current = params.editMode === "ai" ? 25 : 8
+    priorTotalRef.current = params.editMode === "ai" ? 60 : 20
 
     setIsProcessing(true)
     setError(null)
