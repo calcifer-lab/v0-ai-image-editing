@@ -231,28 +231,35 @@ export function useImageEditor(): UseImageEditorReturn {
     mask: string    // Alpha mask PNG (white = subject, black = background)
   } | null>(null)
   // ============ 进度动画驱动 ============
-  // 真实事件设置 targetRef（单调递增、上限 99，直到收尾把它顶到 100）。
-  // rAF 循环平滑推动 displayedRef 向 target 靠拢，并维护单调递减的 ETA。
+  // target: 给显示动画用，含 driftTo（让条始终爬升），上限 99
+  // real:   只跟真实 progress，不吃 driftTo，给 ETA 算实际剩余
+  // displayed: rAF 平滑跟随 target，永不回退
   const progressTargetRef = useRef(0)
+  const progressRealRef = useRef(0)
   const progressDisplayedRef = useRef(0)
   const progressStartRef = useRef<number | null>(null)
   const etaRef = useRef<number | null>(null)
 
   const resetProgressRefs = useCallback(() => {
     progressTargetRef.current = 0
+    progressRealRef.current = 0
     progressDisplayedRef.current = 0
     progressStartRef.current = null
     etaRef.current = null
   }, [])
 
-  // 单调推进 target；driftTo 视为「下一阶段最高位」，作为目标上限
+  // 单调推进：real 仅吃 progress；target 吃 max(progress, driftTo)
   const updateProgress = useCallback(
     (status: string, progress: number, options?: { driftTo?: number }) => {
       setProcessingStatus(status)
-      const candidate = Math.max(progress, options?.driftTo ?? 0)
-      const clamped = Math.min(100, Math.max(0, candidate))
-      if (clamped > progressTargetRef.current) {
-        progressTargetRef.current = clamped
+      const realClamped = Math.min(100, Math.max(0, progress))
+      if (realClamped > progressRealRef.current) {
+        progressRealRef.current = realClamped
+      }
+      const targetCandidate = Math.max(progress, options?.driftTo ?? 0)
+      const targetClamped = Math.min(100, Math.max(0, targetCandidate))
+      if (targetClamped > progressTargetRef.current) {
+        progressTargetRef.current = targetClamped
       }
     },
     []
@@ -289,25 +296,33 @@ export function useImageEditor(): UseImageEditorReturn {
         setProcessingProgress(next)
       }
 
-      // ETA：基于 target（真实后端阶段位）反推剩余时长，单调递减且不穿透 floor
-      // 用 displayed 会因 rAF 渐进爬升提前归零，所以必须用 target 锚定
+      // ETA：基于 real（真实 progress，不吃 driftTo）算 rawEta，
+      // 单调递减 + 一阶低通 slide，让倒计时永远均匀走，不会卡住也不会突跳。
       const startedAt = progressStartRef.current ?? now
       const elapsed = (now - startedAt) / 1000
-      const tgt = progressTargetRef.current
-      if (tgt >= 4 && elapsed >= 1.2 && tgt < 100) {
-        const rawEta = (elapsed * (100 - tgt)) / tgt
-        // floor：每剩余 1% 估算 0.3s 真实等待，避免 target 卡住时 ETA 提前归零
-        const floor = Math.max(0, (100 - tgt) * 0.3)
+      const real = progressRealRef.current
+      if (real >= 4 && elapsed >= 1.2 && real < 100) {
+        const rawEta = (elapsed * (100 - real)) / real
         const prev = etaRef.current
         let nextEta: number
         if (prev == null) {
-          nextEta = Math.max(rawEta, floor)
+          nextEta = rawEta
         } else {
-          // 单调递减但永不低于 floor
-          const tickedDown = Math.max(floor, prev - dt)
-          nextEta = Math.min(Math.max(rawEta, floor), tickedDown)
-          // 实际进度比预期快很多时，允许 ETA 一次性下调（但仍不破 floor）
-          if (rawEta < nextEta - 0.5) nextEta = Math.max(rawEta, floor)
+          // 每帧先按 1s/s 倒数（保证均匀走），再判断要不要追赶到更小的 rawEta
+          const tickedDown = Math.max(0, prev - dt)
+          if (rawEta < tickedDown) {
+            // 新估算更短：一阶低通 slide，tau=3s 内追上，绝不突跳
+            const tau = 3.0
+            const alpha = 1 - Math.exp(-dt / tau)
+            nextEta = tickedDown + (rawEta - tickedDown) * alpha
+          } else {
+            // 新估算 >= tickedDown：保持均匀倒数，不允许 ETA 上抬
+            nextEta = tickedDown
+          }
+        }
+        // 软地板：进度还没真到 99 时，ETA 不掉到 0 以下（避免提前显示 0s left）
+        if (nextEta < 2 && real < 99) {
+          nextEta = Math.max(nextEta, 2)
         }
         etaRef.current = Math.max(0, nextEta)
         setProcessingEta(etaRef.current)

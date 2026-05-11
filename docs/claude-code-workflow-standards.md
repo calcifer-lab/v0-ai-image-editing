@@ -139,12 +139,21 @@ chore/global-replace-emoji-icons
 
 **ETA（预计剩余时间）规则**：
 
-- 估算公式：`rawEta = elapsed * (100 - target) / target`
-  - **必须用 `target`（真实后端阶段位）而非 `displayed`** —— rAF 渐进爬升会让 displayed 提前接近 99，分母趋零导致 ETA 提前清零（产生"快好了但还要等很久"的错觉）
-- floor：`floor = (100 - target) * 0.3`，即每剩余 1% 估算 0.3 秒真实等待。target 卡住时 ETA 不会一路掉到 0
-- 出现条件：`target >= 4%` 且已运行 `>= 1.2s`，避免冷启动乱估
-- **单调递减 + floor 保护**：每帧 `min(max(rawEta, floor), max(floor, prevEta - dt))`，预估变长时只允许"按秒倒数到 floor"为止；预估明显变短（`< prev - 0.5s`）时允许一次性下调，但仍不破 floor
-- 文案格式：`~Ns left`（< 60s）/ `~Nm left`（>= 60s）/ 不显示（无估算）。**禁止"almost done" 文案**：它在 target 卡住时会停留过久，等于把误导从百分比挪到文字上
+进度有两个内部状态，必须分开：
+
+- `progressTargetRef`：含 `driftTo`，给进度条爬升用（让条始终在动）
+- `progressRealRef`：**只跟真实 `progress`，不吃 `driftTo`**，专门给 ETA 算
+
+为什么必须分开：`updateProgress("...", 48, { driftTo: 80 })` 之类的事件一次会把 target 顶到 80，但实际工作只到 48；若 ETA 用 target，分母骤增 → ETA 突跳（用户能看到"~21s 突然变 ~6s"）。
+
+- 估算公式：`rawEta = elapsed * (100 - real) / real`
+- 出现条件：`real >= 4%` 且已运行 `>= 1.2s`
+- **均匀倒数 + 一阶低通追赶**（这是 ETA 体验的关键）：
+  - 每帧先做 `tickedDown = max(0, prev - dt)` —— 保证倒计时永远以 1s/s 均匀走
+  - 若 `rawEta < tickedDown`（新估算更短）：用 `tau = 3s` 一阶低通 slide 追赶过去，绝不突跳
+  - 若 `rawEta >= tickedDown`（新估算更长）：保持 tickedDown，禁止 ETA 上抬
+- 软地板：`real < 99` 时 ETA 不低于 2s，避免提前显示 `0s left`
+- 文案格式：`~Ns left`（< 60s）/ `~Nm left`（>= 60s）/ 不显示（无估算）。**禁止 "almost done"**：在 stage 卡住时会停留过久误导用户
 
 **禁止出现在 UI 上的内容**：
 
