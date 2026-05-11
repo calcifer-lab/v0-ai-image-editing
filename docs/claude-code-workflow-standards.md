@@ -152,8 +152,9 @@ chore/global-replace-emoji-icons
   - 每帧先做 `tickedDown = max(0, prev - dt)` —— 保证倒计时永远以 1s/s 均匀走
   - 若 `rawEta < tickedDown`（新估算更短）：用 `tau = 3s` 一阶低通 slide 追赶过去，绝不突跳
   - 若 `rawEta >= tickedDown`（新估算更长）：保持 tickedDown，禁止 ETA 上抬
-- 软地板：`real < 99` 时 ETA 不低于 2s，避免提前显示 `0s left`
-- 文案格式：`~Ns left`（< 60s）/ `~Nm left`（>= 60s）/ 不显示（无估算）。**禁止 "almost done"**：在 stage 卡住时会停留过久误导用户
+- **不要软地板**：曾尝试在 `real < 99` 时把 ETA 锁在 `>= 2s`，结果就是 ETA 跌到 2 后 `tickedDown` 又被 floor 顶回 → 锁死在 `~2s left`。正确做法是让 ETA 自然减到 0
+- 文案兜底：`seconds < 1` 时 `formatEta` 返回 `null`，UI 自动隐藏 ETA 一行，只剩 `Fixing…` + shimmer 进度条继续传达"还在跑"
+- 文案格式：`~Ns left`（< 60s）/ `~Nm left`（>= 60s）/ 不显示。**禁止 "almost done"**：在 stage 卡住时会停留过久误导用户
 
 **禁止出现在 UI 上的内容**：
 

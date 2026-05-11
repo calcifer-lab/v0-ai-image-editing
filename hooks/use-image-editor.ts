@@ -298,6 +298,7 @@ export function useImageEditor(): UseImageEditorReturn {
 
       // ETA：基于 real（真实 progress，不吃 driftTo）算 rawEta，
       // 单调递减 + 一阶低通 slide，让倒计时永远均匀走，不会卡住也不会突跳。
+      // 跌到 0 后就让它停在 0，UI 会自然隐藏文案，只剩 Fixing… 继续表达"在跑"。
       const startedAt = progressStartRef.current ?? now
       const elapsed = (now - startedAt) / 1000
       const real = progressRealRef.current
@@ -319,10 +320,6 @@ export function useImageEditor(): UseImageEditorReturn {
             // 新估算 >= tickedDown：保持均匀倒数，不允许 ETA 上抬
             nextEta = tickedDown
           }
-        }
-        // 软地板：进度还没真到 99 时，ETA 不掉到 0 以下（避免提前显示 0s left）
-        if (nextEta < 2 && real < 99) {
-          nextEta = Math.max(nextEta, 2)
         }
         etaRef.current = Math.max(0, nextEta)
         setProcessingEta(etaRef.current)

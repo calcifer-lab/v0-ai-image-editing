@@ -468,8 +468,10 @@ function ProcessButton({
 
 function formatEta(seconds: number | null): string | null {
   if (seconds == null || !Number.isFinite(seconds)) return null
-  // 显示用 ceil，避免 0.4s 被四舍五入成 0；上游已保证不会低于软地板 2s
-  if (seconds < 60) return `~${Math.max(1, Math.ceil(seconds))}s left`
+  // 不足 1s 直接隐藏文案：避免出现 0s left / 卡在 1s 的尴尬态，
+  // 让 Fixing… 的动态省略号 + shimmer 进度条继续表达"还在跑"
+  if (seconds < 1) return null
+  if (seconds < 60) return `~${Math.ceil(seconds)}s left`
   const minutes = Math.ceil(seconds / 60)
   return `~${minutes}m left`
 }
