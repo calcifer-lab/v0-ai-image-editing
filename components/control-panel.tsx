@@ -414,7 +414,9 @@ function ProcessButton({
         {isProcessing ? (
           <>
             <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-            {processingStatus || "Processing..."}
+            <span>
+              Fixing<span className="fix-status-dots" aria-hidden="true" />
+            </span>
           </>
         ) : (
           <>
@@ -429,19 +431,21 @@ function ProcessButton({
         </p>
       )}
       {isProcessing && (
-        <div className="mt-3 space-y-2">
-          {/* Progress bar */}
-          <div className="w-full bg-secondary rounded-full h-2 overflow-hidden">
+        <div
+          className="mt-4 space-y-2"
+          role="status"
+          aria-live="polite"
+          aria-label={`Fixing, ${Math.round(processingProgress)} percent`}
+        >
+          <div className="fix-progress-track">
             <div
-              className="bg-primary h-full transition-all duration-300 ease-in-out"
-              style={{ width: `${processingProgress}%` }}
+              className="fix-progress-fill"
+              style={{ width: `${Math.max(4, Math.min(100, processingProgress))}%` }}
             />
           </div>
-          {/* Status text with percentage */}
-          <div className="flex justify-between text-xs text-muted-foreground">
-            <span>{processingStatus}</span>
-            <span className="font-mono font-semibold">{processingProgress}%</span>
-          </div>
+          <p className="text-center text-xs text-muted-foreground">
+            Fixing<span className="fix-status-dots" aria-hidden="true" />
+          </p>
         </div>
       )}
     </div>

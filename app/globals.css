@@ -1336,3 +1336,55 @@ html[lang="en"] .lang-zh {
     display: none;
   }
 }
+
+.fix-progress-track {
+  position: relative;
+  width: 100%;
+  height: 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+  overflow: hidden;
+}
+
+.fix-progress-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 999px;
+  background: var(--primary);
+  transition: width 700ms cubic-bezier(0.22, 1, 0.36, 1);
+  overflow: hidden;
+}
+
+.fix-progress-fill::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.55) 50%,
+    transparent 100%
+  );
+  transform: translateX(-100%);
+  animation: fix-shimmer 1.6s linear infinite;
+}
+
+@keyframes fix-shimmer {
+  to { transform: translateX(100%); }
+}
+
+.fix-status-dots::after {
+  content: "";
+  display: inline-block;
+  width: 1.1em;
+  text-align: left;
+  animation: fix-dots 1.4s steps(4, end) infinite;
+}
+
+@keyframes fix-dots {
+  0%   { content: ""; }
+  25%  { content: "·"; }
+  50%  { content: "··"; }
+  75%  { content: "···"; }
+  100% { content: ""; }
+}
