@@ -1,4 +1,5 @@
 import ImageEditor from "@/components/image-editor"
+import AuthStatus from "@/components/auth/auth-status"
 
 export const metadata = {
   title: "Fix ReDiagram",
@@ -8,7 +9,7 @@ export const metadata = {
 export default function EditorPage() {
   return (
     <main className="min-h-screen bg-background">
-      <ImageEditor />
+      <ImageEditor authSlot={<AuthStatus variant="editor" />} />
     </main>
   )
 }
