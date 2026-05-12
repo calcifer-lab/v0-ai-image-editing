@@ -1,31 +1,12 @@
 import Link from "next/link"
-import LangToggle from "@/components/lang-toggle-fixed"
-import AuthStatus from "@/components/auth/auth-status"
+import AuthControls from "@/components/auth/auth-controls"
+import LangSwitcher from "@/components/lang-switcher"
 
 const NAV_LINKS = [
-  {
-    href: "#audience",
-    en: "Who it's for",
-    zh: "适合谁用",
-  },
-  {
-    href: "#how-it-works",
-    en: "How it works",
-    zh: "工作方式",
-  },
-  {
-    href: "/blog",
-    en: "Blog",
-    zh: "博客",
-  },
-  {
-    href: "#faq",
-    en: "FAQ",
-    zh: "常见问题",
-  },
-  {
-    isLangToggle: true,
-  },
+  { href: "#audience", en: "Who it's for", zh: "适合谁用" },
+  { href: "#how-it-works", en: "How it works", zh: "工作方式" },
+  { href: "/blog", en: "Blog", zh: "博客" },
+  { href: "#faq", en: "FAQ", zh: "常见问题" },
 ]
 
 export default function Header() {
@@ -38,20 +19,17 @@ export default function Header() {
         </Link>
 
         <nav className="site-nav" aria-label="Primary">
-          {NAV_LINKS.map((link) =>
-            "isLangToggle" in link ? (
-              <LangToggle key="lang-toggle" />
-            ) : (
-              <a key={link.href} href={link.href} className="site-nav-link">
-                <span className="lang-en">{link.en}</span>
-                <span className="lang-zh">{link.zh}</span>
-              </a>
-            ),
-          )}
-          <AuthStatus variant="site" />
+          {NAV_LINKS.map((link) => (
+            <a key={link.href} href={link.href} className="site-nav-link">
+              <span className="lang-en">{link.en}</span>
+              <span className="lang-zh">{link.zh}</span>
+            </a>
+          ))}
         </nav>
 
         <div className="site-header-actions">
+          <LangSwitcher />
+          <AuthControls variant="site" />
           <Link href="/editor" className="button button-primary button-sm">
             <span className="lang-en">Try Fix</span>
             <span className="lang-zh">体验 Fix</span>

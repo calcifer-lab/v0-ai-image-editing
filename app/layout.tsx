@@ -1,9 +1,9 @@
 import type { Metadata } from "next"
 import Script from "next/script"
 import { GoogleAnalytics } from "@next/third-parties/google"
+import { Toaster } from "sonner"
 import "./globals.css"
 import { LangProvider } from "@/contexts/lang-context"
-import LangToggleFixed from "@/components/lang-toggle-fixed"
 
 const softwareApplicationJsonLd = {
   "@context": "https://schema.org",
@@ -90,6 +90,7 @@ export default function RootLayout({
         <LangProvider>
           {children}
         </LangProvider>
+        <Toaster position="top-center" closeButton richColors={false} />
         {process.env.NEXT_PUBLIC_CLARITY_ID && (
           <Script
             id="microsoft-clarity"
