@@ -6,7 +6,7 @@ import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { formatPostDate, getAllPosts, getPostBySlug } from "../_lib/posts"
 
-const SITE_URL = "https://rediagram.com"
+const SITE_URL = "https://www.rediagram.com"
 
 export async function generateStaticParams() {
   return getAllPosts().map((post) => ({ slug: post.slug }))

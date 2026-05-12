@@ -6,7 +6,7 @@ export default function robots(): MetadataRoute.Robots {
       userAgent: "*",
       allow: "/",
     },
-    sitemap: "https://rediagram.com/sitemap.xml",
-    host: "https://rediagram.com",
+    sitemap: "https://www.rediagram.com/sitemap.xml",
+    host: "https://www.rediagram.com",
   }
 }
