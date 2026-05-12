@@ -11,8 +11,8 @@ const softwareApplicationJsonLd = {
   name: "ReDiagram",
   applicationCategory: "DesignApplication",
   operatingSystem: "Web",
-  url: "https://rediagram.com",
-  image: "https://rediagram.com/og/placeholder.svg",
+  url: "https://www.rediagram.com",
+  image: "https://www.rediagram.com/og/placeholder.svg",
   description:
     "ReDiagram helps teams fix diagrams without redrawing them from scratch using upload, selection, and AI-guided repair flows.",
   offers: {
@@ -23,7 +23,7 @@ const softwareApplicationJsonLd = {
 }
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://rediagram.com"),
+  metadataBase: new URL("https://www.rediagram.com"),
   title: "ReDiagram — Fix any diagram without redrawing it",
   description:
     "ReDiagram helps engineers, designers, authors, and educators fix diagrams without redrawing them. Upload, select, and repair diagrams in minutes.",
@@ -38,18 +38,18 @@ export const metadata: Metadata = {
     "training materials",
   ],
   alternates: {
-    canonical: "https://rediagram.com",
+    canonical: "https://www.rediagram.com",
   },
   openGraph: {
     type: "website",
-    url: "https://rediagram.com",
+    url: "https://www.rediagram.com",
     siteName: "ReDiagram",
     title: "ReDiagram — Fix any diagram without redrawing it",
     description:
       "Fix diagrams without starting over. ReDiagram lets you upload, select, and repair diagrams with AI-first editing.",
     images: [
       {
-        url: "https://rediagram.com/og/placeholder.svg",
+        url: "https://www.rediagram.com/og/placeholder.svg",
         width: 1200,
         height: 630,
       },
@@ -60,7 +60,7 @@ export const metadata: Metadata = {
     title: "ReDiagram — Fix any diagram without redrawing it",
     description:
       "A clean AI diagram editor for fixing architecture diagrams, UX wireframes, picture books, and training materials.",
-    images: ["https://rediagram.com/og/placeholder.svg"],
+    images: ["https://www.rediagram.com/og/placeholder.svg"],
   },
   icons: {
     icon: [
