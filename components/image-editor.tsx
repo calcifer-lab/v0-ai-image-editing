@@ -14,7 +14,7 @@ import { useImageEditor } from "@/hooks"
 
 export type { EditorStep, EditMode, ImageData, MaskData, AspectRatio, ScaleMode, OutputDimensions, EditParams, CropRegion } from "@/types"
 
-export default function ImageEditor() {
+export default function ImageEditor({ authSlot }: { authSlot?: React.ReactNode }) {
   const {
     step,
     images,
@@ -50,7 +50,7 @@ export default function ImageEditor() {
   return (
     <div className="flex h-screen flex-col">
       {/* Header */}
-      <EditorHeader step={step} onReset={handleReset} />
+      <EditorHeader step={step} onReset={handleReset} authSlot={authSlot} />
 
       {/* Main Content */}
       <main className="flex-1 overflow-hidden">
@@ -113,9 +113,10 @@ export default function ImageEditor() {
 interface EditorHeaderProps {
   step: "upload" | "edit" | "result"
   onReset: () => void
+  authSlot?: React.ReactNode
 }
 
-function EditorHeader({ step, onReset }: EditorHeaderProps) {
+function EditorHeader({ step, onReset, authSlot }: EditorHeaderProps) {
   return (
     <header className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="flex h-16 items-center justify-between px-6">
@@ -153,9 +154,12 @@ function EditorHeader({ step, onReset }: EditorHeaderProps) {
           />
         </nav>
 
-        <Button variant="outline" size="sm" onClick={onReset}>
-          Start New
-        </Button>
+        <div className="flex items-center gap-3">
+          {authSlot}
+          <Button variant="outline" size="sm" onClick={onReset}>
+            Start New
+          </Button>
+        </div>
       </div>
     </header>
   )

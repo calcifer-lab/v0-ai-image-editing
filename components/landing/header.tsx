@@ -1,7 +1,6 @@
-"use client"
-
 import Link from "next/link"
 import LangToggle from "@/components/lang-toggle-fixed"
+import AuthStatus from "@/components/auth/auth-status"
 
 const NAV_LINKS = [
   {
@@ -49,6 +48,7 @@ export default function Header() {
               </a>
             ),
           )}
+          <AuthStatus variant="site" />
         </nav>
 
         <div className="site-header-actions">
