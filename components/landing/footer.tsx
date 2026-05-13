@@ -15,11 +15,16 @@ function XIcon({ size = 16 }: { size?: number }) {
   )
 }
 
-const FOOTER_LINKS = [
+const NAV_LINKS = [
   { href: "#audience", en: "Who it's for", zh: "适合谁用" },
   { href: "#how-it-works", en: "How it works", zh: "工作方式" },
   { href: "#faq", en: "FAQ", zh: "常见问题" },
   { href: "/about", en: "About", zh: "关于" },
+]
+
+const LEGAL_LINKS = [
+  { href: "/privacy", en: "Privacy Policy", zh: "隐私政策" },
+  { href: "/terms", en: "Terms of Service", zh: "服务条款" },
 ]
 
 export default function Footer() {
@@ -48,18 +53,30 @@ export default function Footer() {
           </p>
         </div>
 
-        {/* Navigation column */}
-        <nav className="footer-nav" aria-label="Footer navigation">
-          {FOOTER_LINKS.map((link) => (
-            <a key={link.href} href={link.href} className="footer-link">
-              <span className="lang-en">{link.en}</span>
-              <span className="lang-zh">{link.zh}</span>
-            </a>
-          ))}
+        {/* Navigate column */}
+        <nav className="footer-col footer-nav" aria-label="Footer navigation">
+          <h3 className="footer-col-head">
+            <span className="lang-en">Navigate</span>
+            <span className="lang-zh">导航</span>
+          </h3>
+          <ul className="footer-col-list">
+            {NAV_LINKS.map((link) => (
+              <li key={link.href}>
+                <a href={link.href} className="footer-link">
+                  <span className="lang-en">{link.en}</span>
+                  <span className="lang-zh">{link.zh}</span>
+                </a>
+              </li>
+            ))}
+          </ul>
         </nav>
 
         {/* Connect column */}
-        <div className="footer-connect">
+        <div className="footer-col footer-connect">
+          <h3 className="footer-col-head">
+            <span className="lang-en">Connect</span>
+            <span className="lang-zh">联系</span>
+          </h3>
           <div className="flex flex-col gap-2.5">
             <ConnectRow
               icon={<Mail size={16} />}
@@ -78,19 +95,25 @@ export default function Footer() {
           </div>
         </div>
 
-        {/* Legal row */}
-        <div className="footer-legal">
-          <a href="/privacy" className="footer-legal-link">
-            <span className="lang-en">Privacy Policy</span>
-            <span className="lang-zh">隐私政策</span>
-          </a>
-          <a href="/terms" className="footer-legal-link">
-            <span className="lang-en">Terms of Service</span>
-            <span className="lang-zh">服务条款</span>
-          </a>
+        {/* Legal column */}
+        <div className="footer-col footer-legal">
+          <h3 className="footer-col-head">
+            <span className="lang-en">Legal</span>
+            <span className="lang-zh">法务</span>
+          </h3>
+          <ul className="footer-col-list">
+            {LEGAL_LINKS.map((link) => (
+              <li key={link.href}>
+                <a href={link.href} className="footer-link footer-legal-link">
+                  <span className="lang-en">{link.en}</span>
+                  <span className="lang-zh">{link.zh}</span>
+                </a>
+              </li>
+            ))}
+          </ul>
         </div>
 
-        {/* Copyright */}
+        {/* Copyright (separate full-width row) */}
         <p className="footer-copy">© {year} ReDiagram. All rights reserved.</p>
       </div>
     </footer>
