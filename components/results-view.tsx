@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Download, Edit, RotateCcw, ArrowLeftRight, AlertTriangle } from "lucide-react"
+import DonateInline from "@/components/donate-inline"
 
 interface ResultsViewProps {
   originalImage: string
@@ -69,6 +70,8 @@ export default function ResultsView({ originalImage, resultImage, onEdit, onRese
               />
             </TabsContent>
           </Tabs>
+
+          <DonateInline />
         </div>
       </div>
     </div>
