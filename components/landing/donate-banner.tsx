@@ -2,9 +2,12 @@ const BMC_URL = "https://buymeacoffee.com/calciferta"
 
 export default function DonateBanner() {
   return (
-    <section className="site-section">
+    <section
+      aria-label="Support ReDiagram"
+      className="px-4 py-10 sm:py-14"
+    >
       <div className="site-container">
-        <div className="mx-auto flex max-w-2xl flex-col items-center gap-4 rounded-2xl border border-[var(--border)] bg-[var(--bg-card)] px-6 py-10 text-center sm:px-10">
+        <div className="mx-auto flex max-w-2xl flex-col items-center gap-4 rounded-2xl border border-[var(--border)] bg-[var(--bg-card)] px-6 py-8 text-center sm:px-10 sm:py-10">
           <h2 className="text-balance text-xl font-medium leading-snug tracking-tight text-[var(--text)] sm:text-2xl">
             <span className="lang-en">
               If Fix saved your image — buy us a coffee.
