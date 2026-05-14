@@ -1,5 +1,6 @@
 import type { Metadata } from "next"
 import Link from "next/link"
+import BrandMark from "@/components/brand-mark"
 
 export const metadata: Metadata = {
   title: "Privacy Policy — ReDiagram",
@@ -13,7 +14,7 @@ export default function PrivacyPage() {
       <header className="site-header">
         <div className="site-container site-header-inner">
           <Link href="/" className="brand-lockup" aria-label="ReDiagram">
-            <span className="brand-mark">R</span>
+            <BrandMark />
             <span className="brand-text">ReDiagram</span>
           </Link>
           <div className="site-header-actions">

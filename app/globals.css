@@ -233,18 +233,6 @@ html[lang="en"] .lang-zh {
   letter-spacing: -0.02em;
 }
 
-.brand-mark {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 10px;
-  background: var(--accent-dark);
-  color: #fff;
-  font-size: 15px;
-}
-
 .brand-text {
   font-size: 16px;
 }
