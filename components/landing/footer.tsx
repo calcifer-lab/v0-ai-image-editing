@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { Check, Copy, ExternalLink, Mail } from "lucide-react"
+import BrandMark from "@/components/brand-mark"
 
 const EMAIL = "hello@rediagram.com"
 const X_HANDLE = "@RediagramFIX"
@@ -36,7 +37,7 @@ export default function Footer() {
         {/* Brand column */}
         <div className="footer-brand">
           <a href="/" className="brand-lockup" aria-label="ReDiagram home">
-            <span className="brand-mark">R</span>
+            <BrandMark />
             <span className="brand-text">ReDiagram</span>
           </a>
           <p className="footer-slogan">

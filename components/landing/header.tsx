@@ -1,5 +1,6 @@
 import Link from "next/link"
 import AuthControls from "@/components/auth/auth-controls"
+import BrandMark from "@/components/brand-mark"
 import LangSwitcher from "@/components/lang-switcher"
 
 const NAV_LINKS = [
@@ -14,7 +15,7 @@ export default function Header() {
     <header className="site-header">
       <div className="site-container site-header-inner">
         <Link href="/" className="brand-lockup" aria-label="ReDiagram">
-          <span className="brand-mark">R</span>
+          <BrandMark />
           <span className="brand-text">ReDiagram</span>
         </Link>
 

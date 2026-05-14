@@ -1,6 +1,7 @@
 import Image from "next/image"
 import Link from "next/link"
 import type { Metadata } from "next"
+import BrandMark from "@/components/brand-mark"
 import { formatPostDate, getAllPosts } from "./_lib/posts"
 
 export const metadata: Metadata = {
@@ -16,7 +17,7 @@ export default function BlogPage() {
       <header className="border-b border-border">
         <div className="mx-auto flex w-full max-w-5xl items-center justify-between px-4 py-4 sm:px-6">
           <Link href="/" className="brand-lockup" aria-label="ReDiagram">
-            <span className="brand-mark">R</span>
+            <BrandMark />
             <span className="brand-text">ReDiagram</span>
           </Link>
           <Link
