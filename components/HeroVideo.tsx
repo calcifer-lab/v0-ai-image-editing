@@ -34,7 +34,7 @@ export function HeroVideo() {
         loop
         muted
         playsInline
-        preload="auto"
+        preload="metadata"
         poster="/videos/hero-poster.jpg"
         className="w-full h-auto"
         aria-label="ReDiagram Fix demo: transplanting a correct element from one image into another"
