@@ -18,8 +18,8 @@ const AUDIENCE_CARDS = [
     beforeLabelZh: "发布前需修正",
     ctaEn: "Try on your release draft",
     ctaZh: "试试你的发布稿",
-    beforeImage: "/homepage_demo_cards/card_1_grill/before.png",
-    afterImage: "/homepage_demo_cards/card_1_grill/after.png",
+    beforeImage: "/homepage_demo_cards/card_1_grill/before.jpg",
+    afterImage: "/homepage_demo_cards/card_1_grill/after.jpg",
   },
   {
     icon: "✦",
@@ -35,8 +35,8 @@ const AUDIENCE_CARDS = [
     beforeLabelZh: "角色露肚脐",
     ctaEn: "Try on your picture book",
     ctaZh: "试试你的绘本稿",
-    beforeImage: "/homepage_demo_cards/card_2_wheels/before.png",
-    afterImage: "/homepage_demo_cards/card_2_wheels/after.png",
+    beforeImage: "/homepage_demo_cards/card_2_wheels/before.jpg",
+    afterImage: "/homepage_demo_cards/card_2_wheels/after.jpg",
   },
   {
     icon: "✦",
@@ -52,8 +52,8 @@ const AUDIENCE_CARDS = [
     beforeLabelZh: "道具结构崩坏",
     ctaEn: "Try on your comic panel",
     ctaZh: "试试你的漫画分镜",
-    beforeImage: "/homepage_demo_cards/card_3_phoenix/before.png",
-    afterImage: "/homepage_demo_cards/card_3_phoenix/after.png",
+    beforeImage: "/homepage_demo_cards/card_3_phoenix/before.jpg",
+    afterImage: "/homepage_demo_cards/card_3_phoenix/after.jpg",
   },
   {
     icon: "✦",
@@ -69,8 +69,8 @@ const AUDIENCE_CARDS = [
     beforeLabelZh: "复杂空间结构",
     ctaEn: "Try on your teaching visual",
     ctaZh: "试试你的课件配图",
-    beforeImage: "/homepage_demo_cards/card_4_pavilion/before.png",
-    afterImage: "/homepage_demo_cards/card_4_pavilion/after.png",
+    beforeImage: "/homepage_demo_cards/card_4_pavilion/before.jpg",
+    afterImage: "/homepage_demo_cards/card_4_pavilion/after.jpg",
   },
 ]
 

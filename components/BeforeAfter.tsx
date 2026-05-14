@@ -1,6 +1,9 @@
 "use client"
 
 import { useState, useRef } from "react"
+import Image from "next/image"
+
+const BA_SIZES = "(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 600px"
 
 export default function BeforeAfter({ before, after }: { before: string; after: string }) {
   const [sliderPos, setSliderPos] = useState(50)
@@ -45,12 +48,23 @@ export default function BeforeAfter({ before, after }: { before: string; after: 
       style={{ cursor: "ew-resize", touchAction: "none" }}
     >
       {/* Before image (full, bottom layer) */}
-      <img src={before} alt="Before fix" className="ba-img" draggable={false} />
+      <Image
+        src={before}
+        alt="Before fix"
+        width={1672}
+        height={941}
+        sizes={BA_SIZES}
+        className="ba-img"
+        draggable={false}
+      />
 
       {/* After image (clipped, top layer) — slider left = show more of after */}
-      <img
+      <Image
         src={after}
         alt="After fix"
+        width={1672}
+        height={941}
+        sizes={BA_SIZES}
         className="ba-img ba-before"
         style={{ clipPath: `inset(0 ${100 - sliderPos}% 0 0)` }}
         draggable={false}
