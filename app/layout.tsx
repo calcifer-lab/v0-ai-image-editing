@@ -4,6 +4,7 @@ import { GoogleAnalytics } from "@next/third-parties/google"
 import { Toaster } from "sonner"
 import "./globals.css"
 import { LangProvider } from "@/contexts/lang-context"
+import { PageViewTracker } from "@/components/analytics/page-view-tracker"
 
 const softwareApplicationJsonLd = {
   "@context": "https://schema.org",
@@ -87,6 +88,7 @@ export default function RootLayout({
         />
         <LangProvider>
           {children}
+          <PageViewTracker />
         </LangProvider>
         <Toaster position="top-center" closeButton richColors={false} />
         {process.env.NEXT_PUBLIC_CLARITY_ID && (
