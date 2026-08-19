@@ -16,7 +16,7 @@ const runtimes = ["Hugging Face Transformers", "vLLM", "SGLang", "TokenSpeed", "
 
 export function OfficialSpecs() {
   return (
-    <Section title="Qwen 3.8 27B Specs" eyebrow="Official specifications">
+    <Section id="about" title="Quick Specs" eyebrow="Official specifications">
       <div className="overflow-hidden rounded-lg border border-border bg-card">
         <table className="w-full text-left text-sm">
           <tbody>

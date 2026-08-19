@@ -23,7 +23,7 @@ export const faqItems = [
   },
   {
     question: "How much VRAM does Qwen 3.8 27B need?",
-    answer: "There is no single answer. VRAM requirements depend on precision, quantization, context length, runtime, KV cache, and offloading. The Hardware Checker will recommend a setup for your specific machine.",
+    answer: "There is no single answer. VRAM requirements depend on precision, quantization, context length, runtime, KV cache, and offloading. Use the hardware planner for tier-level guidance, not a verified benchmark.",
   },
   {
     question: "Can Qwen 3.8 27B run on 16 GB VRAM?",

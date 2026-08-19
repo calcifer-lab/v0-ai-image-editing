@@ -20,6 +20,7 @@ const NAV_LINKS = [
   { href: "#audience", en: "Who it's for", zh: "适合谁用" },
   { href: "#how-it-works", en: "How it works", zh: "工作方式" },
   { href: "#faq", en: "FAQ", zh: "常见问题" },
+  { href: "/qwen-3.8-27b", en: "ReDiagram Labs", zh: "ReDiagram Labs" },
   { href: "/about", en: "About", zh: "关于" },
 ]
 
