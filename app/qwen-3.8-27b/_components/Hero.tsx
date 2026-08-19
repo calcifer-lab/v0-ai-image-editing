@@ -35,7 +35,7 @@ export function Hero() {
             event="qwen_check_hardware_clicked"
             className="inline-flex min-h-11 items-center justify-center rounded-md bg-primary px-5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
           >
-            Check My Hardware
+            Estimate Hardware Needs
           </TrackedLink>
           <TrackedLink
             href="https://huggingface.co/Qwen/Qwen3.8-27B"
@@ -46,6 +46,23 @@ export function Hero() {
           >
             View Official Model
           </TrackedLink>
+        </div>
+        <div className="mt-5 flex flex-wrap gap-2">
+          {[
+            ["16GB GPU", "#scenario-16gb"],
+            ["24GB GPU", "#scenario-24gb"],
+            ["32GB GPU", "#scenario-32gb"],
+            ["Apple Silicon", "#scenario-apple-silicon"],
+          ].map(([label, href]) => (
+            <TrackedLink
+              key={label}
+              href={href}
+              event="qwen_hardware_quick_link_clicked"
+              className="inline-flex min-h-10 items-center justify-center rounded-md border border-border bg-background px-4 text-sm font-medium text-foreground hover:bg-accent"
+            >
+              {label}
+            </TrackedLink>
+          ))}
         </div>
       </div>
     </section>

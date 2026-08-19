@@ -35,9 +35,9 @@ export function Badge({ children, tone = "neutral" }: { children: ReactNode; ton
   return <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-medium ${toneClass}`}>{children}</span>
 }
 
-export function InfoCard({ title, children }: { title: string; children: ReactNode }) {
+export function InfoCard({ id, title, children }: { id?: string; title: string; children: ReactNode }) {
   return (
-    <div className="rounded-lg border border-border bg-card p-5 shadow-sm">
+    <div id={id} className="rounded-lg border border-border bg-card p-5 shadow-sm">
       <h3 className="text-base font-semibold text-foreground">{title}</h3>
       <div className="mt-3 text-sm leading-6 text-muted-foreground">{children}</div>
     </div>

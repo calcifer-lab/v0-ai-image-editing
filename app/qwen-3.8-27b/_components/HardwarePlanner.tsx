@@ -7,6 +7,16 @@ const gpuOptions = ["8 GB", "12 GB", "16 GB", "24 GB", "32 GB", "48 GB+", "Apple
 const ramOptions = ["16 GB", "32 GB", "64 GB", "96 GB", "128 GB+"]
 const usageOptions = ["Chat", "Coding", "Agent", "Long Context", "Multimodal", "Testing"]
 
+function guidanceForGpu(gpu: string) {
+  if (gpu === "8 GB" || gpu === "12 GB" || gpu === "CPU Only") {
+    return "Likely difficult for a 27B-class model without heavy offloading or aggressive quantization."
+  }
+  if (gpu === "16 GB") return "Potential with compact quantization and limited context."
+  if (gpu === "24 GB") return "A strong consumer-GPU planning tier for quantized local inference."
+  if (gpu === "Apple Silicon") return "Viability depends heavily on unified memory capacity and memory bandwidth."
+  return "More comfortable headroom for higher-quality quantization and larger context."
+}
+
 export function HardwarePlanner() {
   const [gpu, setGpu] = useState(gpuOptions[0])
   const [ram, setRam] = useState(ramOptions[1])
@@ -85,12 +95,13 @@ export function HardwarePlanner() {
             </label>
           </div>
           <button type="submit" className="mt-5 inline-flex min-h-11 items-center justify-center rounded-md bg-primary px-5 text-sm font-medium text-primary-foreground hover:bg-primary/90">
-            Get My Setup Recommendation
+            Estimate Hardware Needs
           </button>
           {submitted ? (
             <div className="mt-5 rounded-lg border border-border bg-muted p-4 text-sm leading-6 text-foreground">
-              <p>A personalized Qwen 3.8 27B setup recommendation will be added after verified local benchmark rows are available.</p>
-              <a href="#hardware-guide" className="mt-2 inline-flex font-medium text-[var(--brand)] underline underline-offset-4">Back to the Hardware Guide section</a>
+              <p>{guidanceForGpu(gpu)}</p>
+              <p className="mt-2 text-muted-foreground">Estimated planning guidance — not a verified hardware benchmark.</p>
+              <a href="#hardware" className="mt-2 inline-flex font-medium text-[var(--brand)] underline underline-offset-4">Back to VRAM Planning</a>
             </div>
           ) : null}
         </form>

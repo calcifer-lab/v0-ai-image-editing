@@ -9,7 +9,7 @@ const rows = [
 
 export function VramPlanning() {
   return (
-    <Section id="hardware-guide" title="VRAM Requirements" eyebrow="Estimated planning">
+    <Section id="hardware" title="VRAM Planning" eyebrow="Estimated planning">
       <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">
         <Badge tone="estimated">Estimated</Badge>
         <span className="ml-3">These are rough weights-only estimates, not official Qwen hardware requirements.</span>

@@ -16,10 +16,6 @@ const rows = [
   ["llama.cpp compatibility", "Quantization path available", "Official model page"],
   ["Ollama compatibility", "Quantization path available", "Official model page"],
   ["LM Studio compatibility", "Quantization path available", "Official model page"],
-  ["Consumer GPU benchmark database", "In progress", "This guide"],
-  ["Cloud comparison", "In progress", "This guide"],
-  ["Hardware Checker", "In progress", "This guide"],
-  ["Setup Assistant", "In progress", "This guide"],
 ]
 
 export function StatusTable() {

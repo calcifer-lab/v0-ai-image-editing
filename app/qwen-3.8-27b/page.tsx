@@ -1,29 +1,20 @@
 import type { Metadata } from "next"
 import Link from "next/link"
-import BrandMark from "@/components/brand-mark"
 import { DEFAULT_OG_IMAGE, SITE_NAME, SITE_URL, absoluteUrl } from "@/lib/seo"
-import { AppleSilicon } from "./_components/AppleSilicon"
-import { CloudPreview } from "./_components/CloudPreview"
 import { Disclaimer } from "./_components/Disclaimer"
 import { Faq, faqItems } from "./_components/Faq"
 import { HardwarePlanner } from "./_components/HardwarePlanner"
 import { HardwareScenarios } from "./_components/HardwareScenarios"
 import { Hero } from "./_components/Hero"
-import { LlamaCppCard } from "./_components/LlamaCppCard"
-import { LMStudioCard } from "./_components/LMStudioCard"
 import { LocalVsCloud } from "./_components/LocalVsCloud"
-import { LocalBenchmarkEmpty } from "./_components/LocalBenchmarkEmpty"
 import { OfficialBenchmark } from "./_components/OfficialBenchmark"
 import { OfficialSpecs } from "./_components/OfficialSpecs"
-import { OllamaCard } from "./_components/OllamaCard"
 import { Quantization } from "./_components/Quantization"
-import { QuickAnswer } from "./_components/QuickAnswer"
 import { RunLocally } from "./_components/RunLocally"
-import { SetupAssistantVision } from "./_components/SetupAssistantVision"
 import { StatusTable } from "./_components/StatusTable"
 import { VramPlanning } from "./_components/VramPlanning"
 
-const path = "/qwen-3-8-27b"
+const path = "/qwen-3.8-27b"
 const pageUrl = `${SITE_URL}${path}`
 const title = "Qwen 3.8 27B Hardware Requirements, VRAM & Local Setup"
 const description =
@@ -114,33 +105,26 @@ export default function Qwen3827BPage() {
       />
       <header className="border-b border-border bg-background">
         <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-4 py-4 sm:px-6">
-          <Link href="/" className="brand-lockup" aria-label="ReDiagram">
-            <BrandMark />
-            <span className="brand-text">ReDiagram</span>
+          <Link href="/" className="text-sm font-semibold text-foreground" aria-label="ReDiagram Labs">
+            ReDiagram Labs
           </Link>
-          <Link href="/editor" className="text-sm font-medium text-foreground hover:text-[var(--brand)]">
-            Editor
-          </Link>
+          <nav className="flex items-center gap-4 text-sm font-medium text-muted-foreground">
+            <Link href="#hardware" className="hover:text-foreground">Hardware</Link>
+            <Link href="#setup" className="hover:text-foreground">Setup</Link>
+            <Link href="#about" className="hover:text-foreground">About</Link>
+          </nav>
         </div>
       </header>
 
       <Hero />
-      <QuickAnswer />
       <OfficialSpecs />
       <HardwarePlanner />
       <VramPlanning />
       <HardwareScenarios />
-      <AppleSilicon />
       <Quantization />
       <RunLocally />
-      <OllamaCard />
-      <LMStudioCard />
-      <LlamaCppCard />
       <OfficialBenchmark />
-      <LocalBenchmarkEmpty />
       <LocalVsCloud />
-      <CloudPreview />
-      <SetupAssistantVision />
       <StatusTable />
       <Faq />
       <Disclaimer />
