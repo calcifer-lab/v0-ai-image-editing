@@ -53,6 +53,24 @@ export default function Footer() {
               ReDiagram 还在扩展。面向专业设计师的矢量工具，即将上线。
             </span>
           </p>
+          <nav className="mt-6" aria-label="Our products">
+            <h3 className="footer-col-head">
+              <span className="lang-en">Our Products</span>
+              <span className="lang-zh">旗下产品</span>
+            </h3>
+            <ul className="footer-col-list">
+              <li>
+                <a href="https://microbe-ai.com/" target="_blank" rel="noopener noreferrer" className="footer-link">
+                  Microbe AI
+                </a>
+              </li>
+              <li>
+                <a href="https://tryjevai.com/" target="_blank" rel="noopener noreferrer" className="footer-link">
+                  TryJevAI
+                </a>
+              </li>
+            </ul>
+          </nav>
         </div>
 
         {/* Navigate column */}
