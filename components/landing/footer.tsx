@@ -53,10 +53,10 @@ export default function Footer() {
               ReDiagram 还在扩展。面向专业设计师的矢量工具，即将上线。
             </span>
           </p>
-          <nav className="mt-6" aria-label="Our products">
+          <nav className="mt-6" aria-label="Friend Links">
             <h3 className="footer-col-head">
-              <span className="lang-en">Our Products</span>
-              <span className="lang-zh">旗下产品</span>
+              <span className="lang-en">Friend Links</span>
+              <span className="lang-zh">Friend Links</span>
             </h3>
             <ul className="footer-col-list">
               <li>
