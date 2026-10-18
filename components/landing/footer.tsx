@@ -17,6 +17,7 @@ function XIcon({ size = 16 }: { size?: number }) {
 }
 
 const NAV_LINKS = [
+  { href: "/deepseek-v4-1-flash-1017", en: "DeepSeek Playground", zh: "DeepSeek Playground" },
   { href: "#audience", en: "Who it's for", zh: "适合谁用" },
   { href: "#how-it-works", en: "How it works", zh: "工作方式" },
   { href: "#faq", en: "FAQ", zh: "常见问题" },
