@@ -45,6 +45,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
   const blogPosts = getBlogSlugs()
 
   const staticRoutes: MetadataRoute.Sitemap = [
+    { url: `${BASE_URL}/deepseek-v4-1-flash-1017` },
     {
       url: BASE_URL,
       lastModified: now,
