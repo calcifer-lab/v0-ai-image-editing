@@ -1,0 +1,39 @@
+{
+  "fixture": "RD-BENCH-01",
+  "method": "Browser-exported PNG snapshots decoded with Sharp RGBA, exact comparison against parent",
+  "revisions": [
+    {
+      "revision": 1,
+      "region": {
+        "x": 425,
+        "y": 565,
+        "width": 175,
+        "height": 35
+      },
+      "outsideChanged": 0,
+      "insideChanged": 5923
+    },
+    {
+      "revision": 2,
+      "region": {
+        "x": 375,
+        "y": 503,
+        "width": 275,
+        "height": 125
+      },
+      "outsideChanged": 0,
+      "insideChanged": 34373
+    },
+    {
+      "revision": 3,
+      "region": {
+        "x": 100,
+        "y": 640,
+        "width": 550,
+        "height": 285
+      },
+      "outsideChanged": 0,
+      "insideChanged": 156398
+    }
+  ]
+}
