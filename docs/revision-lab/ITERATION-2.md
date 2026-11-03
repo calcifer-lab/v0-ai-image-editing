@@ -60,3 +60,17 @@ Fix 顶栏加入 Tools 菜单，Diagram Revision 使用同一个 ToolSwitcher。
 浏览器验证：空白 Fix → Diagram Revision；修订页输入草稿 → 切换提示 → Stay here 后草稿保留；确认 Leave workspace → Fix；Fix 加载内置样例进入编辑 → 切换提示 → Stay here 后仍在编辑。测试样例已通过 Start New 清理，未执行付费生成。截图 fix-tool-switcher-preview.png。
 
 新模块 scoped 类型检查与 Webpack 生产构建通过。全仓 tsc 仍只有已有的三处问题（两处 AuthControls async JSX、一处 ResultsView ref），本次没有新增错误。工具菜单仍仅在 development 展示，未发布到线上。
+
+## 导航规则收尾与窄屏验证（2026-11-03）
+
+本地首页顶部主按钮统一为 Explore tools；Hero 保留 Explore tools + Try Fix，Fix 的案例按钮仍直达编辑器。FAQ 的 Fix CTA 增加 Explore other tools 辅助入口。页脚加入 All tools、Fix、Diagram Revision（预览标记）与 Guides；预览页脚文案改为当前已有工具用途。新增入口仍由 Home 的 development 条件控制。Fix 的品牌返回首页链接现在复用已有的未保存离开对话框。
+
+验证故事：用户从首页发现工具 → 进入独立工作台 → 编辑样例 → 点击品牌返回首页 → 提醒尚未保存 → 确认后到达首页。本轮没有新增服务端接口、外部模型调用或数据存储。
+
+- 390×844 未登录视口：首页 Logo、语言按钮、Explore tools 和 Try Fix 无裁切，Fix 的 Tools 菜单完整可用；检查完成后恢复默认视口。
+- 页脚已显示所有新增入口；Fix 内置样例进入编辑后，点击 Logo 出现 Leave this workspace?；确认离开后返回首页，测试会话清理完成。
+- Scoped 类型检查通过，生产 Webpack 构建通过；生产首页 HTML 保留 /editor 且没有 /lab/ 链接。全仓类型检查限制仍见上节。
+- 本地生产构建后，开发服务的旧脚本缓存曾导致 layout.js SyntaxError，菜单无法响应。停止并重新启动 3100 开发服务后，/editor、/lab/tools、/ 均返回 200，重新载入页面并完成上述真实点击验证。后续不要在开发预览验证中复用被生产构建覆盖的旧脚本缓存。
+- 截图：home-navigation-mobile.png、home-navigation-preview.png。
+
+React 检查：入口通过 server 端 showTools 布尔值传给现有 client 组件，不新增请求或依赖；页脚工具链接复用 catalog，避免导航与工具列表分叉；原编辑器仅接入返回首页的现有离开保护。

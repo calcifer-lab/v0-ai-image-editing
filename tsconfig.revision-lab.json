@@ -14,7 +14,9 @@
     "app/blog/**/*.ts",
     "app/sitemap.ts",
     "components/landing/hero.tsx",
-    "components/landing/tool-overview.tsx"
+    "components/landing/tool-overview.tsx",
+    "components/landing/footer.tsx",
+    "components/landing/faq.tsx"
   ],
   "exclude": [
     "node_modules"

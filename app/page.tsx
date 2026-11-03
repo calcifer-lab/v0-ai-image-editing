@@ -15,8 +15,8 @@ export default function Home() {
       {showTools && <ToolOverview />}
       <Features />
       <HowItWorks />
-      <FAQ />
-      <Footer />
+      <FAQ showTools={showTools} />
+      <Footer showTools={showTools} />
     </main>
   )
 }

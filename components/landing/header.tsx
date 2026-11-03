@@ -32,10 +32,14 @@ export default function Header({ showTools = false }: { showTools?: boolean }) {
         <div className="site-header-actions">
           <LangSwitcher />
           <AuthControls variant="site" />
-          <Link href="/editor" className="button button-primary button-sm">
-            <span className="lang-en">Try Fix</span>
-            <span className="lang-zh">体验 Fix</span>
-          </Link>
+          {showTools ? (
+            <Link href="/lab/tools" className="button button-primary button-sm" lang="en">Explore tools</Link>
+          ) : (
+            <Link href="/editor" className="button button-primary button-sm">
+              <span className="lang-en">Try Fix</span>
+              <span className="lang-zh">体验 Fix</span>
+            </Link>
+          )}
         </div>
       </div>
     </header>

@@ -130,7 +130,7 @@ function EditorHeader({ step, onReset, authSlot, leaveWarning, switchingDisabled
     <>
     <header className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="flex min-h-16 flex-wrap items-center justify-between gap-3 px-6 py-3">
-        <Link href="/" className="flex items-center gap-3">
+        <Link href="/" className="flex items-center gap-3" onClick={onNavigate}>
           <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary">
             <ImageIcon className="h-5 w-5 text-primary-foreground" />
           </div>

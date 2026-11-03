@@ -2,6 +2,8 @@
 
 import { useState } from "react"
 import { Check, Copy, ExternalLink, Mail } from "lucide-react"
+import Link from "next/link"
+import { toolCatalog } from "@/lib/tools/catalog"
 import BrandMark from "@/components/brand-mark"
 
 const EMAIL = "hello@rediagram.com"
@@ -30,7 +32,7 @@ const LEGAL_LINKS = [
   { href: "/terms", en: "Terms of Service", zh: "服务条款" },
 ]
 
-export default function Footer() {
+export default function Footer({ showTools = false }: { showTools?: boolean }) {
   const year = new Date().getFullYear()
 
   return (
@@ -48,10 +50,10 @@ export default function Footer() {
           </p>
           <p className="footer-announcement">
             <span className="lang-en">
-              ReDiagram is expanding. Vector tools for professional designers — coming soon.
+              {showTools ? "Focused tools for image patches and diagram revisions. Choose the workflow that fits your task." : "ReDiagram is expanding. Vector tools for professional designers — coming soon."}
             </span>
             <span className="lang-zh">
-              ReDiagram 还在扩展。面向专业设计师的矢量工具，即将上线。
+              {showTools ? "专注局部替换与图解修订，按任务选择适合的工具。" : "ReDiagram 还在扩展。面向专业设计师的矢量工具，即将上线。"}
             </span>
           </p>
           <nav className="mt-6" aria-label="Friend Links">
@@ -81,6 +83,11 @@ export default function Footer() {
             <span className="lang-zh">导航</span>
           </h3>
           <ul className="footer-col-list">
+            {showTools && <>
+              <li><Link href="/lab/tools" className="footer-link" lang="en">All tools</Link></li>
+              {toolCatalog.map((tool) => <li key={tool.id}><Link href={tool.href} className="footer-link" lang="en">{tool.title}{tool.id === "diagram-revision" ? " · Local preview" : ""}</Link></li>)}
+              <li><Link href="/blog" className="footer-link" lang="en">Guides</Link></li>
+            </>}
             {NAV_LINKS.map((link) => (
               <li key={link.href}>
                 <a href={link.href} className="footer-link">
