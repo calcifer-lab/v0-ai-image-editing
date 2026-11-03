@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+<defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0 0L8 3L0 6" fill="none" stroke="#334155" stroke-width="1.5"/></marker></defs>
+<rect width="1024" height="1024" fill="#f8fafc"/>
+<g font-family="PingFang SC,Arial,sans-serif" fill="#0f172a">
+<text x="64" y="70" font-size="32" font-weight="bold">采购审批流程</text>
+<text x="64" y="105" font-size="18" fill="#64748b">流程编号：PR-2026-017 · 预算：¥25,000 · 负责人：王敏</text>
+<g fill="none" stroke="#334155" stroke-width="3" marker-end="url(#arrow)">
+<path d="M510 220V275"/><path d="M510 385V440"/><path d="M395 330H180V650"/>
+<path d="M510 540V650"/><path d="M630 490H730"/>
+<path d="M840 440V185H630"/>
+<path d="M180 750V875H400"/><path d="M510 750V835"/>
+</g>
+<g font-size="18" fill="#475569"><text x="530" y="420">是</text><text x="295" y="315">否</text><text x="530" y="600">通过</text><text x="655" y="475">退回</text><text x="855" y="310">重新提交</text></g>
+<rect x="390" y="150" width="240" height="70" rx="12" fill="#dbeafe" stroke="#2563eb" stroke-width="2"/>
+<path d="M510 275L625 330L510 385L395 330Z" fill="#fef3c7" stroke="#d97706" stroke-width="2"/>
+<rect x="390" y="440" width="240" height="100" rx="12" fill="#dbeafe" stroke="#2563eb" stroke-width="2"/>
+<rect x="730" y="440" width="220" height="100" rx="12" fill="#ffedd5" stroke="#ea580c" stroke-width="2"/>
+<rect x="60" y="650" width="240" height="100" rx="12" fill="#e2e8f0" stroke="#64748b" stroke-width="2"/>
+<rect x="390" y="650" width="240" height="100" rx="12" fill="#dbeafe" stroke="#2563eb" stroke-width="2"/>
+<rect x="400" y="835" width="220" height="80" rx="40" fill="#dcfce7" stroke="#16a34a" stroke-width="2"/>
+<g font-size="23" text-anchor="middle"><text x="510" y="194">提交申请</text><text x="510" y="338" font-size="20">金额 &gt; ¥5,000？</text><text x="510" y="480">财务审核</text><text x="510" y="515" font-size="20">时限：48 小时</text><text x="840" y="498">补充材料</text><text x="180" y="708">部门主管审核</text><text x="510" y="708">总监审批</text><text x="510" y="884">下单采购</text></g>
+<text x="64" y="975" font-size="16" fill="#64748b">RD-BENCH-02 · Synthetic fixture · Preserve this footer</text>
+</g></svg>
