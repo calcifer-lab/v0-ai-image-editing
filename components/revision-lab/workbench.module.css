@@ -1,42 +1,14 @@
 .app {
   min-height: 100vh;
-  background: #f5f5f1;
-  color: #20342e;
-  font-family: Arial, "PingFang SC", sans-serif;
+  background: var(--bg);
+  color: var(--text);
   padding: 0 30px 32px;
-}
-.header {
-  height: 72px;
-  border-bottom: 1px solid #d9dfd8;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-.header a {
-  font-weight: 800;
-  font-size: 23px;
-  letter-spacing: -1px;
-  text-decoration: none;
-  color: inherit;
-}
-.header a span {
-  color: #79867f;
-  font-size: 15px;
-  font-weight: 400;
-  letter-spacing: 0;
-}
-.badge {
-  font-size: 12px;
-  background: #e8ece5;
-  border: 1px solid #d5ded2;
-  border-radius: 20px;
-  padding: 7px 12px;
 }
 .intro {
   padding: 30px 0 24px;
 }
 .intro > p {
-  color: #6b7a70;
+  color: var(--text-muted);
   font-size: 12px;
   letter-spacing: 2px;
   margin: 0 0 8px;
@@ -49,7 +21,7 @@
 }
 .intro > div {
   font-size: 14px;
-  color: #64756a;
+  color: var(--text-muted);
 }
 .toolbar {
   display: flex;
@@ -61,23 +33,23 @@
 .app button,
 .toolbar label,
 .upload {
-  border: 1px solid #ced8cf;
-  border-radius: 7px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
   background: white;
   padding: 9px 12px;
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
-  color: #314c3d;
+  color: var(--text);
   transition: background 0.15s;
 }
 .app button:hover:not(:disabled),
 .toolbar label:hover:not(.disabled) {
-  background: #e8eee7;
+  background: var(--bg-card);
 }
 .app button:focus-visible,
 .app label:focus-within {
-  outline: 3px solid #83ac96;
+  outline: 3px solid var(--ring);
   outline-offset: 3px;
 }
 .app button:disabled,
@@ -102,8 +74,8 @@
 }
 .panel {
   background: #fff;
-  border: 1px solid #dce2db;
-  border-radius: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
   padding: 18px;
 }
 .panel h2 {
@@ -114,7 +86,7 @@
 .panel p {
   font-size: 12px;
   line-height: 1.8;
-  color: #728075;
+  color: var(--text-muted);
   margin: 10px 0 15px;
 }
 .panel .case {
@@ -123,7 +95,7 @@
   text-align: left;
   margin: 8px 0;
   padding: 12px;
-  border-color: #e0e6df;
+  border-color: var(--border);
 }
 .case strong {
   display: block;
@@ -133,12 +105,12 @@
 .case span {
   font-size: 11px;
   line-height: 1.7;
-  color: #6e7a72;
+  color: var(--text-muted);
   display: block;
 }
 .panel .hint {
   font-size: 11px;
-  color: #8a958d;
+  color: var(--text-muted);
 }
 .upload {
   display: block;
@@ -149,7 +121,7 @@
 .field {
   font-size: 12px;
   display: block;
-  color: #526858;
+  color: var(--text-muted);
 }
 .field textarea {
   display: block;
@@ -157,13 +129,13 @@
   resize: vertical;
   min-height: 88px;
   margin: 9px 0 22px;
-  border: 1px solid #d7e1d8;
-  border-radius: 7px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
   padding: 9px;
   font: inherit;
   line-height: 1.6;
-  color: #344d3c;
-  background: #fafbf9;
+  color: var(--text);
+  background: var(--bg-card);
 }
 .history {
   display: flex;
@@ -184,16 +156,16 @@
   white-space: nowrap;
 }
 .history button[aria-pressed="true"] {
-  background: #e9f0e6;
-  border-color: #91ac8a;
+  background: var(--bg-card);
+  border-color: var(--border);
 }
 .history small {
   white-space: nowrap;
   font-size: 10px;
 }
 .canvasPanel {
-  border: 1px solid #dce2db;
-  border-radius: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
   overflow: hidden;
   background: #fff;
 }
@@ -202,26 +174,26 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  border-bottom: 1px solid #e3e8e1;
+  border-bottom: 1px solid var(--border);
   flex-wrap: wrap;
 }
 .tabs button {
   border: 0;
   padding: 8px 10px;
-  color: #7b887e;
+  color: var(--text-muted);
 }
 .tabs button[aria-pressed="true"] {
-  background: #e6ede3;
-  color: #2a5039;
+  background: var(--bg-card);
+  color: var(--text);
 }
 .tabs > span {
   margin-left: auto;
   font-size: 10px;
-  color: #8b958d;
+  color: var(--text-muted);
 }
 .stage {
   padding: 22px;
-  background: radial-gradient(#cdd6cb 0.6px, transparent 0.6px);
+  background: radial-gradient(var(--border) 0.6px, transparent 0.6px);
   background-size: 12px 12px;
   min-height: 510px;
   display: flex;
@@ -235,7 +207,7 @@
   touch-action: none;
   user-select: none;
   cursor: crosshair;
-  box-shadow: 0 3px 20px #1a372318;
+  box-shadow: 0 3px 20px #1111110d;
   background: white;
 }
 .imageWrap img {
@@ -247,7 +219,7 @@
 }
 .region {
   position: absolute;
-  border: 2px solid #e58a23;
+  border: 2px solid #c4782b;
   pointer-events: none;
   background: #f59e0b12;
 }
@@ -255,7 +227,7 @@
   position: absolute;
   top: -19px;
   left: -2px;
-  background: #bd6b0b;
+  background: #c4782b;
   color: white;
   padding: 2px 5px;
   font-size: 10px;
@@ -264,11 +236,11 @@
 .empty {
   text-align: center;
   padding: 60px 20px;
-  color: #718172;
+  color: var(--text-muted);
 }
 .empty > span {
   font-size: 50px;
-  color: #a8b9a3;
+  color: var(--text-muted);
 }
 .empty h2 {
   font-weight: 500;
@@ -283,8 +255,8 @@
   font-size: 12px;
   line-height: 1.7;
   padding: 15px;
-  color: #6c7a6e;
-  border-top: 1px solid #e3e8e1;
+  color: var(--text-muted);
+  border-top: 1px solid var(--border);
   min-height: 50px;
 }
 .warning {
@@ -316,17 +288,17 @@
 }
 .regionRow span {
   float: right;
-  color: #8b968c;
+  color: var(--text-muted);
 }
 .metrics {
   padding: 15px;
-  background: #f3f6f0;
+  background: var(--bg-card);
   border-radius: 9px;
   margin: 20px 0;
 }
 .metrics small {
   font-size: 11px;
-  color: #6a7a6c;
+  color: var(--text-muted);
 }
 .metrics strong {
   font-size: 26px;
@@ -337,7 +309,7 @@
 .metrics em {
   font-size: 11px;
   font-style: normal;
-  color: #7c897d;
+  color: var(--text-muted);
 }
 .metrics p {
   font-size: 10px;
@@ -345,27 +317,27 @@
 }
 .metrics hr {
   border: 0;
-  border-top: 1px solid #dbe4d6;
+  border-top: 1px solid var(--border);
   margin: 15px 0;
 }
 .good {
-  color: #3f733e;
+  color: var(--text);
 }
 .panel .primary {
   width: 100%;
   margin: 15px 0 8px;
-  background: #2e553e;
+  background: var(--accent-dark);
   color: white;
-  border-color: #2e553e;
+  border-color: var(--accent-dark);
   padding: 13px 6px;
 }
 .panel .primary:hover:not(:disabled) {
-  background: #234730;
+  background: #000;
 }
 .panel > .primary + button {
   width: 100%;
   border: none;
-  color: #879285;
+  color: var(--text-muted);
 }
 @media (min-width: 1600px) {
   .app {
@@ -398,14 +370,8 @@
   .canvasPanel {
     grid-row: 1;
   }
-  .header a span {
-    display: none;
-  }
   .intro h1 {
     font-size: 27px;
-  }
-  .badge {
-    font-size: 10px;
   }
   .panel {
     padding: 14px;
@@ -420,3 +386,7 @@
     grid-column: auto;
   }
 }
+
+.app input[type="number"], .app select { border: 1px solid var(--input); border-radius: 8px; padding: 5px; background: var(--bg); color: var(--text); }
+.app fieldset { border: 1px solid var(--border); border-radius: 10px; padding: 10px; margin-bottom: 8px; font-size: 12px; }
+.app input:focus-visible, .app textarea:focus-visible, .app select:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }

@@ -20,6 +20,7 @@ import {
   recentProjects,
   type StoredProject,
 } from "@/lib/revision-lab/storage";
+import ToolHeader from "@/components/tools/tool-header";
 import s from "./workbench.module.css";
 
 const cases = [
@@ -307,13 +308,9 @@ export default function RevisionWorkbench() {
     setMessage("项目文件已导出；以后可以打开它继续修改。");
   }
   return (
+    <>
+    <ToolHeader active="revision" />
     <main className={s.app} lang="zh-CN">
-      <header className={s.header}>
-        <a href="/lab/tools">
-          ReDiagram<span> / Revision lab</span>
-        </a>
-        <span className={s.badge}>独立工具 · 本地实验版</span>
-      </header>
       <section className={s.intro}>
         <p>让每次修改，累积成进展。</p>
         <h1>只留下你满意的改动。</h1>
@@ -765,5 +762,6 @@ export default function RevisionWorkbench() {
         </aside>
       </div>
     </main>
+    </>
   );
 }
