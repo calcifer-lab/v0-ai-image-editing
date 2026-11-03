@@ -14,7 +14,7 @@ const HeroVideo = dynamic(() => import("@/components/HeroVideo").then((m) => m.H
   ),
 })
 
-export default function Hero() {
+export default function Hero({ showTools = false }: { showTools?: boolean }) {
   return (
     <section className="hero-section">
       <div className="site-container hero-layout">
@@ -30,22 +30,23 @@ export default function Hero() {
 
           <p className="hero-subtitle">
             <span className="lang-en">
-              Take what you want from one image. Compose it into another. Leave the rest untouched.
+              {showTools ? "Replace a region with a reference image, or review diagram revisions and keep the changes you want." : "Take what you want from one image. Compose it into another. Leave the rest untouched."}
             </span>
             <span className="lang-zh">
-              从一张图里取出好的部分，合成到另一张图。其余分毫不动。
+              {showTools ? "用参考图片替换局部，或对比图解修订版本，采纳你想保留的修改。" : "从一张图里取出好的部分，合成到另一张图。其余分毫不动。"}
             </span>
           </p>
 
           <div className="hero-actions">
-            <Link href="/editor" className="button button-primary">
+            {showTools && <Link href="/lab/tools" className="button button-primary" lang="en">Explore tools</Link>}
+            <Link href="/editor" className={`button ${showTools ? "button-ghost" : "button-primary"}`}>
               <span className="lang-en">Try Fix</span>
               <span className="lang-zh">体验 Fix</span>
             </Link>
-            <a href="#how-it-works" className="button button-ghost">
+            {!showTools && <a href="#how-it-works" className="button button-ghost">
               <span className="lang-en">See how it works</span>
               <span className="lang-zh">看看怎么用</span>
-            </a>
+            </a>}
           </div>
         </div>
 

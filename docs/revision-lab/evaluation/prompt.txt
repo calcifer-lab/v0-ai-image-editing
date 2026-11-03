@@ -1,0 +1,8 @@
+Use case: precise-object-edit
+Asset type: business workflow diagram, controlled product evaluation
+Input image: the attached Chinese procurement workflow is the edit target.
+Make exactly these three changes:
+1. In the 财务审核 box, replace “时限：48 小时” with “时限：24 小时”.
+2. Change only that box's background to #ede9fe and border to #7c3aed. Keep its geometry and text color.
+3. Remove the entire connector from 部门主管审核 down to 下单采购. Instead draw a horizontal right-pointing connector from the right midpoint of 部门主管审核 to the left midpoint of 总监审批. Retain 总监审批 → 下单采购.
+Preserve every other label, number, node, position, color, and connector exactly. Especially preserve the budget ¥25,000, threshold ¥5,000, owner 王敏, all Chinese characters, 财务审核 → 补充材料, and the return loop 补充材料 → 提交申请. Keep the footer and title. Do not move or resize boxes or redraw unaffected parts. Return the full diagram with the original square framing, ideally 1024 × 1024. No explanatory text or extra panels.

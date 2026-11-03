@@ -10,7 +10,7 @@ const NAV_LINKS = [
   { href: "#faq", en: "FAQ", zh: "常见问题" },
 ]
 
-export default function Header() {
+export default function Header({ showTools = false }: { showTools?: boolean }) {
   return (
     <header className="site-header">
       <div className="site-container site-header-inner">
@@ -20,6 +20,7 @@ export default function Header() {
         </Link>
 
         <nav className="site-nav" aria-label="Primary">
+          {showTools && <Link href="/lab/tools" className="site-nav-link" lang="en">Tools</Link>}
           {NAV_LINKS.map((link) => (
             <a key={link.href} href={link.href} className="site-nav-link">
               <span className="lang-en">{link.en}</span>
@@ -31,10 +32,14 @@ export default function Header() {
         <div className="site-header-actions">
           <LangSwitcher />
           <AuthControls variant="site" />
-          <Link href="/editor" className="button button-primary button-sm">
-            <span className="lang-en">Try Fix</span>
-            <span className="lang-zh">体验 Fix</span>
-          </Link>
+          {showTools ? (
+            <Link href="/lab/tools" className="button button-primary button-sm" lang="en">Explore tools</Link>
+          ) : (
+            <Link href="/editor" className="button button-primary button-sm">
+              <span className="lang-en">Try Fix</span>
+              <span className="lang-zh">体验 Fix</span>
+            </Link>
+          )}
         </div>
       </div>
     </header>

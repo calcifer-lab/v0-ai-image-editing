@@ -52,7 +52,7 @@ const FAQS = [
   },
 ]
 
-export default function FAQ() {
+export default function FAQ({ showTools = false }: { showTools?: boolean }) {
   const [openIndex, setOpenIndex] = useState<number | null>(null)
 
   return (
@@ -108,11 +108,12 @@ export default function FAQ() {
               <span className="lang-zh">保留对的，只改要改的。</span>
             </h3>
           </div>
-          <div className="faq-cta-actions">
+          <div className="faq-cta-actions flex-wrap">
             <Link href="/editor" className="button button-primary">
               <span className="lang-en">Try Fix</span>
               <span className="lang-zh">立即体验</span>
             </Link>
+            {showTools && <Link href="/lab/tools" className="button button-ghost" lang="en">Explore other tools</Link>}
           </div>
         </div>
       </div>

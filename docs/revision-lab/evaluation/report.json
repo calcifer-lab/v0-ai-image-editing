@@ -1,0 +1,88 @@
+{
+  "fixture": "RD-BENCH-02",
+  "provider": "Codex built-in imagegen",
+  "modelId": null,
+  "source": {
+    "width": 1024,
+    "height": 1024,
+    "sha256": "c1a55ce0d523e158d75716827fe2fc391e5e99c4103939d101f36d8100e2723b"
+  },
+  "candidate": {
+    "width": 1254,
+    "height": 1254,
+    "sha256": "47f487b039e6cdc7237c16a7d3621ff8e1e0e0d8746fff40a6cb39a3ace4c09e"
+  },
+  "normalization": "Explicit same-aspect resize with Sharp lanczos3; not browser Canvas",
+  "cases": [
+    {
+      "id": "tight",
+      "regions": [
+        {
+          "x": 386,
+          "y": 436,
+          "width": 248,
+          "height": 108
+        },
+        {
+          "x": 295,
+          "y": 686,
+          "width": 102,
+          "height": 28
+        },
+        {
+          "x": 170,
+          "y": 746,
+          "width": 234,
+          "height": 140
+        }
+      ],
+      "selectedFraction": 0.05950927734375,
+      "candidateVsSource": {
+        "outsideChanged": 983420,
+        "outsideVisibleChanged": 20085,
+        "insideChanged": 62353,
+        "selectedPixels": 62400,
+        "protectedPixels": 986176
+      },
+      "acceptedVsSource": {
+        "outsideChanged": 0,
+        "insideChanged": 62353
+      },
+      "output": "accepted-tight.png",
+      "outputSha256": "d639808f30e51004f5b948cd94eff05d4f055d92996345d66b777270f89784fe",
+      "semanticVerdict": "Requires visual review; pixel equality is not a correctness score"
+    },
+    {
+      "id": "whole-branch",
+      "regions": [
+        {
+          "x": 380,
+          "y": 430,
+          "width": 260,
+          "height": 120
+        },
+        {
+          "x": 50,
+          "y": 640,
+          "width": 600,
+          "height": 290
+        }
+      ],
+      "selectedFraction": 0.1956939697265625,
+      "candidateVsSource": {
+        "outsideChanged": 840970,
+        "outsideVisibleChanged": 15423,
+        "insideChanged": 204803,
+        "selectedPixels": 205200,
+        "protectedPixels": 843376
+      },
+      "acceptedVsSource": {
+        "outsideChanged": 0,
+        "insideChanged": 204803
+      },
+      "output": "accepted-whole-branch.png",
+      "outputSha256": "203e37eca74407f46c973e9ab7f9bb96de8923ac158413f06ebafff0e6fbf4e0",
+      "semanticVerdict": "Requires visual review; pixel equality is not a correctness score"
+    }
+  ]
+}

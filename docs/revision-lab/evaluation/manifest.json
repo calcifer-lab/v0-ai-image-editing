@@ -1,0 +1,25 @@
+{
+  "id": "RD-BENCH-02",
+  "source": "source.png",
+  "candidate": "candidate.png",
+  "provider": "Codex built-in imagegen",
+  "modelId": null,
+  "allowResize": true,
+  "selections": [
+    {
+      "id": "tight",
+      "regions": [
+        { "x": 386, "y": 436, "width": 248, "height": 108 },
+        { "x": 295, "y": 686, "width": 102, "height": 28 },
+        { "x": 170, "y": 746, "width": 234, "height": 140 }
+      ]
+    },
+    {
+      "id": "whole-branch",
+      "regions": [
+        { "x": 380, "y": 430, "width": 260, "height": 120 },
+        { "x": 50, "y": 640, "width": 600, "height": 290 }
+      ]
+    }
+  ]
+}

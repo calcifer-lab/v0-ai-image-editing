@@ -8,7 +8,10 @@
     "lint": "eslint .",
     "start": "next start",
     "check-env": "node scripts/check-env.js",
-    "setup": "node scripts/check-env.js && pnpm install"
+    "setup": "node scripts/check-env.js && pnpm install",
+    "dev:revision": "next dev --webpack --hostname 127.0.0.1 --port 3100",
+    "test:revision": "node --experimental-strip-types --test tests/revision-lab/*.test.mjs",
+    "typecheck:revision": "tsc --project tsconfig.revision-lab.json --noEmit"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

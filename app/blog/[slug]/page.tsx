@@ -4,6 +4,7 @@ import type { Metadata } from "next"
 import { notFound } from "next/navigation"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
+import BlogHeader from "@/components/blog/blog-header"
 import { formatPostDate, getAllPosts, getPostBySlug } from "../_lib/posts"
 
 const SITE_URL = "https://www.rediagram.com"
@@ -28,24 +29,29 @@ export async function generateMetadata({
   const ogImage = post.coverImage ? `${SITE_URL}${post.coverImage}` : undefined
 
   return {
-    title: `${post.title} | ReDiagram Fix`,
+    title: `${post.title} | ReDiagram`,
     description: post.description,
     keywords: post.keywords,
+    robots: post.draft ? { index: false, follow: false } : undefined,
+    twitter: {
+      card: "summary_large_image",
+      title: post.title,
+      description: post.description,
+      images: ogImage ? [ogImage] : [],
+    },
     alternates: {
       canonical: canonicalUrl,
     },
     openGraph: {
       type: "article",
       url: canonicalUrl,
-      title: `${post.title} | ReDiagram Fix`,
+      title: `${post.title} | ReDiagram`,
       description: post.description,
       images: ogImage ? [{ url: ogImage }] : [],
+      publishedTime: post.date,
+      authors: ["ReDiagram"],
     },
-    other: {
-      "og:title": `${post.title} | ReDiagram Fix`,
-      "og:description": post.description,
-      "og:image": ogImage ?? "",
-    },
+
   }
 }
 
@@ -69,11 +75,13 @@ export default async function BlogPostPage({
     keywords: post.keywords,
     image: imageUrl ? [imageUrl] : undefined,
     datePublished: post.date,
+    inLanguage: "en",
+    author: { "@type": "Organization", name: "ReDiagram", url: SITE_URL },
     url: canonicalUrl,
     mainEntityOfPage: canonicalUrl,
     publisher: {
       "@type": "Organization",
-      name: "ReDiagram Fix",
+      name: "ReDiagram",
       url: SITE_URL,
     },
   }
@@ -82,9 +90,10 @@ export default async function BlogPostPage({
     <>
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, "\\u003c") }}
       />
-      <main className="min-h-screen bg-background text-foreground">
+      <main className="min-h-screen bg-background text-foreground" lang="en">
+        <BlogHeader />
         <article className="mx-auto flex w-full max-w-[680px] flex-col px-4 py-10 sm:px-6 sm:py-14">
           <Link
             href="/blog"
@@ -94,6 +103,7 @@ export default async function BlogPostPage({
           </Link>
 
           <p className="mb-4 text-sm text-muted-foreground">{formatPostDate(post.date)}</p>
+          {post.draft && <p className="mb-6 rounded-xl border border-border bg-[var(--bg-card)] p-4 text-sm">Local preview · This guide describes an experimental tool that is not publicly available.</p>}
           <h1 className="mb-8 text-[clamp(2rem,4vw,3rem)] font-semibold leading-tight tracking-[-0.04em]">
             {post.title}
           </h1>
@@ -152,14 +162,14 @@ export default async function BlogPostPage({
           </div>
 
           <div className="mt-12 rounded-[calc(var(--radius)+2px)] border border-border bg-[var(--bg-card)] p-6 sm:p-8">
-            <a
-              href={SITE_URL}
+            <Link
+              href={post.toolHref}
               className="inline-flex text-lg font-semibold tracking-[-0.02em] text-[var(--brand)] transition-colors hover:text-[var(--accent-dark)]"
             >
-              Try ReDiagram Fix free →
-            </a>
+              {post.toolLabel} →
+            </Link>
             <p className="mt-2 max-w-[40ch] text-sm leading-6 text-muted-foreground">
-              Repair specific parts of an AI-generated image without throwing away the composition you already like.
+              {post.draft ? "Explore the local preview and review its limitations before using it for a deliverable." : "Have a replacement image ready? Use a reference patch to repair a selected part of your diagram."}
             </p>
           </div>
         </article>

@@ -88,10 +88,10 @@ export default function RootLayout({
         />
         <LangProvider>
           {children}
-          <PageViewTracker />
+          {process.env.NODE_ENV === "production" && <PageViewTracker />}
         </LangProvider>
         <Toaster position="top-center" closeButton richColors={false} />
-        {process.env.NEXT_PUBLIC_CLARITY_ID && (
+        {process.env.NODE_ENV === "production" && process.env.NEXT_PUBLIC_CLARITY_ID && (
           <Script
             id="microsoft-clarity"
             strategy="afterInteractive"
@@ -106,7 +106,7 @@ export default function RootLayout({
             }}
           />
         )}
-        <GoogleAnalytics gaId="G-1XPECVXKE3" />
+        {process.env.NODE_ENV === "production" && <GoogleAnalytics gaId="G-1XPECVXKE3" />}
       </body>
     </html>
   )

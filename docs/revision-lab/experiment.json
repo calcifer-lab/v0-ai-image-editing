@@ -1,0 +1,56 @@
+{
+  "date": "2026-10-29",
+  "provider": "Codex built-in image_gen",
+  "model_id": null,
+  "model_id_note": "Tool does not expose verifiable model selection. Not a named GPT Image 2.5 benchmark.",
+  "fixture": "RD-BENCH-01 synthetic English flowchart, one sample only",
+  "calls": 3,
+  "retries": 0,
+  "sequential_inputs": [
+    "source.png",
+    "round-1.png",
+    "round-2.png"
+  ],
+  "edit_requests": [
+    "Change only SLA: 48 hours to SLA: 24 hours; preserve 1024x1024, all other text, shapes, coordinates, colors, connectors and footer.",
+    "Change only Finance review fill to #ede9fe and outline to #7c3aed; keep SLA: 24 hours and all remaining content/dimensions.",
+    "Connect Team lead review right edge to Director approval left edge. Remove old Team lead review bottom to Place order path. Keep Director approval to Place order, all text, prior color edits, positions, sizes and dimensions."
+  ],
+  "input_dimensions": [
+    1024,
+    1024
+  ],
+  "output_dimensions_each": [
+    1254,
+    1254
+  ],
+  "limitations": [
+    "Single easy English diagram; no repeated trials, no Chinese/dense/handwritten sample",
+    "No named-model or paid competitor same-image test",
+    "Visual inspection did not measure precise hex color match",
+    "Reconstruction into native objects not tested",
+    "Browser canvas alignment resamples; exact candidate differences are not semantic failure rates"
+  ],
+  "files": [
+    {
+      "file": "public/revision-lab/round-1.png",
+      "sha256": "36c2bb26c5d5cde9f9ffa7e2bb3683ec7668ab68146006e7f8e5b0672afba264"
+    },
+    {
+      "file": "public/revision-lab/round-2.png",
+      "sha256": "f8733992c81a13ce79363609b7ad2e97951dfe9c7962f88891d3a7ab6dc91bba"
+    },
+    {
+      "file": "public/revision-lab/round-3.png",
+      "sha256": "8f246339e1a95c7b3b385622dabb1927d9ac309685b60b5a9a25f7fcf48fde74"
+    },
+    {
+      "file": "public/revision-lab/source.png",
+      "sha256": "edb86df8b27a4f17e9f7456b6b0413cae020133075b90c853c2009bb0c262657"
+    },
+    {
+      "file": "public/revision-lab/source.svg",
+      "sha256": "0f44876c4ff631972c91a0cde7bb7a4a67f137ab8c13fba302ac2d223e1e8e03"
+    }
+  ]
+}

@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useRef, useEffect } from "react"
+import { useRef, useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import ImageUploadSection from "@/components/image-upload-section"
 import CanvasEditor, { type CanvasEditorRef } from "@/components/canvas-editor"
@@ -10,6 +10,8 @@ import ResultsView from "@/components/results-view"
 import ElementCropper from "@/components/element-cropper"
 import { Upload, Wand2, ImageIcon } from "lucide-react"
 import Link from "next/link"
+import ToolSwitcher from "@/components/tools/tool-switcher"
+import { useToolNavigation } from "@/components/tools/use-tool-navigation"
 import { useImageEditor } from "@/hooks"
 
 export type { EditorStep, EditMode, ImageData, MaskData, AspectRatio, ScaleMode, OutputDimensions, EditParams, CropRegion } from "@/types"
@@ -40,6 +42,10 @@ export default function ImageEditor({ authSlot }: { authSlot?: React.ReactNode }
     handleReset,
   } = useImageEditor()
 
+  const [hasUploadDraft, setHasUploadDraft] = useState(false)
+  const hasWork = step !== "upload" || hasUploadDraft
+  const leaveWarning = hasWork ? "Fix does not autosave this session. Your uploaded images, selections, and result will be cleared. Download any result you want to keep first." : undefined
+
   const canvasEditorRef = useRef<CanvasEditorRef | null>(null)
 
   // Register canvasEditorRef so the hook's processCompositeMode can access CanvasEditor's brush mask
@@ -50,12 +56,12 @@ export default function ImageEditor({ authSlot }: { authSlot?: React.ReactNode }
   return (
     <div className="flex h-screen flex-col">
       {/* Header */}
-      <EditorHeader step={step} onReset={handleReset} authSlot={authSlot} />
+      <EditorHeader step={step} onReset={handleReset} authSlot={authSlot} leaveWarning={leaveWarning} switchingDisabled={isProcessing} />
 
       {/* Main Content */}
       <main className="flex-1 overflow-hidden">
         {step === "upload" && (
-          <ImageUploadSection onImagesUploaded={handleImagesUploaded} />
+          <ImageUploadSection onImagesUploaded={handleImagesUploaded} onDraftChange={setHasUploadDraft} />
         )}
 
         {step === "edit" && (
@@ -114,13 +120,17 @@ interface EditorHeaderProps {
   step: "upload" | "edit" | "result"
   onReset: () => void
   authSlot?: React.ReactNode
+  leaveWarning?: string
+  switchingDisabled: boolean
 }
 
-function EditorHeader({ step, onReset, authSlot }: EditorHeaderProps) {
+function EditorHeader({ step, onReset, authSlot, leaveWarning, switchingDisabled }: EditorHeaderProps) {
+  const { onNavigate, leaveDialog } = useToolNavigation(leaveWarning)
   return (
+    <>
     <header className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="flex h-16 items-center justify-between px-6">
-        <Link href="/" className="flex items-center gap-3">
+      <div className="flex min-h-16 flex-wrap items-center justify-between gap-3 px-6 py-3">
+        <Link href="/" className="flex items-center gap-3" onClick={onNavigate}>
           <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary">
             <ImageIcon className="h-5 w-5 text-primary-foreground" />
           </div>
@@ -154,7 +164,8 @@ function EditorHeader({ step, onReset, authSlot }: EditorHeaderProps) {
           />
         </nav>
 
-        <div className="flex items-center gap-3">
+        <div className="ml-auto flex items-center gap-3">
+          <ToolSwitcher current="reference-patch" onNavigate={onNavigate} disabled={switchingDisabled} />
           {authSlot}
           <Button variant="outline" size="sm" onClick={onReset}>
             Start New
@@ -162,6 +173,8 @@ function EditorHeader({ step, onReset, authSlot }: EditorHeaderProps) {
         </div>
       </div>
     </header>
+    {leaveDialog}
+    </>
   )
 }
 

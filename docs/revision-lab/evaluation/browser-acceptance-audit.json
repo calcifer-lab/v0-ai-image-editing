@@ -1,0 +1,17 @@
+{
+  "fixture": "RD-BENCH-02",
+  "method": "PNG data URL read from the rendered current-version img after IndexedDB restore; not a download-event assertion",
+  "region": {
+    "x": 380,
+    "y": 430,
+    "width": 260,
+    "height": 120
+  },
+  "candidateNormalization": "Browser Canvas resize from 1254 to 1024",
+  "offset": {
+    "x": 0,
+    "y": 0
+  },
+  "outsideChanged": 0,
+  "insideChanged": 31153
+}

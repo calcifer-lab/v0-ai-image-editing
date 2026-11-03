@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+<defs><marker id="a" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0 0L8 3L0 6" fill="none" stroke="#334155" stroke-width="1.5"/></marker></defs>
+<rect width="1024" height="1024" fill="#f8fafc"/>
+<g font-family="Arial,sans-serif" fill="#0f172a"><text x="80" y="95" font-size="32" font-weight="bold">Purchase approval workflow</text><text x="80" y="135" font-size="18" fill="#64748b">Operations handbook · v1.0 · INTERNAL</text></g>
+<g fill="none" stroke="#334155" stroke-width="3" marker-end="url(#a)"><path d="M512 255V320"/><path d="M512 430V510"/><path d="M402 375H240V650"/><path d="M512 620V650"/><path d="M240 750V865H402"/><path d="M512 750V815"/></g>
+<g font-family="Arial,sans-serif" font-size="18" fill="#475569"><text x="535" y="478">Yes</text><text x="300" y="358">No</text></g>
+<rect x="382" y="185" width="260" height="70" rx="14" fill="#dbeafe" stroke="#2563eb" stroke-width="2"/>
+<path d="M512 320L622 375L512 430L402 375Z" fill="#fef3c7" stroke="#d97706" stroke-width="2"/>
+<rect x="382" y="510" width="260" height="110" rx="12" fill="#dbeafe" stroke="#2563eb" stroke-width="2"/>
+<rect x="110" y="650" width="260" height="100" rx="12" fill="#e2e8f0" stroke="#64748b" stroke-width="2"/>
+<rect x="382" y="650" width="260" height="100" rx="12" fill="#dbeafe" stroke="#2563eb" stroke-width="2"/>
+<rect x="402" y="815" width="220" height="100" rx="48" fill="#dcfce7" stroke="#16a34a" stroke-width="2"/>
+<g font-family="Arial,sans-serif" font-size="22" text-anchor="middle" fill="#0f172a"><text x="512" y="228">Submit request</text><text x="512" y="382">Over $5,000?</text><text x="512" y="555">Finance review</text><text x="512" y="588" font-size="18">SLA: 48 hours</text><text x="240" y="707">Team lead review</text><text x="512" y="707">Director approval</text><text x="512" y="872">Place order</text></g>
+<g font-family="Arial,sans-serif" font-size="16" fill="#64748b"><text x="740" y="560">Owner: Finance</text><text x="740" y="590">Budget: $25,000</text><text x="80" y="975">RD-BENCH-01 · Synthetic test fixture · Do not alter this footer</text></g></svg>
