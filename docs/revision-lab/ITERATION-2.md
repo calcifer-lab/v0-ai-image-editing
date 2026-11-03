@@ -50,3 +50,13 @@ Codex 内置图像工具不是网页可调用的服务端 API。本轮未配置�
 新入口只在 development 展示，生产首页维持原入口，避免将访客导向仍未发布的 lab。未来发布时需要随正式工具路由一起解除预览条件。原 editor 组件、UI 和工作流均未修改。
 
 验证：浏览器完成首页 Explore tools → 工具箱 → Fix → 原 /editor 的导航；检查首页英文双入口显示并保存 home-entry-preview.png。相关模块 TypeScript 检查及生产 Webpack 构建通过；解析生产首页与博客 HTML，确认仍含 /editor 且没有 /lab/ 链接。构建仍沿用仓库既有的全仓类型跳过配置。
+
+## 工具内双向切换（2026-11-03）
+
+Fix 顶栏加入 Tools 菜单，Diagram Revision 使用同一个 ToolSwitcher。菜单读取现有 catalog，展示用途、当前工具勾选、新工具预览标记及 All tools and guides。Fix 的上传、选区、参数、结果区与处理逻辑保持原样；顶栏在窄窗口可换行，避免按钮挤压。
+
+切换通过共享 useToolNavigation 提供站内离开对话框。Fix 检查上传页局部草稿和编辑/结果状态，明确告知不自动保存；执行生成时工具菜单禁用。修订页检查未保存项目、候选、输入草稿、选区及忙碌状态。Stay here 保留页面状态，Leave workspace 才导航；修订页 Logo 和 Guides 链接也使用该检查。新标签打开不离开当前工作区。该检查针对接入的站内链接，不代表已完成全站刷新/浏览器后退拦截或跨工具自动传图。
+
+浏览器验证：空白 Fix → Diagram Revision；修订页输入草稿 → 切换提示 → Stay here 后草稿保留；确认 Leave workspace → Fix；Fix 加载内置样例进入编辑 → 切换提示 → Stay here 后仍在编辑。测试样例已通过 Start New 清理，未执行付费生成。截图 fix-tool-switcher-preview.png。
+
+新模块 scoped 类型检查与 Webpack 生产构建通过。全仓 tsc 仍只有已有的三处问题（两处 AuthControls async JSX、一处 ResultsView ref），本次没有新增错误。工具菜单仍仅在 development 展示，未发布到线上。

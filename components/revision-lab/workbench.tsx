@@ -309,7 +309,11 @@ export default function RevisionWorkbench() {
   }
   return (
     <>
-    <ToolHeader active="revision" />
+    <ToolHeader active="revision" leaveWarning={
+      ((!saved && autoSave !== "Accepted versions saved on this device") || candidate || note.trim() || regions.length || busy)
+        ? "Unaccepted candidates, selections, and edit instructions are not saved. Export any project that has not finished autosaving before leaving."
+        : undefined
+    } />
     <main className={s.app} lang="en">
       <section className={s.intro}>
         <p>Make every edit count.</p>

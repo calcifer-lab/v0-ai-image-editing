@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useState, useCallback, useRef } from "react"
+import { useState, useCallback, useRef, useEffect } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Upload, CheckCircle2, X, RefreshCw, Loader2 } from "lucide-react"
@@ -9,6 +9,7 @@ import { fileToDataUrl, getImageDimensions, isImageFile, removeWatermark } from 
 
 interface ImageUploadSectionProps {
   onImagesUploaded: (elementImage: string, baseImage: string) => void
+  onDraftChange?: (hasDraft: boolean) => void
 }
 
 type ImageType = "element" | "base"
@@ -19,12 +20,16 @@ const DEMO_PRESETS = [
   { element: "/demo/nezuko-base.jpg", base: "/demo/nezuko-element.jpg" },
 ]
 
-export default function ImageUploadSection({ onImagesUploaded }: ImageUploadSectionProps) {
+export default function ImageUploadSection({ onImagesUploaded, onDraftChange }: ImageUploadSectionProps) {
   const [elementImage, setElementImage] = useState<string | null>(null)
   const [baseImage, setBaseImage] = useState<string | null>(null)
   const [isProcessing, setIsProcessing] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [feedback, setFeedback] = useState<UploadFeedback>(null)
+  useEffect(() => {
+    onDraftChange?.(!!elementImage || !!baseImage || isProcessing || isLoading)
+  }, [elementImage, baseImage, isProcessing, isLoading, onDraftChange])
+
   const elementImageRef = useRef<string | null>(null)
   const baseImageRef = useRef<string | null>(null)
 
