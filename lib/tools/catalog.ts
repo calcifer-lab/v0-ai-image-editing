@@ -2,9 +2,9 @@
 export const toolCatalog = [
   {
     id: "reference-patch",
-    title: "Reference Patch",
+    title: "Fix",
     href: "/editor",
-    tag: "Original tool",
+    tag: "Reference Patch · Existing tool",
     description:
       "Replace a selected area with content from a reference image using Direct Patch.",
   },

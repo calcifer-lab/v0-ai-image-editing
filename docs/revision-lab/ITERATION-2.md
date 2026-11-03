@@ -42,3 +42,11 @@ Codex 内置图像工具不是网页可调用的服务端 API。本轮未配置�
 ## 英文优先与 SEO 内容补充
 
 新工具导航、按钮、状态、报错、示例任务均改为英文；新页面声明 lang=en。用户已保存的项目名称不强制翻译，原 editor 的界面及语言机制不变。新增三篇英文操作指南和配图，文章页复用首页 Logo，接入对应工具 CTA。修订实验文章只在开发环境展示且 noindex，不进入 sitemap；详见 SEO-CONTENT-PLAN.md。
+
+## 首页入口整合（2026-11-03）
+
+本地首页首屏增加 Explore tools 主入口，进入 /lab/tools；Try Fix 保持直达 /editor，顶部与原案例中的 Try Fix 仍是原功能快捷入口。首页 Hero 后增加两个并列卡片，与工具箱共用 ToolCards 和 catalog。原工具以 Fix 为名称、Reference Patch 为用途说明；新工具仍为 Diagram Revision。博客导航也增加本地 Tools 入口。
+
+新入口只在 development 展示，生产首页维持原入口，避免将访客导向仍未发布的 lab。未来发布时需要随正式工具路由一起解除预览条件。原 editor 组件、UI 和工作流均未修改。
+
+验证：浏览器完成首页 Explore tools → 工具箱 → Fix → 原 /editor 的导航；检查首页英文双入口显示并保存 home-entry-preview.png。相关模块 TypeScript 检查及生产 Webpack 构建通过；解析生产首页与博客 HTML，确认仍含 /editor 且没有 /lab/ 链接。构建仍沿用仓库既有的全仓类型跳过配置。

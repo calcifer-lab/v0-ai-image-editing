@@ -7,7 +7,7 @@
 .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; margin-top: 32px; }
 .card { display: flex; flex-direction: column; align-items: flex-start; border: 1px solid var(--border); border-radius: var(--radius); padding: 32px; background: var(--bg); transition: border-color 180ms, box-shadow 180ms; }
 .card:hover { border-color: #cfd4dc; box-shadow: 0 12px 28px rgba(17,17,17,.06); }
-.card h2 { font-size: 24px; font-weight: 600; letter-spacing: -.02em; margin: 20px 0 0; }
+.card h2, .card h3 { font-size: 24px; font-weight: 600; letter-spacing: -.02em; margin: 20px 0 0; }
 .card p { color: var(--text-muted); line-height: 1.7; margin: 12px 0 28px; }
 .card .action { margin-top: auto; }
 @media (max-width: 650px) { .header { gap: 12px; padding: 16px 0; } .nav { gap: 16px; } .grid { grid-template-columns: 1fr; } .content { padding-top: 36px; } .card { padding: 24px; } }

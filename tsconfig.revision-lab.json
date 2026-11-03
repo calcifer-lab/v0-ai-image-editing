@@ -12,7 +12,9 @@
     "app/lab/tools/**/*.tsx",
     "app/blog/**/*.tsx",
     "app/blog/**/*.ts",
-    "app/sitemap.ts"
+    "app/sitemap.ts",
+    "components/landing/hero.tsx",
+    "components/landing/tool-overview.tsx"
   ],
   "exclude": [
     "node_modules"

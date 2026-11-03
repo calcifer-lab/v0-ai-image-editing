@@ -12,7 +12,7 @@ export default function ToolHeader({ active }: { active: "tools" | "revision" })
         </Link>
         <nav className={styles.nav} aria-label="Tool navigation">
           <Link href="/lab/tools" className="site-nav-link" aria-current={active === "tools" ? "page" : undefined}>Tools</Link>
-          <Link href="/editor" className="site-nav-link">Reference Patch</Link>
+          <Link href="/editor" className="site-nav-link">Fix</Link>
           <Link href="/lab/revisions" className="site-nav-link" aria-current={active === "revision" ? "page" : undefined}>Diagram Revision</Link>
           <Link href="/blog" className="site-nav-link">Guides</Link>
         </nav>
