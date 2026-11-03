@@ -45,6 +45,7 @@ function partToGoogle(part: OpenRouterContentPart): GooglePart {
 }
 
 interface GoogleGenerateOptions {
+  signal?: AbortSignal
   responseModalities?: Array<"TEXT" | "IMAGE">
   /** Sampling temperature, 0..2. Lower = more deterministic. Default ~1.0. */
   temperature?: number
@@ -97,6 +98,7 @@ export async function callGoogleGenerate(
   }
 
   const response = await fetch(url, {
+    signal: options.signal,
     method: "POST",
     headers: {
       "Content-Type": "application/json",

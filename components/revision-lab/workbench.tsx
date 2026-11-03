@@ -15,6 +15,11 @@ import {
   resizeCandidate,
   type Project,
 } from "@/lib/revision-lab/browser";
+import {
+  saveLocalProject,
+  recentProjects,
+  type StoredProject,
+} from "@/lib/revision-lab/storage";
 import s from "./workbench.module.css";
 
 const cases = [
@@ -55,6 +60,78 @@ export default function RevisionWorkbench() {
     "current",
   );
   const [saved, setSaved] = useState(true);
+  const [recent, setRecent] = useState<StoredProject[]>([]);
+  const [autoSave, setAutoSave] = useState("已采纳版本会自动保存在本机");
+  const [configured, setConfigured] = useState(false);
+  const [modelName, setModelName] = useState("");
+  const [highlight, setHighlight] = useState(false);
+  const [zoom, setZoom] = useState(1);
+  const saveQueue = useRef(Promise.resolve());
+  useEffect(() => {
+    recentProjects()
+      .then(setRecent)
+      .catch(() => setAutoSave("本机存储不可用，请导出项目"));
+    fetch("/api/lab/revisions")
+      .then((r) => r.json())
+      .then((d) => {
+        setConfigured(d.configured === true);
+        setModelName(d.model || "");
+      })
+      .catch(() => setMessage("无法检查生成服务，可继续本地修订。"));
+  }, []);
+  useEffect(() => {
+    if (!project) return;
+    setAutoSave("正在自动保存…");
+    let active = true;
+    const timer = setTimeout(() => {
+      saveQueue.current = saveQueue.current
+        .catch(() => {})
+        .then(async () => {
+          await saveLocalProject(project);
+          if (active) {
+            setAutoSave("已采纳版本已自动保存到本机");
+            setRecent(await recentProjects());
+          }
+        })
+        .catch(() => {
+          if (active) setAutoSave("自动保存失败，请立即导出项目");
+        });
+    }, 300);
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [project]);
+  async function reopen(stored: StoredProject) {
+    const p = await parseProject(JSON.stringify(stored.project));
+    const image = await decodeImage(
+      p.revisions.find((r) => r.id === p.currentId)!.image,
+    );
+    setProject(p);
+    setBase(image);
+    clearCandidate();
+    setSaved(false);
+    setMessage("已恢复本机项目。未采纳的候选和选区不属于自动保存内容。");
+  }
+  async function generate() {
+    if (!current || !regions.length || !note.trim()) return;
+    const selection = regions;
+    const response = await fetch("/api/lab/revisions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        image: current.image,
+        prompt: note,
+        regions: selection,
+      }),
+    });
+    const data = await response.json();
+    if (!response.ok)
+      throw new Error(data.error || "生成失败，当前版本保持不变。");
+    await loadCandidate(data.image);
+    setRegions(selection);
+    setMessage(`已收到 ${data.model} 候选，请检查后决定是否采纳。`);
+  }
   const anchor = useRef<{ x: number; y: number } | null>(null);
   const current = project?.revisions.find((r) => r.id === project.currentId);
   const sameSize =
@@ -75,14 +152,14 @@ export default function RevisionWorkbench() {
   );
   useEffect(() => {
     const warn = (event: BeforeUnloadEvent) => {
-      if (!saved) {
+      if ((!saved && autoSave !== "已采纳版本已自动保存到本机") || candidate) {
         event.preventDefault();
         event.returnValue = "";
       }
     };
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
-  }, [saved]);
+  }, [saved, autoSave, candidate]);
   async function run(action: () => Promise<void>) {
     setBusy(true);
     try {
@@ -149,7 +226,7 @@ export default function RevisionWorkbench() {
     };
   }
   function begin(event: PointerEvent<HTMLDivElement>) {
-    if (!base || !sameSize || busy || event.button !== 0) return;
+    if (!base || (candidate && !sameSize) || busy || event.button !== 0) return;
     event.currentTarget.setPointerCapture(event.pointerId);
     anchor.current = point(event);
   }
@@ -232,10 +309,10 @@ export default function RevisionWorkbench() {
   return (
     <main className={s.app} lang="zh-CN">
       <header className={s.header}>
-        <a href="/">
+        <a href="/lab/tools">
           ReDiagram<span> / Revision lab</span>
         </a>
-        <span className={s.badge}>本地实验版 · 不连接模型</span>
+        <span className={s.badge}>独立工具 · 本地实验版</span>
       </header>
       <section className={s.intro}>
         <p>让每次修改，累积成进展。</p>
@@ -294,8 +371,11 @@ export default function RevisionWorkbench() {
           disabled={busy || !project}
           onClick={() => {
             if (
-              saved ||
-              window.confirm("尚未导出项目。确定关闭？未保存的修订会丢失。")
+              (!candidate &&
+                (saved || autoSave === "已采纳版本已自动保存到本机")) ||
+              window.confirm(
+                "仍有未保存内容或未采纳候选，确定关闭？建议先采纳或导出。",
+              )
             ) {
               setProject(null);
               setBase(null);
@@ -317,6 +397,21 @@ export default function RevisionWorkbench() {
           保存项目{!saved ? " ·" : ""}
         </button>
       </div>
+      <p role="status">{autoSave} · 未采纳候选请先采纳或另存</p>
+      {!project && recent.length > 0 && (
+        <section className={s.toolbar} aria-label="最近项目">
+          <strong>最近项目</strong>
+          {recent.slice(0, 5).map((r) => (
+            <button
+              key={r.id}
+              disabled={busy}
+              onClick={() => run(() => reopen(r))}
+            >
+              {r.project.name} · {r.project.revisions.length} 个版本
+            </button>
+          ))}
+        </section>
+      )}
       <div className={s.workspace}>
         <aside className={s.panel}>
           <h2>01 / 当前修订</h2>
@@ -366,6 +461,20 @@ export default function RevisionWorkbench() {
               placeholder="例如：增加一条审批分支，保留原有文案"
             />
           </label>
+          <button
+            className={s.primary}
+            disabled={
+              busy || !configured || !current || !regions.length || !note.trim()
+            }
+            onClick={() => run(generate)}
+          >
+            生成修改候选
+          </button>
+          <p>
+            {configured
+              ? `生成将把当前图片和修改要求发送至 Google · ${modelName}`
+              : "未配置网页端模型服务。Codex 内置图像工具无法由网页直接调用；可继续导入候选。"}
+          </p>
           <h2>版本记录</h2>
           <div className={s.history}>
             {project?.revisions.map((r, i) => (
@@ -412,11 +521,40 @@ export default function RevisionWorkbench() {
               {base ? `${base.width} × ${base.height}` : "等待打开图像"}
             </span>
           </nav>
-          <div className={s.stage}>
+          <div className={s.toolbar}>
+            <label>
+              <input
+                type="checkbox"
+                checked={highlight}
+                onChange={(e) => setHighlight(e.target.checked)}
+                disabled={!sameSize}
+              />{" "}
+              高亮候选变化（差值视图）
+            </label>
+            <label>
+              放大{" "}
+              <select
+                value={zoom}
+                onChange={(e) => setZoom(Number(e.target.value))}
+              >
+                <option value={1}>100%</option>
+                <option value={1.5}>150%</option>
+                <option value={2}>200%</option>
+              </select>
+            </label>
+          </div>
+          <div
+            className={s.stage}
+            style={{ overflow: "auto", justifyContent: "flex-start" }}
+          >
             {imageUrl && base ? (
               <div
                 className={s.imageWrap}
-                style={{ aspectRatio: `${base.width}/${base.height}` }}
+                style={{
+                  aspectRatio: `${base.width}/${base.height}`,
+                  minWidth: `${zoom * 100}%`,
+                  maxWidth: "none",
+                }}
                 onPointerDown={begin}
                 onPointerMove={move}
                 onPointerUp={end}
@@ -427,7 +565,7 @@ export default function RevisionWorkbench() {
               >
                 {/* Native img avoids optimizer requests for local, user-owned data URLs. */}
                 <img
-                  src={imageUrl}
+                  src={highlight && sameSize ? current?.image : imageUrl}
                   alt={
                     mode === "current"
                       ? "当前已采纳的版本"
@@ -437,6 +575,18 @@ export default function RevisionWorkbench() {
                   }
                   draggable={false}
                 />
+                {highlight && sameSize && candidate && (
+                  <img
+                    src={candidate.url}
+                    alt="候选变化差值"
+                    style={{
+                      position: "absolute",
+                      inset: 0,
+                      mixBlendMode: "difference",
+                    }}
+                    draggable={false}
+                  />
+                )}
                 {[...regions, ...(draft ? [draft] : [])].map((r, i) => (
                   <div
                     key={i}
@@ -494,7 +644,9 @@ export default function RevisionWorkbench() {
                       base.width,
                       base.height,
                     );
+                    const selection = regions;
                     await loadCandidate(url);
+                    setRegions(selection);
                     setMessage(
                       "已按尺寸对齐。请检查图形位置；如果布局移动，请放弃本轮。",
                     );
@@ -521,13 +673,49 @@ export default function RevisionWorkbench() {
               disabled={busy || !regions.length}
               onClick={() => {
                 setRegions([]);
-                setMode("candidate");
+                setMode(candidate ? "candidate" : "current");
               }}
             >
               清空
             </button>
           </div>
-          <p>{regions.length} 个选区</p>
+          <p>
+            {regions.length} 个选区 · 修改关系时包含旧连线、新连线及完整节点
+          </p>
+          {base &&
+            regions.map((r, i) => (
+              <fieldset key={`edit-${i}`} disabled={busy}>
+                <legend>调整选区 {i + 1}</legend>
+                {(["x", "y", "width", "height"] as const).map((k) => (
+                  <label key={k}>
+                    {k}
+                    <input
+                      aria-label={`选区 ${i + 1} ${k}`}
+                      type="number"
+                      min={k === "width" || k === "height" ? 1 : 0}
+                      value={r[k]}
+                      style={{ width: 70 }}
+                      onChange={(e) => {
+                        const value = Number(e.target.value);
+                        const next = { ...r, [k]: value };
+                        if (
+                          Number.isInteger(value) &&
+                          next.x >= 0 &&
+                          next.y >= 0 &&
+                          next.width > 0 &&
+                          next.height > 0 &&
+                          next.x + next.width <= base.width &&
+                          next.y + next.height <= base.height
+                        )
+                          setRegions(
+                            regions.map((old, j) => (j === i ? next : old)),
+                          );
+                      }}
+                    />
+                  </label>
+                ))}
+              </fieldset>
+            ))}
           {regions.map((r, i) => (
             <button
               className={s.regionRow}
@@ -535,7 +723,7 @@ export default function RevisionWorkbench() {
               disabled={busy}
               onClick={() => {
                 setRegions(regions.filter((_, j) => j !== i));
-                setMode("candidate");
+                setMode(candidate ? "candidate" : "current");
               }}
             >
               选区 {i + 1} · {r.width} × {r.height} <span>移除</span>

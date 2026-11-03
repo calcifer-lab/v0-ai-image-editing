@@ -1,6 +1,17 @@
 {
   "extends": "./tsconfig.json",
-  "compilerOptions": { "incremental": false },
-  "include": ["next-env.d.ts", "app/lab/revisions/**/*.tsx", "components/revision-lab/**/*.tsx", "lib/revision-lab/**/*.ts"],
-  "exclude": ["node_modules"]
+  "compilerOptions": {
+    "incremental": false
+  },
+  "include": [
+    "next-env.d.ts",
+    "app/lab/revisions/**/*.tsx",
+    "components/revision-lab/**/*.tsx",
+    "lib/revision-lab/**/*.ts",
+    "app/api/lab/revisions/**/*.ts",
+    "app/lab/tools/**/*.tsx"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
 }
