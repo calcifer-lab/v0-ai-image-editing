@@ -38,3 +38,7 @@ Codex 内置图像工具不是网页可调用的服务端 API。本轮未配置�
 ## UI 统一补充
 
 新工具箱与修订页共用 ToolHeader，直接复用首页 BrandMark 和 brand-lockup / brand-text 样式。新页面使用首页的背景、文本、边框和主按钮设计变量，删除原先独立的绿色配色与字体覆盖。卡片、输入框和焦点状态也做了统一。未修改 app/globals.css、首页或原 editor 的任何组件；原 editor 界面保持不动。已通过新模块类型检查及浏览器视觉检查，截图为 toolbox-brand-preview.png、revision-brand-preview.png。
+
+## 英文优先与 SEO 内容补充
+
+新工具导航、按钮、状态、报错、示例任务均改为英文；新页面声明 lang=en。用户已保存的项目名称不强制翻译，原 editor 的界面及语言机制不变。新增三篇英文操作指南和配图，文章页复用首页 Logo，接入对应工具 CTA。修订实验文章只在开发环境展示且 noindex，不进入 sitemap；详见 SEO-CONTENT-PLAN.md。

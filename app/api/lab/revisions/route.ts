@@ -22,18 +22,18 @@ export async function POST(request: Request) {
     ) ||
     request.headers.get("origin") !== `http://${request.headers.get("host")}`
   )
-    return json({ error: "仅接受本地页面请求。" }, 403);
+    return json({ error: "Only local same-origin requests are allowed." }, 403);
   if (!key())
     return json(
-      { error: "尚未配置服务端图像模型。可继续导入候选图；不会使用模拟结果。" },
+      { error: "Image generation is not configured. Import a candidate to continue. No simulated results will be returned." },
       503,
     );
-  if (running) return json({ error: "已有生成任务进行中，请稍后重试。" }, 429);
+  if (running) return json({ error: "A generation is already running. Please try again later." }, 429);
   running = true;
   try {
     const text = await request.text();
     if (text.length > 16 * 1024 * 1024)
-      return json({ error: "图片请求过大。" }, 413);
+      return json({ error: "Image request is too large." }, 413);
     const body = JSON.parse(text);
     if (
       typeof body.prompt !== "string" ||
@@ -42,13 +42,13 @@ export async function POST(request: Request) {
       typeof body.image !== "string" ||
       !/^data:image\/png;base64,[A-Za-z0-9+/]+=*$/.test(body.image)
     )
-      return json({ error: "修改要求或图片格式无效。" }, 400);
+      return json({ error: "Invalid edit instructions or image format." }, 400);
     const buffer = Buffer.from(body.image.split(",")[1], "base64");
     const meta = await sharp(buffer, {
       limitInputPixels: 4_194_304,
     }).metadata();
     if (!meta.width || !meta.height || !Array.isArray(body.regions))
-      return json({ error: "图片或选区无效。" }, 400);
+      return json({ error: "Invalid image or selection." }, 400);
     validateRegions(body.regions, meta.width, meta.height);
     const response = await callGoogleGenerate(
       model,
@@ -68,21 +68,21 @@ export async function POST(request: Request) {
     if (!response.ok)
       return json(
         {
-          error: `模型服务未成功返回（HTTP ${response.status}），当前版本保持不变。`,
+          error: `Generation failed (HTTP ${response.status}). Your current version is unchanged.`,
         },
         502,
       );
     const image = extractGoogleImage(response.data);
     if (!image || !/^data:image\/(png|jpeg|webp);base64,/.test(image))
-      return json({ error: "模型未返回可用图片。当前版本保持不变。" }, 502);
+      return json({ error: "The model returned no usable image. Your current version is unchanged." }, 502);
     return json({ image, model });
   } catch (error) {
     return json(
       {
         error:
           error instanceof Error && error.name === "TimeoutError"
-            ? "生成超时，当前版本保持不变。"
-            : "请求无法处理，请检查图片和选区后重试。",
+            ? "Generation timed out. Your current version is unchanged."
+            : "Could not process the request. Check the image and selection, then retry.",
       },
       400,
     );

@@ -9,7 +9,10 @@
     "components/revision-lab/**/*.tsx",
     "lib/revision-lab/**/*.ts",
     "app/api/lab/revisions/**/*.ts",
-    "app/lab/tools/**/*.tsx"
+    "app/lab/tools/**/*.tsx",
+    "app/blog/**/*.tsx",
+    "app/blog/**/*.ts",
+    "app/sitemap.ts"
   ],
   "exclude": [
     "node_modules"

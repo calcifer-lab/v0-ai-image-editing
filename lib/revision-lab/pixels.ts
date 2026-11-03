@@ -11,7 +11,7 @@ export function validateRaster(image: Raster) {
     image.width * image.height > MAX_PIXELS ||
     image.data.length !== image.width * image.height * 4
   ) {
-    throw new Error("图片尺寸无效，最多支持 400 万像素。");
+    throw new Error("Invalid image dimensions. The limit is 4 megapixels.");
   }
 }
 
@@ -21,7 +21,7 @@ export function validateRegions(
   height: number,
 ) {
   if (!regions.length || regions.length > 32)
-    throw new Error("请先框选 1–32 个修改区域。");
+    throw new Error("Select between 1 and 32 areas to edit.");
   for (const r of regions) {
     if (
       ![r.x, r.y, r.width, r.height].every(Number.isInteger) ||
@@ -32,7 +32,7 @@ export function validateRegions(
       r.x + r.width > width ||
       r.y + r.height > height
     )
-      throw new Error("选区超出图片范围。");
+      throw new Error("Selection is outside the image bounds.");
   }
 }
 
@@ -46,7 +46,7 @@ export function acceptRegions(
   validateRaster(base);
   validateRaster(candidate);
   if (base.width !== candidate.width || base.height !== candidate.height)
-    throw new Error("候选图尺寸与当前图不同，请先明确确认尺寸对齐。");
+    throw new Error("Candidate dimensions differ. Confirm resizing before accepting.");
   validateRegions(regions, base.width, base.height);
   const data = new Uint8ClampedArray(base.data);
   const selected = new Uint8Array(base.width * base.height);

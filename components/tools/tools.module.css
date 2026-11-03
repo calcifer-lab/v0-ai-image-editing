@@ -1,6 +1,6 @@
 .shell { min-height: 100vh; background: var(--bg); color: var(--text); }
 .header { flex-wrap: wrap; }
-.nav { display: flex; align-items: center; gap: 24px; }
+.nav { display: flex; flex-wrap: wrap; align-items: center; gap: 24px; }
 .nav a[aria-current="page"] { color: var(--text); font-weight: 600; }
 .nav a:focus-visible, .card:focus-visible { outline: 2px solid var(--ring); outline-offset: 5px; }
 .content { padding-top: 64px; padding-bottom: 64px; }

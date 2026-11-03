@@ -19,12 +19,12 @@ export async function decodeImage(url: string): Promise<Raster> {
   const width = image.naturalWidth,
     height = image.naturalHeight;
   if (width * height > 4_194_304)
-    throw new Error("最多支持 400 万像素，请先缩小图片。");
+    throw new Error("The limit is 4 megapixels. Resize your image first.");
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
   const context = canvas.getContext("2d", { willReadFrequently: true });
-  if (!context) throw new Error("浏览器无法处理图片。");
+  if (!context) throw new Error("Your browser could not process the image.");
   context.drawImage(image, 0, 0);
   const raster = {
     width,
@@ -40,7 +40,7 @@ export function encodeImage(image: Raster) {
   canvas.width = image.width;
   canvas.height = image.height;
   const context = canvas.getContext("2d");
-  if (!context) throw new Error("浏览器无法处理图片。");
+  if (!context) throw new Error("Your browser could not process the image.");
   const buffer = context.createImageData(image.width, image.height);
   buffer.data.set(image.data);
   context.putImageData(buffer, 0, 0);
@@ -51,7 +51,7 @@ export async function readImage(file: File) {
     !["image/png", "image/jpeg", "image/webp"].includes(file.type) ||
     file.size > MAX_FILE
   )
-    throw new Error("请选择不超过 24 MB 的 PNG、JPEG 或 WebP。");
+    throw new Error("Choose a PNG, JPEG, or WebP under 24 MB.");
   const url = URL.createObjectURL(file);
   try {
     return encodeImage(await decodeImage(url));
@@ -68,18 +68,18 @@ export async function resizeCandidate(
   image.src = url;
   await image.decode();
   if (Math.abs(image.width / image.height - width / height) > 0.001)
-    throw new Error("长宽比不同，不能直接对齐；请先在外部工具校正。");
+    throw new Error("Aspect ratios differ. Correct the candidate in an external editor first.");
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
   const context = canvas.getContext("2d");
-  if (!context) throw new Error("浏览器无法处理图片。");
+  if (!context) throw new Error("Your browser could not process the image.");
   context.drawImage(image, 0, 0, width, height);
   return canvas.toDataURL("image/png");
 }
 export async function parseProject(text: string): Promise<Project> {
   if (text.length > 64 * 1024 * 1024)
-    throw new Error("项目文件过大（最多 64 MB）。");
+    throw new Error("Project file exceeds the 64 MB limit.");
   const p = JSON.parse(text);
   if (
     p?.version !== 1 ||
@@ -89,7 +89,7 @@ export async function parseProject(text: string): Promise<Project> {
     !p.revisions.length ||
     p.revisions.length > 12
   )
-    throw new Error("不支持的项目格式。");
+    throw new Error("Unsupported project format.");
   const ids = new Set<string>();
   let dimensions = "";
   for (const r of p.revisions) {
@@ -103,15 +103,15 @@ export async function parseProject(text: string): Promise<Project> {
       typeof r.image !== "string" ||
       !/^data:image\/png;base64,[A-Za-z0-9+/]+=*$/.test(r.image)
     )
-      throw new Error("项目版本数据无效。");
+      throw new Error("Invalid project version data.");
     const image = await decodeImage(r.image);
     const size = `${image.width}x${image.height}`;
     if (dimensions && dimensions !== size)
-      throw new Error("项目内图片尺寸不一致。");
+      throw new Error("Project images have inconsistent dimensions.");
     dimensions = size;
     ids.add(r.id);
   }
-  if (!ids.has(p.currentId)) throw new Error("当前版本不存在。");
+  if (!ids.has(p.currentId)) throw new Error("The current version does not exist.");
   return {
     version: 1,
     name: p.name,
