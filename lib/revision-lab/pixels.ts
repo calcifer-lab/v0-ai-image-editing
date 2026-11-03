@@ -85,3 +85,34 @@ export function acceptRegions(
     },
   };
 }
+
+
+export const MAX_OFFSET = 64;
+export function translateCandidate(image: Raster, dx: number, dy: number): Raster {
+  validateRaster(image);
+  if (![dx, dy].every((v) => Number.isInteger(v) && Math.abs(v) <= MAX_OFFSET))
+    throw new Error("Alignment must be an integer offset within 64 pixels.");
+  if (!dx && !dy) return image;
+  const data = new Uint8ClampedArray(image.data.length);
+  const startX = Math.max(0, dx), endX = Math.min(image.width, image.width + dx);
+  if (endX <= startX) return { ...image, data };
+  for (let y = Math.max(0, dy); y < Math.min(image.height, image.height + dy); y++) {
+    const source = ((y - dy) * image.width + startX - dx) * 4;
+    data.set(image.data.subarray(source, source + (endX - startX) * 4), (y * image.width + startX) * 4);
+  }
+  return { ...image, data };
+}
+
+export function selectionsCovered(regions: Region[], width: number, height: number, dx: number, dy: number) {
+  return regions.every((r) => r.x >= Math.max(0, dx) && r.y >= Math.max(0, dy) &&
+    r.x + r.width <= Math.min(width, width + dx) && r.y + r.height <= Math.min(height, height + dy));
+}
+
+export type Edge = "top" | "right" | "bottom" | "left";
+export function boundaryCrop(region: Region, edge: Edge, position: number, width: number, height: number) {
+  const t = Math.max(0, Math.min(100, position)) / 100;
+  const x = edge === "left" ? region.x : edge === "right" ? region.x + region.width : region.x + region.width * t;
+  const y = edge === "top" ? region.y : edge === "bottom" ? region.y + region.height : region.y + region.height * t;
+  const w = Math.min(96, width), h = Math.min(96, height);
+  return { x: Math.max(0, Math.min(width - w, Math.round(x - w / 2))), y: Math.max(0, Math.min(height - h, Math.round(y - h / 2))), width: w, height: h };
+}

@@ -3,6 +3,9 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
 import {
   acceptRegions,
+  MAX_OFFSET,
+  selectionsCovered,
+  translateCandidate,
   type Raster,
   type Region,
 } from "@/lib/revision-lab/pixels";
@@ -21,6 +24,7 @@ import {
   type StoredProject,
 } from "@/lib/revision-lab/storage";
 import ToolHeader from "@/components/tools/tool-header";
+import BoundaryInspector from "./boundary-inspector";
 import s from "./workbench.module.css";
 
 const cases = [
@@ -67,6 +71,8 @@ export default function RevisionWorkbench() {
   const [modelName, setModelName] = useState("");
   const [highlight, setHighlight] = useState(false);
   const [zoom, setZoom] = useState(1);
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const [inspect, setInspect] = useState(false);
   const saveQueue = useRef(Promise.resolve());
   useEffect(() => {
     recentProjects()
@@ -140,12 +146,21 @@ export default function RevisionWorkbench() {
     !!candidate &&
     base.width === candidate.raster.width &&
     base.height === candidate.raster.height;
+  const aligned = useMemo(
+    () => sameSize && candidate ? translateCandidate(candidate.raster, offset.x, offset.y) : null,
+    [sameSize, candidate, offset],
+  );
+  const alignedUrl = useMemo(
+    () => aligned ? (offset.x || offset.y ? encodeImage(aligned) : candidate!.url) : candidate?.url,
+    [aligned, candidate, offset],
+  );
+  const covered = !!base && selectionsCovered(regions, base.width, base.height, offset.x, offset.y);
   const result = useMemo(
     () =>
-      base && candidate && sameSize && regions.length
-        ? acceptRegions(base, candidate.raster, regions)
+      base && aligned && covered && regions.length
+        ? acceptRegions(base, aligned, regions)
         : null,
-    [base, candidate, sameSize, regions],
+    [base, aligned, covered, regions],
   );
   const preview = useMemo(
     () => (result ? encodeImage(result.image) : ""),
@@ -178,6 +193,8 @@ export default function RevisionWorkbench() {
     setDraft(null);
     setMode("current");
     setNote("");
+    setOffset({ x: 0, y: 0 });
+    setInspect(false);
   }
   async function start(url: string, name: string) {
     const raster = await decodeImage(url);
@@ -199,11 +216,13 @@ export default function RevisionWorkbench() {
     setCandidate({ url: encodeImage(raster), raster });
     setRegions([]);
     setMode("candidate");
+    setOffset({ x: 0, y: 0 });
+    setInspect(false);
     setMessage("Candidate loaded. Drag to select the changes you want to keep.");
   }
   const imageUrl =
     mode === "candidate"
-      ? candidate?.url
+      ? alignedUrl
       : mode === "accepted"
         ? preview || current?.image
         : current?.image;
@@ -543,6 +562,9 @@ export default function RevisionWorkbench() {
                 <option value={2}>200%</option>
               </select>
             </label>
+            <button disabled={!result || busy} aria-pressed={inspect} onClick={() => setInspect((value) => !value)}>
+              {inspect ? "Hide boundary inspection" : "Inspect boundaries"}
+            </button>
           </div>
           <div
             className={s.stage}
@@ -578,7 +600,7 @@ export default function RevisionWorkbench() {
                 />
                 {highlight && sameSize && candidate && (
                   <img
-                    src={candidate.url}
+                    src={alignedUrl}
                     alt="Candidate difference overlay"
                     style={{
                       position: "absolute",
@@ -622,6 +644,9 @@ export default function RevisionWorkbench() {
           <div className={s.status} role="status" aria-live="polite">
             {busy ? "Working…" : message}
           </div>
+          {inspect && result && base && aligned && (
+            <BoundaryInspector base={base} candidate={aligned} accepted={result.image} regions={regions} />
+          )}
         </section>
         <aside className={s.panel}>
           <h2>02 / Choose what to keep</h2>
@@ -657,6 +682,27 @@ export default function RevisionWorkbench() {
                 Resize to current dimensions
               </button>
             </div>
+          )}
+          {sameSize && (
+            <fieldset disabled={busy} className={s.alignment}>
+              <legend>Align candidate</legend>
+              <p>Shift the whole candidate by pixels. Positive X moves right; positive Y moves down. Use differences and boundary inspection to check the result.</p>
+              {(["x", "y"] as const).map((axis) => (
+                <label key={axis}>{axis.toUpperCase()}
+                  <button aria-label={`Move candidate ${axis === "x" ? "left" : "up"} 1 pixel`} disabled={busy || offset[axis] <= -MAX_OFFSET} onClick={() => setOffset((old) => ({ ...old, [axis]: old[axis] - 1 }))}>−</button>
+                  <input aria-label={`Candidate ${axis.toUpperCase()} offset`} type="number" min={-MAX_OFFSET} max={MAX_OFFSET} value={offset[axis]} onChange={(e) => {
+                    const value = Number(e.target.value);
+                    if (Number.isInteger(value) && Math.abs(value) <= MAX_OFFSET) setOffset((old) => ({ ...old, [axis]: value }));
+                  }} />
+                  <button aria-label={`Move candidate ${axis === "x" ? "right" : "down"} 1 pixel`} disabled={busy || offset[axis] >= MAX_OFFSET} onClick={() => setOffset((old) => ({ ...old, [axis]: old[axis] + 1 }))}>+</button>
+                </label>
+              ))}
+              <button disabled={busy || (!offset.x && !offset.y)} onClick={() => setOffset({ x: 0, y: 0 })}>Reset alignment</button>
+              <p>Translation only, up to ±64 px. It cannot fix resized or rearranged objects. Uncovered edges appear transparent and cannot be accepted.</p>
+            </fieldset>
+          )}
+          {sameSize && regions.length > 0 && !covered && (
+            <p className={s.warning} role="alert">A selection extends beyond the shifted candidate. Reduce the offset or adjust the selection before accepting.</p>
           )}
           <div className={s.selectionActions}>
             <button

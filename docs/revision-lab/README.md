@@ -33,6 +33,8 @@ Do not run a production build concurrently with the dev server: both use `.next`
 
 Accepted versions autosave to IndexedDB on this device. Unaccepted candidates, selections, and edit instructions do not autosave. Export projects for backup; device-local storage is not cloud sync. Local tool navigation warns about pending work. It does not transfer work between tools or cover every browser navigation mechanism.
 
+**Align candidate** applies a reversible integer translation of up to ±64 px; it does not rescale or warp individual objects. Selections outside the translated candidate’s coverage block acceptance. **Inspect boundaries** compares 96 × 96-pixel details of the current/candidate/accepted-preview images, with edge selection, position control and optional guides. See the [boundary verification record](./evaluation/BOUNDARY-VERIFICATION.md).
+
 ## Optional generation
 
 Candidate import and review require no model key. The local generation route uses the existing Google image provider when `GOOGLE_API_KEY` or `GEMINI_API_KEY` is configured; `REVISION_IMAGE_MODEL` can override its default model. Configuration presence is not a successful provider health check. At the last local verification, GET `/api/lab/revisions` reported `configured: false`.
@@ -60,7 +62,7 @@ node --experimental-strip-types scripts/evaluate-revision-candidate.mjs docs/rev
 
 The first audit expects the original four-version English demo export. The second is an offline candidate evaluator using the actual `acceptRegions` implementation and an independent PNG round-trip check. It uses Sharp resizing; it is not evidence of browser Canvas resizing or live provider integration.
 
-Nine automated tests and scoped TypeScript checks pass. The last production build passed with the repository's existing `ignoreBuildErrors` configuration. Full-repository TypeScript is not clean: existing async `AuthControls` JSX errors in `app/editor/page.tsx` and `components/landing/header.tsx`, plus a ref type error in `components/results-view.tsx`, remain outside this change's fixes. Browser checks cover sequential revisions, export/reopen, version restoration, two-way switching, pending-work dialogs, and a 390px-wide homepage/menu.
+Thirteen automated tests and scoped TypeScript checks pass. The last production build passed with the repository's existing `ignoreBuildErrors` configuration. Full-repository TypeScript is not clean: existing async `AuthControls` JSX errors in `app/editor/page.tsx` and `components/landing/header.tsx`, plus a ref type error in `components/results-view.tsx`, remain outside this change's fixes. Browser checks cover sequential revisions, export/reopen, version restoration, two-way switching, pending-work dialogs, and a 390px-wide homepage/menu.
 
 ## Limits and release gates
 

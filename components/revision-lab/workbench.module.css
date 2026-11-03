@@ -390,3 +390,16 @@
 .app input[type="number"], .app select { border: 1px solid var(--input); border-radius: 8px; padding: 5px; background: var(--bg); color: var(--text); }
 .app fieldset { border: 1px solid var(--border); border-radius: 10px; padding: 10px; margin-bottom: 8px; font-size: 12px; }
 .app input:focus-visible, .app textarea:focus-visible, .app select:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+
+.alignment label { display: flex; gap: 6px; align-items: center; margin: 8px 0; }
+.alignment input { width: 68px; min-width: 0; }
+.alignment button { padding: 6px 10px; }
+.inspector { padding: 16px; border-top: 1px solid var(--border); }
+.inspector h2 { font-size: 15px; font-weight: 600; }
+.inspector p { font-size: 12px; line-height: 1.7; color: var(--text-muted); margin: 10px 0; }
+.inspector .toolbar { padding: 8px 0; }
+.inspector .toolbar label { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.detailGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+.detailGrid figure { margin: 0; min-width: 0; }
+.detailGrid figcaption { font-size: 12px; margin: 8px 0; }
+.detailGrid canvas { display: block; width: 100%; max-width: 288px; image-rendering: pixelated; border: 1px solid var(--border); background: repeating-conic-gradient(#eee 0% 25%, white 0% 50%) 0 / 12px 12px; }

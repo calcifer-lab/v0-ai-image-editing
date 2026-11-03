@@ -36,6 +36,8 @@ You can import a candidate created elsewhere. The preview also has a generation 
 
 If the candidate has different dimensions, the preview asks for confirmation before resizing it to the current image. Equal dimensions do not guarantee equal alignment. Check box borders and arrow endpoints after resizing.
 
+If the whole candidate is slightly displaced, **Align candidate** lets you move it horizontally or vertically in one-pixel steps, up to 64 pixels in either direction. Use **Reset alignment** to return to the imported position. This changes the candidate, not the accepted source. It cannot correct different object sizes or rearranged nodes. A selection extending beyond the shifted candidate blocks acceptance instead of inserting empty pixels.
+
 ## 3. Compare before selecting
 
 Switch between the current version and the candidate. Use **Show differences** and the zoom controls to inspect areas that changed.
@@ -47,6 +49,8 @@ The difference display compares pixels. It does not recognize whether “24” i
 Draw one or more rectangular selections around the changes to keep. Review the selection preview before choosing **Accept selection**. The local compositor copies candidate pixels inside these rectangles and retains the current image's decoded RGBA pixels outside them.
 
 That is a narrow guarantee about the acceptance operation, not a promise about visual correctness. A rectangle that cuts across a connector can create a gap or a double edge. If an arrow needs to move, include its old and new paths in the review; simply accepting its new endpoint may leave the old connection behind.
+
+Choose **Inspect boundaries** to compare an enlarged detail of the current version, aligned candidate, and selection preview. Pick a selection and one of its four edges, then move **Along edge** to inspect different positions. Turn off **Boundary guides** to reveal subtle seams under the guide line. Guides are only review overlays; they never enter the accepted image. Also inspect the complete diagram: a clean boundary cannot establish that the connection is correct.
 
 The preview does not reconstruct nodes, validate relationships, or export editable PowerPoint files.
 
